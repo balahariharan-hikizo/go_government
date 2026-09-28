@@ -25,12 +25,34 @@ router.post('/', async (req, res) => {
       storeDetails,
     } = req.body;
 
-    if (!userId || !storeId || !items || items.length === 0 || grandTotal === undefined) {
+    if (!userId || !storeId || !items || items.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'userId, storeId, items, and grandTotal are required',
+        message: 'userId, storeId, and items are required',
       });
     }
+
+    // ── Server-Side Calculation of Item Total and Grand Total ──
+    const computedItemTotal = items.reduce((sum, item) => {
+      const price = Number(item.price) || 0;
+      const quantity = Number(item.quantity || item.qty || 1);
+      return sum + (price * quantity);
+    }, 0);
+
+    // Use client-provided itemTotal if valid, otherwise fallback to computed
+    const finalItemTotal = (itemTotal !== undefined && !isNaN(Number(itemTotal)) && Number(itemTotal) >= 0)
+      ? Number(itemTotal)
+      : computedItemTotal;
+
+    const numDeliveryCharge = Number(deliveryCharge) || 0;
+    const numHandlingCharge = Number(handlingCharge) || 2;
+    const numCouponDiscount = Number(couponDiscount) || 0;
+    const numCoinsDiscount = Number(coinsDiscount) || 0;
+
+    const computedGrandTotal = Math.max(0, finalItemTotal - numCouponDiscount - numCoinsDiscount) + numDeliveryCharge + numHandlingCharge;
+    const finalGrandTotal = (grandTotal !== undefined && !isNaN(Number(grandTotal)))
+      ? Number(grandTotal)
+      : computedGrandTotal;
 
     const orderId = 'ORD_' + Date.now().toString().slice(-6);
 
@@ -63,7 +85,7 @@ router.post('/', async (req, res) => {
     }
 
     const isWallet = paymentMethod && paymentMethod.toLowerCase().includes('wallet');
-    const numGrandTotal = Number(grandTotal);
+    const numGrandTotal = Number(finalGrandTotal);
 
     if (isWallet) {
       const updatedUser = await User.findOneAndUpdate(
@@ -112,12 +134,12 @@ router.post('/', async (req, res) => {
       userId,
       storeId,
       items,
-      itemTotal,
-      deliveryCharge,
-      handlingCharge,
-      couponDiscount,
-      coinsDiscount,
-      grandTotal,
+      itemTotal: finalItemTotal,
+      deliveryCharge: numDeliveryCharge,
+      handlingCharge: numHandlingCharge,
+      couponDiscount: numCouponDiscount,
+      coinsDiscount: numCoinsDiscount,
+      grandTotal: finalGrandTotal,
       paymentMethod,
       paymentStatus: paymentMethod.toLowerCase().includes('cash') ? 'pending' : 'paid',
       deliveryAddress: deliveryAddress || { address: 'Default Delivery Address' },

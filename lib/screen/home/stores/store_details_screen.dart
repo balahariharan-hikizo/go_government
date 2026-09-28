@@ -10,8 +10,7 @@ import 'package:go_government/bloc/product/product_event.dart';
 import 'package:go_government/bloc/product/product_state.dart';
 import 'package:go_government/bloc/direction/direction_bloc.dart';
 import 'package:go_government/bloc/direction/direction_event.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import '../../../network/store_api_service.dart';
 import '../../../constants/route_constants.dart';
 import '../../../service/cart_manager.dart';
 import '../../../widget/common_wishlist_button.dart';
@@ -46,13 +45,11 @@ class StoreDetailsScreen extends StatefulWidget {
 
 class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
   String _currentStorePhone = '';
-  String _currentOwnerName = '';
 
   @override
   void initState() {
     super.initState();
     _currentStorePhone = widget.storePhone ?? '';
-    _currentOwnerName = widget.ownerName ?? '';
 
     if (_currentStorePhone.isEmpty && widget.storeId.isNotEmpty) {
       _fetchStoreContact();
@@ -100,18 +97,11 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
 
   Future<void> _fetchStoreContact() async {
     try {
-      final res = await http
-          .get(Uri.parse('${ApiClient.baseUrl}/stores/${widget.storeId}'))
-          .timeout(const Duration(seconds: 4));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final store = data['store'];
-        if (store != null && mounted) {
-          setState(() {
-            _currentStorePhone = (store['phone'] ?? '').toString();
-            _currentOwnerName = (store['ownerName'] ?? '').toString();
-          });
-        }
+      final store = await StoreApiService.fetchStoreDetails(widget.storeId);
+      if (store != null && mounted) {
+        setState(() {
+          _currentStorePhone = (store['phone'] ?? '').toString();
+        });
       }
     } catch (_) {}
   }

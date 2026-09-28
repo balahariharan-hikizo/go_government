@@ -3,10 +3,9 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import '../hive/hive_service.dart';
-import '../network/api_client.dart';
+import '../network/auth_api_service.dart';
 import '../services/notification_service.dart';
 
 class FirebaseService {
@@ -194,24 +193,17 @@ class FirebaseService {
       final activeToken = fcmToken ?? _cachedFcmToken!;
       final userId = HiveService.citizenId;
       final phone = HiveService.userPhone;
-      if (userId.isEmpty && phone.isEmpty) return;
+      final success = await AuthApiService.updateFcmToken(
+        userId: userId,
+        phone: phone,
+        fcmToken: activeToken,
+        role: 'citizen',
+      );
 
-      final url = Uri.parse('${ApiClient.baseUrl}/auth/update-fcm-token');
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'userId': userId,
-          'phone': phone,
-          'fcmToken': activeToken,
-          'role': 'citizen',
-        }),
-      ).timeout(const Duration(seconds: 5));
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        debugPrint('✅ [FCM Citizen] Token successfully synced to backend ($url)');
+      if (success) {
+        debugPrint('✅ [FCM Citizen] Token successfully synced to backend via AuthApiService');
       } else {
-        debugPrint('⚠️ [FCM Citizen] Backend returned ${response.statusCode}: ${response.body}');
+        debugPrint('⚠️ [FCM Citizen] Backend returned failure updating FCM token');
       }
     } catch (e) {
       debugPrint('⚠️ [FCM Citizen] Failed to sync token to backend: $e');

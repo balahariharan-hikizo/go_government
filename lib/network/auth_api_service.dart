@@ -205,4 +205,39 @@ class AuthApiService {
       return {'success': false, 'message': 'Connection error. Please try again.'};
     }
   }
+
+  /// 6. Update FCM token for push notifications
+  static Future<bool> updateFcmToken({
+    required String fcmToken,
+    String? userId,
+    String? phone,
+    String? storeId,
+    String role = 'citizen',
+  }) async {
+    final url = '${ApiClient.baseUrl}/auth/update-fcm-token';
+    final payload = jsonEncode({
+      if (userId != null && userId.isNotEmpty) 'userId': userId,
+      if (phone != null && phone.isNotEmpty) 'phone': phone,
+      if (storeId != null && storeId.isNotEmpty) 'storeId': storeId,
+      'fcmToken': fcmToken,
+      'role': role,
+    });
+
+    try {
+      ApiClient.logRequest('POST', url, body: payload);
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: ApiClient.defaultHeaders,
+            body: payload,
+          )
+          .timeout(const Duration(seconds: 6));
+
+      ApiClient.logResponse('POST', url, response.statusCode, response.body);
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      ApiClient.logError('POST', url, e);
+      return false;
+    }
+  }
 }

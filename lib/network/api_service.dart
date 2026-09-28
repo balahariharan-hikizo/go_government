@@ -3,12 +3,19 @@ export 'auth_api_service.dart';
 export 'complaint_api_service.dart';
 export 'address_api_service.dart';
 export 'feedback_api_service.dart';
+export 'store_api_service.dart';
+export 'product_api_service.dart';
+export 'order_api_service.dart';
+export 'cart_wishlist_api_service.dart';
+export 'wallet_api_service.dart';
 
 import '../model/address_model.dart';
 import 'api_client.dart';
 import 'auth_api_service.dart';
 import 'complaint_api_service.dart';
 import 'address_api_service.dart';
+import 'store_api_service.dart';
+import 'product_api_service.dart';
 
 /// Facade for backward compatibility.
 /// You can also use [AuthApiService] and [ComplaintApiService] directly.
@@ -98,4 +105,18 @@ class ApiService {
 
   static Future<bool> deleteAddress(String addressId) =>
       AddressApiService.deleteAddress(addressId);
+
+  // Stores
+  static Future<List<Map<String, dynamic>>> fetchApprovedStores({String? category, bool includeOffline = false}) =>
+      StoreApiService.fetchApprovedStores(category: category, includeOffline: includeOffline);
+
+  static Future<Map<String, dynamic>?> fetchStoreDetails(String storeId) =>
+      StoreApiService.fetchStoreDetails(storeId);
+
+  // Products
+  static Future<List<Map<String, dynamic>>> fetchProductsByStore(String storeId, {String? storeType}) =>
+      ProductApiService.fetchProductsByStore(storeId, storeType: storeType);
+
+  static Future<Map<String, dynamic>?> fetchProductDetails(String productId) =>
+      ProductApiService.fetchProductDetails(productId);
 }

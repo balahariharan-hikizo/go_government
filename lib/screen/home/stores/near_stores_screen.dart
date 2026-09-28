@@ -1,9 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
+import '../../../network/store_api_service.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/responsive_helper.dart';
 import '../../../widget/common_background.dart';
@@ -79,16 +78,10 @@ class _NearStoresScreenState extends State<NearStoresScreen> {
     // Fetch live approved stores from our GoGovernment database ONLY
     final approvedBackendStores = <Map<String, dynamic>>[];
     try {
-      final res = await http
-          .get(Uri.parse('${ApiClient.baseUrl}/stores/approved'))
-          .timeout(const Duration(seconds: 5));
-
-      if (res.statusCode == 200) {
-        final body = jsonDecode(res.body);
-        final list = body['stores'] as List? ?? [];
-        for (final s in list) {
-          // Skip offline stores - only online stores should be visible to citizens
-          if (s['isOnline'] == false) continue;
+      final list = await StoreApiService.fetchApprovedStores();
+      for (final s in list) {
+        // Skip offline stores - only online stores should be visible to citizens
+        if (s['isOnline'] == false) continue;
 
           final lat = (s['location']?['lat'] as num?)?.toDouble() ?? (basePos.latitude + 0.001);
           final lng = (s['location']?['lng'] as num?)?.toDouble() ?? (basePos.longitude + 0.001);
@@ -116,8 +109,7 @@ class _NearStoresScreenState extends State<NearStoresScreen> {
             'ownerName': (s['ownerName'] ?? '').toString(),
           });
         }
-      }
-    } catch (e) {
+      } catch (e) {
       debugPrint('[NearStores] Backend approved stores fetch error: $e');
     }
 

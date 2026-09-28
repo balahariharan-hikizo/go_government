@@ -108,7 +108,8 @@ router.get('/store/:storeId', async (req, res) => {
 // 3. GET SINGLE PRODUCT
 router.get('/:productId', async (req, res) => {
   try {
-    const product = await Product.findOne({ productId: req.params.productId });
+    const { productId } = req.params;
+    const product = await Product.findOne({ productId });
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
