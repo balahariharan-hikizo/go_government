@@ -12,6 +12,7 @@ class AdminApiService {
 
   static String _baseUrl = 'http://localhost:5000/api';
 
+
   static String get baseUrl => _baseUrl;
 
   static Future<void> init() async {

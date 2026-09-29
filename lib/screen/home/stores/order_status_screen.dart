@@ -42,7 +42,6 @@ class OrderStatusScreen extends StatefulWidget {
 
 class _OrderStatusScreenState extends State<OrderStatusScreen>
     with SingleTickerProviderStateMixin {
-
   int get _currentStep => context.read<OrderTrackingBloc>().state.currentStep;
 
   String _receiverName = '';
@@ -70,10 +69,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     _orderId = (widget.orderId != null && widget.orderId!.isNotEmpty)
         ? widget.orderId!
         : (rawTx?['orderId']?.toString().isNotEmpty == true)
-            ? rawTx!['orderId'].toString()
-            : (rawTx?['id']?.toString().isNotEmpty == true)
-                ? rawTx!['id'].toString()
-                : '';
+        ? rawTx!['orderId'].toString()
+        : (rawTx?['id']?.toString().isNotEmpty == true)
+        ? rawTx!['id'].toString()
+        : '';
 
     debugPrint('🔍 [OrderStatusScreen] Tracking Order ID: "$_orderId"');
 
@@ -85,7 +84,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
       _receiverPhone = profile.phone.trim();
     }
 
-    if (widget.transaction?['address'] != null && widget.transaction!['address'].toString().isNotEmpty) {
+    if (widget.transaction?['address'] != null &&
+        widget.transaction!['address'].toString().isNotEmpty) {
       _deliveryAddress = widget.transaction!['address'].toString();
     } else {
       final initialAddr = context.read<AddressBloc>().state.selectedAddress;
@@ -95,7 +95,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     }
 
     if (widget.transaction != null) {
-      context.read<OrderTrackingBloc>().add(SetTrackingOrderEvent(widget.transaction!));
+      context.read<OrderTrackingBloc>().add(
+        SetTrackingOrderEvent(widget.transaction!),
+      );
     }
 
     // Fetch initial order details once
@@ -109,8 +111,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
 
     _socketSub = SocketService().onOrderStatusUpdate.listen((orderData) {
       if (!mounted) return;
-      final incomingId = orderData['orderId']?.toString() ?? orderData['id']?.toString();
-      debugPrint('⚡ [OrderStatusScreen] onOrderStatusUpdate incomingId: $incomingId, trackedId: $_orderId');
+      final incomingId =
+          orderData['orderId']?.toString() ?? orderData['id']?.toString();
+      debugPrint(
+        '⚡ [OrderStatusScreen] onOrderStatusUpdate incomingId: $incomingId, trackedId: $_orderId',
+      );
       if (incomingId == _orderId || _orderId.isEmpty) {
         _applyOrderUpdate(orderData);
       }
@@ -160,7 +165,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     final status = (order['status'] ?? '').toString().toLowerCase().trim();
     if (status == 'cancelled') {
       context.read<OrderTrackingBloc>().add(
-        CancelActiveOrderEvent(orderId: _orderId, reason: 'Cancelled by store or user'),
+        CancelActiveOrderEvent(
+          orderId: _orderId,
+          reason: 'Cancelled by store or user',
+        ),
       );
       context.read<TransactionBloc>().add(
         UpdateOrderStatusEvent(orderId: _orderId, status: 'Cancelled'),
@@ -205,10 +213,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
         if (addr['address'] != null && addr['address'].toString().isNotEmpty) {
           _deliveryAddress = addr['address'].toString();
         }
-        if (addr['receiverName'] != null && addr['receiverName'].toString().isNotEmpty) {
+        if (addr['receiverName'] != null &&
+            addr['receiverName'].toString().isNotEmpty) {
           _receiverName = addr['receiverName'].toString();
         }
-        if (addr['receiverPhone'] != null && addr['receiverPhone'].toString().isNotEmpty) {
+        if (addr['receiverPhone'] != null &&
+            addr['receiverPhone'].toString().isNotEmpty) {
           _receiverPhone = addr['receiverPhone'].toString();
         }
       }
@@ -232,10 +242,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Yes, Cancel', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Yes, Cancel',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -248,7 +266,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
       );
       if (success && mounted) {
         context.read<OrderTrackingBloc>().add(
-          CancelActiveOrderEvent(orderId: _orderId, reason: 'Cancelled by customer'),
+          CancelActiveOrderEvent(
+            orderId: _orderId,
+            reason: 'Cancelled by customer',
+          ),
         );
         context.read<TransactionBloc>().add(
           UpdateOrderStatusEvent(orderId: _orderId, status: 'Cancelled'),
@@ -258,19 +279,31 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
             _serverOrderData!['status'] = 'cancelled';
           }
         });
-        final payMethod = (_serverOrderData?['paymentMethod'] ?? widget.transaction?['paymentMethod'] ?? '').toString().toLowerCase();
+        final payMethod =
+            (_serverOrderData?['paymentMethod'] ??
+                    widget.transaction?['paymentMethod'] ??
+                    '')
+                .toString()
+                .toLowerCase();
         final bool isWallet = payMethod.contains('wallet');
-        final grandTotal = _serverOrderData?['grandTotal'] ?? widget.transaction?['grandTotal'] ?? '';
+        final grandTotal =
+            _serverOrderData?['grandTotal'] ??
+            widget.transaction?['grandTotal'] ??
+            '';
 
         // Reload wallet transactions so the refund and balance update immediately
         context.read<TransactionBloc>().add(LoadTransactionsEvent());
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isWallet
-                ? 'Order cancelled. ₹$grandTotal refunded to your wallet.'
-                : 'Order cancelled successfully.'),
-            backgroundColor: isWallet ? const Color(0xFF2E7D32) : AppColors.grayFont,
+            content: Text(
+              isWallet
+                  ? 'Order cancelled. ₹$grandTotal refunded to your wallet.'
+                  : 'Order cancelled successfully.',
+            ),
+            backgroundColor: isWallet
+                ? const Color(0xFF2E7D32)
+                : AppColors.grayFont,
           ),
         );
       }
@@ -282,19 +315,26 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     'Preparing your order',
     'Ready! Rider coming to pick up',
     'Rider on the way 🚦',
-    'Order Delivered 🎉'
+    'Order Delivered 🎉',
   ];
 
   /// Returns a more descriptive subtitle based on the raw server status.
   String _getStatusSubtitle(String? rawStatus) {
     switch (rawStatus) {
-      case 'placed':      return 'Order received by the store';
-      case 'preparing':   return 'Store is packing your items';
-      case 'ready_for_pickup': return 'Packed & waiting for a delivery rider';
-      case 'accepted':    return 'A rider has accepted — heading to store';
-      case 'out_for_delivery': return 'Rider is on the way to you';
-      case 'delivered':   return 'Successfully delivered!';
-      default:            return 'Processing your order';
+      case 'placed':
+        return 'Order received by the store';
+      case 'preparing':
+        return 'Store is packing your items';
+      case 'ready_for_pickup':
+        return 'Packed & waiting for a delivery rider';
+      case 'accepted':
+        return 'A rider has accepted — heading to store';
+      case 'out_for_delivery':
+        return 'Rider is on the way to you';
+      case 'delivered':
+        return 'Successfully delivered!';
+      default:
+        return 'Processing your order';
     }
   }
 
@@ -304,7 +344,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
       final dt = DateTime.tryParse(createdAt)?.toLocal();
       if (dt != null) {
         final est = dt.add(const Duration(minutes: 30));
-        final h = est.hour > 12 ? est.hour - 12 : (est.hour == 0 ? 12 : est.hour);
+        final h = est.hour > 12
+            ? est.hour - 12
+            : (est.hour == 0 ? 12 : est.hour);
         final m = est.minute.toString().padLeft(2, '0');
         final ampm = est.hour >= 12 ? 'pm' : 'am';
         return 'Est: $h:$m $ampm';
@@ -334,10 +376,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     for (int i = 0; i <= pointCount; i++) {
       final t = i / pointCount;
       final oneMinusT = 1.0 - t;
-      final lat = oneMinusT * oneMinusT * start.latitude +
+      final lat =
+          oneMinusT * oneMinusT * start.latitude +
           2 * oneMinusT * t * ctrlLat +
           t * t * end.latitude;
-      final lng = oneMinusT * oneMinusT * start.longitude +
+      final lng =
+          oneMinusT * oneMinusT * start.longitude +
           2 * oneMinusT * t * ctrlLng +
           t * t * end.longitude;
       points.add(LatLng(lat, lng));
@@ -361,22 +405,28 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     final ctrlLng = midLng - dLat * curvature;
 
     final oneMinusT = 1.0 - clampedT;
-    final lat = oneMinusT * oneMinusT * start.latitude +
+    final lat =
+        oneMinusT * oneMinusT * start.latitude +
         2 * oneMinusT * clampedT * ctrlLat +
         clampedT * clampedT * end.latitude;
-    final lng = oneMinusT * oneMinusT * start.longitude +
+    final lng =
+        oneMinusT * oneMinusT * start.longitude +
         2 * oneMinusT * clampedT * ctrlLng +
         clampedT * clampedT * end.longitude;
     return LatLng(lat, lng);
   }
 
   Widget _buildTrackingMap(int currentStep) {
-    final storeDetails = _serverOrderData?['storeDetails'] as Map<String, dynamic>?;
-    final deliveryAddr = _serverOrderData?['deliveryAddress'] as Map<String, dynamic>?;
-    final deliveryAgent = _serverOrderData?['deliveryAgent'] as Map<String, dynamic>?;
+    final storeDetails =
+        _serverOrderData?['storeDetails'] as Map<String, dynamic>?;
+    final deliveryAddr =
+        _serverOrderData?['deliveryAddress'] as Map<String, dynamic>?;
+    final deliveryAgent =
+        _serverOrderData?['deliveryAgent'] as Map<String, dynamic>?;
 
     final storeLat = (storeDetails?['latitude'] as num?)?.toDouble() ?? 12.9716;
-    final storeLng = (storeDetails?['longitude'] as num?)?.toDouble() ?? 77.5946;
+    final storeLng =
+        (storeDetails?['longitude'] as num?)?.toDouble() ?? 77.5946;
     final storePoint = LatLng(storeLat, storeLng);
 
     final dropLat = (deliveryAddr?['latitude'] as num?)?.toDouble() ?? 12.9780;
@@ -384,7 +434,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     final dropPoint = LatLng(dropLat, dropLng);
 
     // Pre-calculate the curved path points between store and drop destination
-    final curvePoints = _generateCurvedPath(storePoint, dropPoint, pointCount: 60);
+    final curvePoints = _generateCurvedPath(
+      storePoint,
+      dropPoint,
+      pointCount: 60,
+    );
 
     final agentLoc = deliveryAgent?['currentLocation'] as Map<String, dynamic>?;
     final defaultRiderPos = _getPointOnCurve(
@@ -392,10 +446,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
       dropPoint,
       currentStep >= 3 ? 0.65 : 0.20,
     );
-    final dynamicRiderLat = _riderLat ??
+    final dynamicRiderLat =
+        _riderLat ??
         (agentLoc?['latitude'] as num?)?.toDouble() ??
         defaultRiderPos.latitude;
-    final dynamicRiderLng = _riderLng ??
+    final dynamicRiderLng =
+        _riderLng ??
         (agentLoc?['longitude'] as num?)?.toDouble() ??
         defaultRiderPos.longitude;
     final riderPoint = LatLng(dynamicRiderLat, dynamicRiderLng);
@@ -407,11 +463,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
 
         // Calculate animated travelling pulse segment along the curved route
         final totalCount = curvePoints.length;
-        final headIdx = (progress * (totalCount - 1)).round().clamp(1, totalCount - 1);
-        final tailIdx = ((progress - 0.28) * (totalCount - 1)).round().clamp(0, totalCount - 1);
+        final headIdx = (progress * (totalCount - 1)).round().clamp(
+          1,
+          totalCount - 1,
+        );
+        final tailIdx = ((progress - 0.28) * (totalCount - 1)).round().clamp(
+          0,
+          totalCount - 1,
+        );
         final animatedActivePoints = curvePoints.sublist(tailIdx, headIdx + 1);
 
-        final pulseHeadPoint = _getPointOnCurve(storePoint, dropPoint, progress);
+        final pulseHeadPoint = _getPointOnCurve(
+          storePoint,
+          dropPoint,
+          progress,
+        );
 
         final markers = <Marker>[
           // Store marker
@@ -557,7 +623,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
           markers: markers,
           polylines: polylines,
           showUserLocation: false,
-          mapState: currentStep == 4 ? MapState.navigation : MapState.directions,
+          mapState: currentStep == 4
+              ? MapState.navigation
+              : MapState.directions,
           isWalkMode: false,
         );
       },
@@ -568,7 +636,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
   Widget build(BuildContext context) {
     return BlocBuilder<OrderTrackingBloc, OrderTrackingState>(
       builder: (context, state) {
-        final bool isCancelled = state.isCancelled || _serverOrderData?['status'] == 'cancelled';
+        final bool isCancelled =
+            state.isCancelled || _serverOrderData?['status'] == 'cancelled';
         final int currentStep = state.currentStep;
         final bool isMapVisible = !isCancelled && currentStep > 0;
         final bool isDriverCardVisible = !isCancelled && currentStep >= 2;
@@ -587,236 +656,295 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                   // ── ORANGE GRADIENT HEADER ──────────────────────────────
                   _buildStatusHeaderBar(),
 
-                // ── SCROLLABLE CONTENT ───────────────────────────────────
-                Expanded(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      Responsive.w(20),
-                      Responsive.h(16),
-                      Responsive.w(20),
-                      Responsive.h(40),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Cancellation alert banner if cancelled
-                        if (isCancelled) ...[
-                          Container(
-                            width: double.infinity,
-                            padding: EdgeInsets.all(Responsive.w(16)),
-                            margin: EdgeInsets.only(bottom: Responsive.h(16)),
-                            decoration: BoxDecoration(
-                              color: AppColors.error.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(Responsive.w(16)),
-                              border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.cancel_rounded, color: AppColors.error, size: 28),
-                                SizedBox(width: Responsive.w(12)),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      CustomText.title('Order Cancelled', fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.error),
-                                      const SizedBox(height: 2),
-                                      CustomText.subtitle(
-                                        'This order was cancelled. Any amount paid has been refunded to your wallet.',
-                                        fontSize: 12,
-                                        color: Colors.black87,
-                                      ),
-                                    ],
-                                  ),
+                  // ── SCROLLABLE CONTENT ───────────────────────────────────
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: EdgeInsets.fromLTRB(
+                        Responsive.w(20),
+                        Responsive.h(16),
+                        Responsive.w(20),
+                        Responsive.h(40),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Cancellation alert banner if cancelled
+                          if (isCancelled) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: EdgeInsets.all(Responsive.w(16)),
+                              margin: EdgeInsets.only(bottom: Responsive.h(16)),
+                              decoration: BoxDecoration(
+                                color: AppColors.error.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(
+                                  Responsive.w(16),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ],
-
-                        // 1. Cancelled Illustration, Shopping bag (step 0), or Map (steps 1–4)
-                        if (isCancelled) ...[
-                          Center(
-                            child: Container(
-                              height: Responsive.h(180),
-                              alignment: Alignment.center,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                                border: Border.all(
+                                  color: AppColors.error.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Row(
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(20),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.error.withValues(alpha: 0.08),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(Icons.remove_shopping_cart_rounded, size: 48, color: AppColors.error),
+                                  const Icon(
+                                    Icons.cancel_rounded,
+                                    color: AppColors.error,
+                                    size: 28,
                                   ),
-                                  SizedBox(height: Responsive.h(10)),
-                                  CustomText.subtitle('Order processing stopped', fontSize: 13, color: AppColors.grayFont),
+                                  SizedBox(width: Responsive.w(12)),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        CustomText.title(
+                                          'Order Cancelled',
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.error,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        CustomText.subtitle(
+                                          'This order was cancelled. Any amount paid has been refunded to your wallet.',
+                                          fontSize: 12,
+                                          color: Colors.black87,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
-                          ),
-                        ] else if (!isMapVisible) ...[
-                          Center(
-                            child: SizedBox(
-                              height: Responsive.h(220),
-                              width: double.infinity,
-                              child: Image.asset(
-                                'assets/images/bag.png',
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                          ),
-                        ] else ...[
-                          Container(
-                            height: Responsive.h(220),
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(Responsive.w(20)),
-                              border: Border.all(color: AppColors.outliner, width: 1.2),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(Responsive.w(18)),
-                              child: _buildTrackingMap(currentStep),
-                            ),
-                          ),
-                        ],
-                        SizedBox(height: Responsive.h(20)),
+                          ],
 
-                        // 2. Status summary card with progress dots
-                        Container(
-                          width: double.infinity,
-                          padding: EdgeInsets.all(Responsive.w(16)),
-                          decoration: BoxDecoration(
-                            color: AppColors.white,
-                            borderRadius: BorderRadius.circular(Responsive.w(24)),
-                            border: Border.all(
-                              color: isCancelled ? AppColors.error.withValues(alpha: 0.3) : AppColors.outliner,
-                              width: Responsive.w(1.5),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: CustomText.title(
-                                      isCancelled ? 'Cancelled' : _statusTitles[currentStep],
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: isCancelled ? AppColors.error : Colors.black87,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                          // 1. Cancelled Illustration, Shopping bag (step 0), or Map (steps 1–4)
+                          if (isCancelled) ...[
+                            Center(
+                              child: Container(
+                                height: Responsive.h(180),
+                                alignment: Alignment.center,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(20),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.error.withValues(
+                                          alpha: 0.08,
+                                        ),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.remove_shopping_cart_rounded,
+                                        size: 48,
+                                        color: AppColors.error,
+                                      ),
                                     ),
-                                  ),
-                                  SizedBox(width: Responsive.w(8)),
-                                  if (!isCancelled)
-                                    CustomText.title(
-                                      _getEstimatedTimeDisplay(),
+                                    SizedBox(height: Responsive.h(10)),
+                                    CustomText.subtitle(
+                                      'Order processing stopped',
                                       fontSize: 13,
                                       color: AppColors.grayFont,
                                     ),
-                                ],
+                                  ],
+                                ),
                               ),
-                              SizedBox(height: Responsive.h(4)),
-                              CustomText.subtitle(
-                                isCancelled
-                                    ? 'Order was marked as cancelled'
-                                    : _getStatusSubtitle(_serverOrderData?['status']?.toString()),
-                                fontSize: 12,
-                                color: AppColors.grayFont,
+                            ),
+                          ] else if (!isMapVisible) ...[
+                            Center(
+                              child: SizedBox(
+                                height: Responsive.h(220),
+                                width: double.infinity,
+                                child: Image.asset(
+                                  'assets/images/bag.png',
+                                  fit: BoxFit.contain,
+                                ),
                               ),
-                              if (!isCancelled) ...[
-                                SizedBox(height: Responsive.h(16)),
-                                // Progress dots
+                            ),
+                          ] else ...[
+                            Container(
+                              height: Responsive.h(220),
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(
+                                  Responsive.w(20),
+                                ),
+                                border: Border.all(
+                                  color: AppColors.outliner,
+                                  width: 1.2,
+                                ),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(
+                                  Responsive.w(18),
+                                ),
+                                child: _buildTrackingMap(currentStep),
+                              ),
+                            ),
+                          ],
+                          SizedBox(height: Responsive.h(20)),
+
+                          // 2. Status summary card with progress dots
+                          Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.all(Responsive.w(16)),
+                            decoration: BoxDecoration(
+                              color: AppColors.white,
+                              borderRadius: BorderRadius.circular(
+                                Responsive.w(24),
+                              ),
+                              border: Border.all(
+                                color: isCancelled
+                                    ? AppColors.error.withValues(alpha: 0.3)
+                                    : AppColors.outliner,
+                                width: Responsive.w(1.5),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Row(
-                                  children: List.generate(4, (index) {
-                                    final bool isDone = currentStep > index;
-                                    final bool isCurrent = currentStep == index;
-                                    return Expanded(
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            width: Responsive.w(12),
-                                            height: Responsive.w(12),
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: (isDone || isCurrent)
-                                                  ? AppColors.primary
-                                                  : Colors.grey.shade300,
-                                            ),
-                                          ),
-                                          if (index < 3)
-                                            Expanded(
-                                              child: Container(
-                                                height: Responsive.h(2),
-                                                color: isDone
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      child: CustomText.title(
+                                        isCancelled
+                                            ? 'Cancelled'
+                                            : _statusTitles[currentStep],
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: isCancelled
+                                            ? AppColors.error
+                                            : Colors.black87,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    SizedBox(width: Responsive.w(8)),
+                                    if (!isCancelled)
+                                      CustomText.title(
+                                        _getEstimatedTimeDisplay(),
+                                        fontSize: 13,
+                                        color: AppColors.grayFont,
+                                      ),
+                                  ],
+                                ),
+                                SizedBox(height: Responsive.h(4)),
+                                CustomText.subtitle(
+                                  isCancelled
+                                      ? 'Order was marked as cancelled'
+                                      : _getStatusSubtitle(
+                                          _serverOrderData?['status']
+                                              ?.toString(),
+                                        ),
+                                  fontSize: 12,
+                                  color: AppColors.grayFont,
+                                ),
+                                if (!isCancelled) ...[
+                                  SizedBox(height: Responsive.h(16)),
+                                  // Progress dots
+                                  Row(
+                                    children: List.generate(4, (index) {
+                                      final bool isDone = currentStep > index;
+                                      final bool isCurrent =
+                                          currentStep == index;
+                                      return Expanded(
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              width: Responsive.w(12),
+                                              height: Responsive.w(12),
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: (isDone || isCurrent)
                                                     ? AppColors.primary
                                                     : Colors.grey.shade300,
                                               ),
                                             ),
-                                        ],
-                                      ),
-                                    );
-                                  }),
-                                ),
+                                            if (index < 3)
+                                              Expanded(
+                                                child: Container(
+                                                  height: Responsive.h(2),
+                                                  color: isDone
+                                                      ? AppColors.primary
+                                                      : Colors.grey.shade300,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      );
+                                    }),
+                                  ),
+                                ],
                               ],
-                            ],
-                          ),
-                        ),
-
-                        // Citizen cancel button if order is in 'placed' state
-                        if (!isCancelled && (_serverOrderData?['status'] == 'placed' || currentStep == 0)) ...[
-                          SizedBox(height: Responsive.h(12)),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppColors.error,
-                                side: BorderSide(color: AppColors.error.withValues(alpha: 0.5)),
-                                padding: EdgeInsets.symmetric(vertical: Responsive.h(12)),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
-                              ),
-                              icon: const Icon(Icons.close_rounded, size: 18),
-                              label: const Text('Cancel Order', style: TextStyle(fontWeight: FontWeight.w600)),
-                              onPressed: _cancelOrderByCitizen,
                             ),
                           ),
-                        ],
-                        SizedBox(height: Responsive.h(20)),
 
-                        // 3. Driver card (step 2+)
-                        if (isDriverCardVisible) ...[
-                          _buildDriverDetailCard(),
+                          // Citizen cancel button if order is in 'placed' state
+                          if (!isCancelled &&
+                              (_serverOrderData?['status'] == 'placed' ||
+                                  currentStep == 0)) ...[
+                            SizedBox(height: Responsive.h(12)),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppColors.error,
+                                  side: BorderSide(
+                                    color: AppColors.error.withValues(
+                                      alpha: 0.5,
+                                    ),
+                                  ),
+                                  padding: EdgeInsets.symmetric(
+                                    vertical: Responsive.h(12),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      Responsive.w(12),
+                                    ),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.close_rounded, size: 18),
+                                label: const Text(
+                                  'Cancel Order',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                onPressed: _cancelOrderByCitizen,
+                              ),
+                            ),
+                          ],
                           SizedBox(height: Responsive.h(20)),
+
+                          // 3. Driver card (step 2+)
+                          if (isDriverCardVisible) ...[
+                            _buildDriverDetailCard(),
+                            SizedBox(height: Responsive.h(20)),
+                          ],
+
+                          // Store contact & details card
+                          _buildStoreDetailCard(),
+                          SizedBox(height: Responsive.h(20)),
+
+                          // 4. Delivery details
+                          _buildDeliveryDetailsCard(),
+                          SizedBox(height: Responsive.h(20)),
+
+                          // 5. Order number
+                          _buildOrderNumberCard(),
+                          SizedBox(height: Responsive.h(20)),
+
+                          // 6. Help card
+                          _buildHelpCard(),
                         ],
-
-                        // Store contact & details card
-                        _buildStoreDetailCard(),
-                        SizedBox(height: Responsive.h(20)),
-
-                        // 4. Delivery details
-                        _buildDeliveryDetailsCard(),
-                        SizedBox(height: Responsive.h(20)),
-
-                        // 5. Order number
-                        _buildOrderNumberCard(),
-                        SizedBox(height: Responsive.h(20)),
-
-                        // 6. Help card
-                        _buildHelpCard(),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-      );
+        );
       },
     );
   }
@@ -865,10 +993,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                     color: Colors.white24,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.chevron_left,
-                    color: Colors.white,
-                  ),
+                  child: const Icon(Icons.chevron_left, color: Colors.white),
                 ),
               ),
               SizedBox(width: Responsive.w(8)),
@@ -884,20 +1009,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                   ),
                 ),
               ),
-              SizedBox(width: Responsive.w(8)),
-              Container(
-                width: Responsive.w(36),
-                height: Responsive.w(36),
-                decoration: const BoxDecoration(
-                  color: Colors.white24,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.reply,
-                  color: Colors.white,
-                  size: 16,
-                ),
-              ),
+              SizedBox(width: Responsive.w(20)),
+              // Container(
+              //   width: Responsive.w(36),
+              //   height: Responsive.w(36),
+              //   decoration: const BoxDecoration(
+              //     color: Colors.white24,
+              //     shape: BoxShape.circle,
+              //   ),
+              //   child: const Icon(
+              //     Icons.reply,
+              //     color: Colors.white,
+              //     size: 16,
+              //   ),
+              // ),
             ],
           ),
           SizedBox(height: Responsive.h(12)),
@@ -916,18 +1041,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _currentStep == 4 ? 'Arrived ' : 'Arriving in 21 mins · On time ',
+                  _currentStep == 4
+                      ? 'Arrived '
+                      : 'Arriving in 21 mins · On time ',
                   style: const TextStyle(
                     fontSize: 9,
                     color: Colors.black87,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const Icon(
-                  Icons.refresh,
-                  size: 10,
-                  color: Colors.black54,
-                ),
+                const Icon(Icons.refresh, size: 10, color: Colors.black54),
               ],
             ),
           ),
@@ -937,18 +1060,29 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
   }
 
   Widget _buildStoreDetailCard() {
-    final storeDetails = _serverOrderData?['storeDetails'] as Map<String, dynamic>? ??
+    final storeDetails =
+        _serverOrderData?['storeDetails'] as Map<String, dynamic>? ??
         widget.transaction?['storeDetails'] as Map<String, dynamic>?;
-    final rawName = (storeDetails != null && storeDetails['name'] != null && storeDetails['name'].toString().trim().isNotEmpty)
+    final rawName =
+        (storeDetails != null &&
+            storeDetails['name'] != null &&
+            storeDetails['name'].toString().trim().isNotEmpty)
         ? storeDetails['name'].toString().trim()
         : (widget.transaction?['title']?.toString().trim() ?? '');
-    final storeName = (rawName.isNotEmpty && rawName != 'Bangalore Horticulture' && rawName != 'Apothecary Pharmacy')
+    final storeName =
+        (rawName.isNotEmpty &&
+            rawName != 'Bangalore Horticulture' &&
+            rawName != 'Apothecary Pharmacy')
         ? rawName
         : (widget.storeType == 'medical' ? 'Medical Store' : 'Vegetable Store');
-    final storePhone = storeDetails?['phone']?.toString() ??
-        widget.transaction?['storePhone']?.toString() ?? '';
-    final storeAddress = storeDetails?['address']?.toString() ??
-        widget.transaction?['storeAddress']?.toString() ?? '';
+    final storePhone =
+        storeDetails?['phone']?.toString() ??
+        widget.transaction?['storePhone']?.toString() ??
+        '';
+    final storeAddress =
+        storeDetails?['address']?.toString() ??
+        widget.transaction?['storeAddress']?.toString() ??
+        '';
 
     return Container(
       decoration: BoxDecoration(
@@ -995,7 +1129,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                       overflow: TextOverflow.ellipsis,
                     ),
                     CustomText.subtitle(
-                      storeAddress.isNotEmpty ? storeAddress : 'Partner Merchant Store',
+                      storeAddress.isNotEmpty
+                          ? storeAddress
+                          : 'Partner Merchant Store',
                       fontSize: 10,
                       color: AppColors.grayFont,
                       maxLines: 1,
@@ -1009,7 +1145,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
           if (storePhone.isNotEmpty) ...[
             SizedBox(height: Responsive.h(12)),
             Container(
-              padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(8)),
+              padding: EdgeInsets.symmetric(
+                horizontal: Responsive.w(12),
+                vertical: Responsive.h(8),
+              ),
               decoration: BoxDecoration(
                 color: const Color(0xFFE8F5E9),
                 borderRadius: BorderRadius.circular(Responsive.w(12)),
@@ -1020,7 +1159,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.phone, size: 14, color: Color(0xFF2E7D32)),
+                      const Icon(
+                        Icons.phone,
+                        size: 14,
+                        color: Color(0xFF2E7D32),
+                      ),
                       SizedBox(width: Responsive.w(6)),
                       Text(
                         storePhone,
@@ -1034,10 +1177,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                   ),
                   GestureDetector(
                     onTap: () {
-                      CallLauncher.launchCall(context, phone: storePhone, name: storeName);
+                      CallLauncher.launchCall(
+                        context,
+                        phone: storePhone,
+                        name: storeName,
+                      );
                     },
                     child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(6)),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: Responsive.w(12),
+                        vertical: Responsive.h(6),
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF2E7D32),
                         borderRadius: BorderRadius.circular(Responsive.w(16)),
@@ -1069,7 +1219,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
 
   Widget _buildDriverDetailCard() {
     final agent = _serverOrderData?['deliveryAgent'] as Map<String, dynamic>?;
-    final driverName = (agent != null && agent['name'] != null && agent['name'].toString().trim().isNotEmpty)
+    final driverName =
+        (agent != null &&
+            agent['name'] != null &&
+            agent['name'].toString().trim().isNotEmpty)
         ? agent['name'].toString()
         : 'Assigned Express Rider';
     final driverPhone = agent?['phone']?.toString() ?? '';
@@ -1098,10 +1251,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                   color: Colors.green.shade800,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.person,
-                  color: Colors.white,
-                ),
+                child: const Icon(Icons.person, color: Colors.white),
               ),
               SizedBox(width: Responsive.w(12)),
               Expanded(
@@ -1170,7 +1320,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                 child: GestureDetector(
                   onTap: () async {
                     if (driverPhone.isNotEmpty) {
-                      final cleaned = driverPhone.replaceAll(RegExp(r'[^\d+]'), '');
+                      final cleaned = driverPhone.replaceAll(
+                        RegExp(r'[^\d+]'),
+                        '',
+                      );
                       final uri = Uri.parse('tel:$cleaned');
                       if (await canLaunchUrl(uri)) {
                         await launchUrl(uri);
@@ -1180,9 +1333,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(driverPhone.isNotEmpty
-                              ? 'Contacting $driverName at $driverPhone...'
-                              : 'Connecting to $driverName...'),
+                          content: Text(
+                            driverPhone.isNotEmpty
+                                ? 'Contacting $driverName at $driverPhone...'
+                                : 'Connecting to $driverName...',
+                          ),
                           backgroundColor: Colors.green,
                         ),
                       );
@@ -1227,10 +1382,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(Responsive.w(20)),
-        border: Border.all(
-          color: AppColors.outliner,
-          width: Responsive.w(1.2),
-        ),
+        border: Border.all(color: AppColors.outliner, width: Responsive.w(1.2)),
       ),
       padding: EdgeInsets.all(Responsive.w(16)),
       child: Column(
@@ -1263,13 +1415,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
               ),
               GestureDetector(
                 onTap: () async {
-                  final res = await Navigator.of(context).pushNamed(
-                    RouteConstants.addressBook,
-                    arguments: true,
-                  );
+                  final res = await Navigator.of(
+                    context,
+                  ).pushNamed(RouteConstants.addressBook, arguments: true);
                   if (res != null && res is AddressModel) {
                     if (mounted) {
-                      context.read<AddressBloc>().add(SelectActiveAddressEvent(res));
+                      context.read<AddressBloc>().add(
+                        SelectActiveAddressEvent(res),
+                      );
                     }
                     setState(() {
                       _receiverPhone = res.phone;
@@ -1331,13 +1484,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
               ),
               GestureDetector(
                 onTap: () async {
-                  final res = await Navigator.of(context).pushNamed(
-                    RouteConstants.addressBook,
-                    arguments: true,
-                  );
+                  final res = await Navigator.of(
+                    context,
+                  ).pushNamed(RouteConstants.addressBook, arguments: true);
                   if (res != null && res is AddressModel) {
                     if (mounted) {
-                      context.read<AddressBloc>().add(SelectActiveAddressEvent(res));
+                      context.read<AddressBloc>().add(
+                        SelectActiveAddressEvent(res),
+                      );
                     }
                     setState(() {
                       _deliveryAddress = res.description;
@@ -1362,27 +1516,44 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     if (_serverOrderData != null) {
       final items = _serverOrderData!['items'] as List? ?? [];
       final grandTotal = _serverOrderData!['grandTotal']?.toString() ?? '0';
-      final rawServerName = _serverOrderData!['storeDetails']?['name']?.toString().trim();
+      final rawServerName = _serverOrderData!['storeDetails']?['name']
+          ?.toString()
+          .trim();
       final rawTxTitle = widget.transaction?['title']?.toString().trim();
-      final storeName = (rawServerName != null && rawServerName.isNotEmpty && rawServerName != 'Bangalore Horticulture' && rawServerName != 'Apothecary Pharmacy')
+      final storeName =
+          (rawServerName != null &&
+              rawServerName.isNotEmpty &&
+              rawServerName != 'Bangalore Horticulture' &&
+              rawServerName != 'Apothecary Pharmacy')
           ? rawServerName
-          : ((rawTxTitle != null && rawTxTitle.isNotEmpty && rawTxTitle != 'Bangalore Horticulture' && rawTxTitle != 'Apothecary Pharmacy')
-              ? rawTxTitle
-              : (widget.storeType == 'medical' ? 'Medical Store' : 'Vegetable Store'));
+          : ((rawTxTitle != null &&
+                    rawTxTitle.isNotEmpty &&
+                    rawTxTitle != 'Bangalore Horticulture' &&
+                    rawTxTitle != 'Apothecary Pharmacy')
+                ? rawTxTitle
+                : (widget.storeType == 'medical'
+                      ? 'Medical Store'
+                      : 'Vegetable Store'));
       return {
         'id': _orderId,
         'title': storeName,
         'subtitle': 'Order placed · Processing',
         'amount': '-₹$grandTotal',
         'isPositive': false,
-        'status': _statusTitles[_currentStep.clamp(0, _statusTitles.length - 1)],
+        'status':
+            _statusTitles[_currentStep.clamp(0, _statusTitles.length - 1)],
         'date': 'Today',
-        'items': items.map((i) => {
-          'title': i['name'] ?? i['title'] ?? 'Item',
-          'price': '₹${i['price'] ?? 0}',
-          'qty': i['quantity'] ?? i['qty'] ?? 1,
-          'image': i['imageUrl'] ?? i['image'] ?? 'assets/images/product1.png',
-        }).toList(),
+        'items': items
+            .map(
+              (i) => {
+                'title': i['name'] ?? i['title'] ?? 'Item',
+                'price': '₹${i['price'] ?? 0}',
+                'qty': i['quantity'] ?? i['qty'] ?? 1,
+                'image':
+                    i['imageUrl'] ?? i['image'] ?? 'assets/images/product1.png',
+              },
+            )
+            .toList(),
         'address': _deliveryAddress,
         'listingPrice': '₹$grandTotal',
         'sellingPrice': '₹$grandTotal',
@@ -1395,7 +1566,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     }
     final String defaultStore = widget.storeType == 'food'
         ? 'Burger King & Cafe'
-        : (widget.storeType == 'grocery' ? 'Fresh Mart Grocery' : 'Apollo Pharmacy');
+        : (widget.storeType == 'grocery'
+              ? 'Fresh Mart Grocery'
+              : 'Apollo Pharmacy');
     return {
       'id': _orderId,
       'title': defaultStore,
@@ -1406,11 +1579,13 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
       'date': 'Today',
       'items': [
         {
-          'title': widget.storeType == 'food' ? 'Classic Burger Combo' : 'Health Essentials',
+          'title': widget.storeType == 'food'
+              ? 'Classic Burger Combo'
+              : 'Health Essentials',
           'price': '₹ 199.00',
           'qty': 1,
           'image': 'assets/images/product1.png',
-        }
+        },
       ],
       'address': _deliveryAddress,
       'listingPrice': '₹250.00',
@@ -1483,11 +1658,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                   fontWeight: FontWeight.bold,
                 ),
                 SizedBox(width: Responsive.w(4)),
-                const Icon(
-                  Icons.chevron_right,
-                  color: Colors.grey,
-                  size: 18,
-                ),
+                const Icon(Icons.chevron_right, color: Colors.grey, size: 18),
               ],
             ),
           ],
@@ -1714,11 +1885,26 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
 
                 // Issue options list
                 ...[
-                  {'icon': Icons.inventory_2_outlined, 'title': 'Missing or incorrect items'},
-                  {'icon': Icons.access_time_outlined, 'title': 'Delivery delayed significantly'},
-                  {'icon': Icons.broken_image_outlined, 'title': 'Items damaged or poor quality'},
-                  {'icon': Icons.two_wheeler_outlined, 'title': 'Rider unreachable / delivery concern'},
-                  {'icon': Icons.credit_card_outlined, 'title': 'Incorrect bill or payment issue'},
+                  {
+                    'icon': Icons.inventory_2_outlined,
+                    'title': 'Missing or incorrect items',
+                  },
+                  {
+                    'icon': Icons.access_time_outlined,
+                    'title': 'Delivery delayed significantly',
+                  },
+                  {
+                    'icon': Icons.broken_image_outlined,
+                    'title': 'Items damaged or poor quality',
+                  },
+                  {
+                    'icon': Icons.two_wheeler_outlined,
+                    'title': 'Rider unreachable / delivery concern',
+                  },
+                  {
+                    'icon': Icons.credit_card_outlined,
+                    'title': 'Incorrect bill or payment issue',
+                  },
                 ].map((issue) {
                   return Padding(
                     padding: EdgeInsets.only(bottom: Responsive.h(8)),
@@ -1736,7 +1922,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                         decoration: BoxDecoration(
                           color: Colors.grey.shade50,
                           borderRadius: BorderRadius.circular(Responsive.w(12)),
-                          border: Border.all(color: AppColors.outliner, width: 1.0),
+                          border: Border.all(
+                            color: AppColors.outliner,
+                            width: 1.0,
+                          ),
                         ),
                         child: Row(
                           children: [
@@ -1775,15 +1964,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                 SizedBox(height: Responsive.h(10)),
                 _buildFaqTile(
                   question: 'Can I change my delivery address?',
-                  answer: 'If the rider hasn\'t picked up your items yet, please tap "Chat Support" to inform the dispatch team with your new address.',
+                  answer:
+                      'If the rider hasn\'t picked up your items yet, please tap "Chat Support" to inform the dispatch team with your new address.',
                 ),
                 _buildFaqTile(
                   question: 'How do order cancellations work?',
-                  answer: 'You can cancel free of charge before the merchant packs your order. The full payment is refunded immediately to your wallet.',
+                  answer:
+                      'You can cancel free of charge before the merchant packs your order. The full payment is refunded immediately to your wallet.',
                 ),
                 _buildFaqTile(
                   question: 'Where is my delivery partner?',
-                  answer: 'Track your rider in real time on the live map above as soon as your items are picked up from the merchant.',
+                  answer:
+                      'Track your rider in real time on the live map above as soon as your items are picked up from the merchant.',
                 ),
               ],
             ),
@@ -1880,10 +2072,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                   color: Color(0xFFE8F5E9),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.phone_in_talk, color: Color(0xFF2E7D32)),
+                child: const Icon(
+                  Icons.phone_in_talk,
+                  color: Color(0xFF2E7D32),
+                ),
               ),
               SizedBox(width: Responsive.w(10)),
-              CustomText.header('Call Support', fontSize: 16, fontWeight: FontWeight.bold),
+              CustomText.header(
+                'Call Support',
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
             ],
           ),
           content: Column(
@@ -1905,9 +2104,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CustomText.title('Toll-Free Helpline', fontSize: 11, color: Colors.grey.shade600),
+                    CustomText.title(
+                      'Toll-Free Helpline',
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                    ),
                     SizedBox(height: Responsive.h(2)),
-                    CustomText.header('1800-GOV-HELP (1800-468-4357)', fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary),
+                    CustomText.header(
+                      '1800-GOV-HELP (1800-468-4357)',
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
                   ],
                 ),
               ),
@@ -1916,12 +2124,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogCtx),
-              child: CustomText.title('Close', color: AppColors.grayFont, fontSize: 13),
+              child: CustomText.title(
+                'Close',
+                color: AppColors.grayFont,
+                fontSize: 13,
+              ),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2E7D32),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(Responsive.w(12)),
+                ),
               ),
               onPressed: () {
                 Navigator.pop(dialogCtx);
@@ -1932,7 +2146,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                   ),
                 );
               },
-              child: CustomText.title('Dial Now', color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+              child: CustomText.title(
+                'Dial Now',
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         );
@@ -1967,10 +2186,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                       color: Color(0xFFFFEBEE),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.cancel_outlined, color: Color(0xFFD32F2F)),
+                    child: const Icon(
+                      Icons.cancel_outlined,
+                      color: Color(0xFFD32F2F),
+                    ),
                   ),
                   SizedBox(width: Responsive.w(10)),
-                  CustomText.header('Cancel Order?', fontSize: 16, fontWeight: FontWeight.bold),
+                  CustomText.header(
+                    'Cancel Order?',
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ],
               ),
               content: SingleChildScrollView(
@@ -1984,7 +2210,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                       color: Colors.grey.shade700,
                     ),
                     SizedBox(height: Responsive.h(14)),
-                    CustomText.title('Reason for cancellation:', fontSize: 12, fontWeight: FontWeight.bold),
+                    CustomText.title(
+                      'Reason for cancellation:',
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                     SizedBox(height: Responsive.h(6)),
                     ...reasons.map((r) {
                       final isSelected = selectedReason == r;
@@ -2001,23 +2231,31 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                             vertical: Responsive.h(8),
                           ),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFFFFF2EC) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(Responsive.w(8)),
+                            color: isSelected
+                                ? const Color(0xFFFFF2EC)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(
+                              Responsive.w(8),
+                            ),
                             border: Border.all(
-                              color: isSelected ? AppColors.primary : Colors.grey.shade300,
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : Colors.grey.shade300,
                             ),
                           ),
                           child: Row(
                             children: [
                               Icon(
-                                isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                                color: isSelected ? AppColors.primary : Colors.grey,
+                                isSelected
+                                    ? Icons.radio_button_checked
+                                    : Icons.radio_button_off,
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : Colors.grey,
                                 size: Responsive.w(16),
                               ),
                               SizedBox(width: Responsive.w(8)),
-                              Expanded(
-                                child: CustomText.body(r, fontSize: 12),
-                              ),
+                              Expanded(child: CustomText.body(r, fontSize: 12)),
                             ],
                           ),
                         ),
@@ -2029,28 +2267,46 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogCtx),
-                  child: CustomText.title('Keep Order', color: AppColors.grayFont, fontSize: 13),
+                  child: CustomText.title(
+                    'Keep Order',
+                    color: AppColors.grayFont,
+                    fontSize: 13,
+                  ),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFD32F2F),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(Responsive.w(12)),
+                    ),
                   ),
                   onPressed: () {
                     context.read<OrderTrackingBloc>().add(
-                          CancelActiveOrderEvent(orderId: _orderId, reason: selectedReason),
-                        );
+                      CancelActiveOrderEvent(
+                        orderId: _orderId,
+                        reason: selectedReason,
+                      ),
+                    );
                     Navigator.pop(dialogCtx);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Order #$_orderId cancelled. Refund credited to your wallet!'),
+                        content: Text(
+                          'Order #$_orderId cancelled. Refund credited to your wallet!',
+                        ),
                         backgroundColor: const Color(0xFFD32F2F),
                         behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(Responsive.w(12)),
+                        ),
                       ),
                     );
                   },
-                  child: CustomText.title('Confirm Cancel', color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                  child: CustomText.title(
+                    'Confirm Cancel',
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             );
@@ -2071,14 +2327,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(Responsive.w(20)),
           ),
-          title: CustomText.header('Report Issue', fontSize: 16, fontWeight: FontWeight.bold),
+          title: CustomText.header(
+            'Report Issue',
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: Responsive.w(10), vertical: Responsive.h(6)),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: Responsive.w(10),
+                    vertical: Responsive.h(6),
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFF2EC),
                     borderRadius: BorderRadius.circular(Responsive.w(8)),
@@ -2102,7 +2365,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                   maxLines: 3,
                   decoration: InputDecoration(
                     hintText: 'Describe the issue...',
-                    hintStyle: const TextStyle(fontSize: 12, color: Colors.grey),
+                    hintStyle: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(Responsive.w(10)),
                       borderSide: const BorderSide(color: AppColors.outliner),
@@ -2115,22 +2381,32 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogCtx),
-              child: CustomText.title('Cancel', color: AppColors.grayFont, fontSize: 13),
+              child: CustomText.title(
+                'Cancel',
+                color: AppColors.grayFont,
+                fontSize: 13,
+              ),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(Responsive.w(12)),
+                ),
               ),
               onPressed: () {
                 Navigator.pop(dialogCtx);
-                final ticketNumber = DateTime.now().millisecondsSinceEpoch.toString().substring(7);
+                final ticketNumber = DateTime.now().millisecondsSinceEpoch
+                    .toString()
+                    .substring(7);
                 showDialog(
                   context: context,
                   builder: (confirmCtx) {
                     return AlertDialog(
                       backgroundColor: AppColors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(20))),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(Responsive.w(20)),
+                      ),
                       content: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -2140,10 +2416,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                               color: Color(0xFFE8F5E9),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 36),
+                            child: const Icon(
+                              Icons.check_circle,
+                              color: Color(0xFF2E7D32),
+                              size: 36,
+                            ),
                           ),
                           SizedBox(height: Responsive.h(12)),
-                          CustomText.header('Ticket #TKT-$ticketNumber Created', fontSize: 16, fontWeight: FontWeight.bold),
+                          CustomText.header(
+                            'Ticket #TKT-$ticketNumber Created',
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                           SizedBox(height: Responsive.h(6)),
                           CustomText.body(
                             'Thank you for reporting. Our support desk has received your issue and will resolve it promptly.',
@@ -2158,10 +2442,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primary,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  Responsive.w(12),
+                                ),
+                              ),
                             ),
                             onPressed: () => Navigator.pop(confirmCtx),
-                            child: CustomText.title('Done', color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                            child: CustomText.title(
+                              'Done',
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ],
@@ -2169,7 +2462,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                   },
                 );
               },
-              child: CustomText.title('Submit Ticket', color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+              child: CustomText.title(
+                'Submit Ticket',
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         );
@@ -2177,4 +2475,3 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     );
   }
 }
-
