@@ -1,0 +1,1972 @@
+{
+  "info": {
+    "name": "GoGovernment - Route Matched API Collection",
+    "_postman_id": "gogov-route-matched-collection",
+    "description": "100% matched to backend routes (12 route files). Only actual APIs used in GoGovernment 4-app ecosystem.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://192.168.1.12:5000/api",
+      "type": "string"
+    },
+    {
+      "key": "citizenPhone",
+      "value": "9999000000",
+      "type": "string"
+    },
+    {
+      "key": "storePhone",
+      "value": "9999000002",
+      "type": "string"
+    },
+    {
+      "key": "riderPhone",
+      "value": "9999000003",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "USER_00003",
+      "type": "string"
+    },
+    {
+      "key": "storeId",
+      "value": "STORE_479113",
+      "type": "string"
+    },
+    {
+      "key": "productId",
+      "value": "PROD_00001",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "ORD_00001",
+      "type": "string"
+    },
+    {
+      "key": "riderId",
+      "value": "RIDER_00001",
+      "type": "string"
+    },
+    {
+      "key": "addressId",
+      "value": "ADDR_00001",
+      "type": "string"
+    },
+    {
+      "key": "complaintId",
+      "value": "COMP_00001",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. authRoutes (Citizen Auth - 8 APIs)",
+      "item": [
+        {
+          "name": "1.1 Send OTP (Citizen)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{citizenPhone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/send-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "send-otp"
+              ]
+            },
+            "description": "• Route: `POST /api/auth/send-otp`\n• Flutter: `AuthApiService.sendOtp()` in `lib/network/auth_api_service.dart`\n• Screen: `lib/screen/auth/login_screen.dart`"
+          }
+        },
+        {
+          "name": "1.2 Verify OTP (Citizen)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{citizenPhone}}\",\n  \"otp\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-otp"
+              ]
+            },
+            "description": "• Route: `POST /api/auth/verify-otp`\n• Flutter: `AuthApiService.verifyOtp()` in `lib/network/auth_api_service.dart`\n• Screen: `lib/screen/auth/otp_screen.dart`"
+          }
+        },
+        {
+          "name": "1.3 Get Profile by User ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/auth/profile/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "profile",
+                "{{userId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/auth/profile/:userId`\n• Flutter: `AuthApiService.getUserProfile()` in `lib/network/auth_api_service.dart`\n• Screen: `lib/screen/profile/profile_screen.dart`"
+          }
+        },
+        {
+          "name": "1.4 Update Profile (Citizen)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"userName\": \"Citizen Kumar\",\n  \"email\": \"citizen@gogov.in\",\n  \"profileImage\": \"http://192.168.1.12:5000/uploads/profile_images/profile-avatar.jpg\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/update-profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "update-profile"
+              ]
+            },
+            "description": "• Route: `PUT /api/auth/update-profile`\n• Flutter: `AuthApiService.updateProfile()` in `lib/network/auth_api_service.dart`\n• Screen: `lib/screen/profile/edit_profile_screen.dart`"
+          }
+        },
+        {
+          "name": "1.5 Send Phone Update OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"newPhone\": \"9876543211\",\n  \"currentPhone\": \"{{citizenPhone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/send-phone-update-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "send-phone-update-otp"
+              ]
+            },
+            "description": "• Route: `POST /api/auth/send-phone-update-otp`\n• Flutter: `AuthApiService.sendPhoneUpdateOtp()` in `lib/network/auth_api_service.dart`\n• Screen: `lib/screen/profile/edit_phone_screen.dart`"
+          }
+        },
+        {
+          "name": "1.6 Verify Phone Update OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"newPhone\": \"9876543211\",\n  \"otp\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-phone-update-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-phone-update-otp"
+              ]
+            },
+            "description": "• Route: `POST /api/auth/verify-phone-update-otp`\n• Flutter: `AuthApiService.verifyPhoneUpdateOtp()` in `lib/network/auth_api_service.dart`\n• Screen: `lib/screen/profile/edit_phone_screen.dart`"
+          }
+        },
+        {
+          "name": "1.7 Update FCM Token (Citizen)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"fcmToken\": \"fcm_test_device_token_citizen_12345\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/update-fcm-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "update-fcm-token"
+              ]
+            },
+            "description": "• Route: `POST /api/auth/update-fcm-token`\n• Flutter: `AuthApiService.updateFcmToken()` in `lib/network/auth_api_service.dart`\n• Service: `lib/service/firebase_service.dart`"
+          }
+        },
+        {
+          "name": "1.8 Logout (Citizen)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "• Route: `POST /api/auth/logout`\n• Flutter: `AuthBloc` on `LogoutEvent`\n• Screen: `lib/screen/profile/profile_screen.dart`"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. addressRoutes (Addresses - 4 APIs)",
+      "item": [
+        {
+          "name": "2.1 Get User Addresses",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/addresses/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "addresses",
+                "{{userId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/addresses/:userId`\n• Flutter: `AddressApiService.getAddresses()`\n• Screen: `lib/screen/profile/address_book_screen.dart`"
+          }
+        },
+        {
+          "name": "2.2 Create Address",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"type\": \"Home\",\n  \"name\": \"Citizen Kumar\",\n  \"phone\": \"{{citizenPhone}}\",\n  \"description\": \"12/A, Gandhi Nagar 2nd Street, Anna Nagar, Chennai - 600040\",\n  \"floor\": \"Flat 2B, 2nd Floor\",\n  \"landmark\": \"Near Water Tank\",\n  \"latitude\": 13.0827,\n  \"longitude\": 80.2707,\n  \"isDefault\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/addresses/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "addresses",
+                "create"
+              ]
+            },
+            "description": "• Route: `POST /api/addresses/create`\n• Flutter: `AddressApiService.createAddress()`\n• Screen: `lib/screen/profile/select_delivery_location_screen.dart`"
+          }
+        },
+        {
+          "name": "2.3 Update Address",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"Office\",\n  \"description\": \"Tidel Park, 4th Floor, OMR, Perungudi, Chennai - 600096\",\n  \"landmark\": \"Near Ascendas IT Park\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/addresses/update/{{addressId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "addresses",
+                "update",
+                "{{addressId}}"
+              ]
+            },
+            "description": "• Route: `PUT /api/addresses/update/:id`\n• Flutter: `AddressApiService.updateAddress()`\n• Screen: `lib/screen/profile/select_delivery_location_screen.dart`"
+          }
+        },
+        {
+          "name": "2.4 Delete Address",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/addresses/delete/{{addressId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "addresses",
+                "delete",
+                "{{addressId}}"
+              ]
+            },
+            "description": "• Route: `DELETE /api/addresses/delete/:id`\n• Flutter: `AddressApiService.deleteAddress()`\n• Screen: `lib/screen/profile/address_book_screen.dart`"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. storeRoutes (Stores & Merchants - 12 APIs)",
+      "item": [
+        {
+          "name": "3.1 Send OTP (Store Owner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{storePhone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stores/auth/send-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "auth",
+                "send-otp"
+              ]
+            },
+            "description": "• Route: `POST /api/stores/auth/send-otp`\n• Flutter App: Store App\n• Screen: `store_app/lib/screen/auth/login_screen.dart`"
+          }
+        },
+        {
+          "name": "3.2 Verify OTP (Store Owner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{storePhone}}\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stores/auth/verify-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "auth",
+                "verify-otp"
+              ]
+            },
+            "description": "• Route: `POST /api/stores/auth/verify-otp`\n• Flutter App: Store App\n• Screen: `store_app/lib/screen/auth/otp_screen.dart`"
+          }
+        },
+        {
+          "name": "3.3 Register New Store",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Gov Fair Price Ration Shop #42\",\n  \"ownerName\": \"Murugan Storekeeper\",\n  \"phone\": \"{{storePhone}}\",\n  \"email\": \"ration42@gogov.in\",\n  \"category\": \"Ration & Essentials\",\n  \"address\": \"42 Govt Colony, Anna Nagar, Chennai\",\n  \"pincode\": \"600040\",\n  \"lat\": 13.0827,\n  \"lng\": 80.2707,\n  \"bankDetails\": {\n    \"bankName\": \"State Bank of India\",\n    \"accountNumber\": \"123456789012\",\n    \"ifscCode\": \"SBIN0001234\",\n    \"accountHolderName\": \"Murugan Storekeeper\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stores/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "register"
+              ]
+            },
+            "description": "• Route: `POST /api/stores/register`\n• Flutter App: Store App KYC Screen"
+          }
+        },
+        {
+          "name": "3.4 Get My Store (By Phone or ID)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/stores/my-store/{{storePhone}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "my-store",
+                "{{storePhone}}"
+              ]
+            },
+            "description": "• Route: `GET /api/stores/my-store/:identifier`\n• Flutter App: Store App profile sync"
+          }
+        },
+        {
+          "name": "3.5 Get Approved Stores (Citizen App GPS)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/stores/approved?lat=13.0827&lng=80.2707&radius=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "approved"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "13.0827"
+                },
+                {
+                  "key": "lng",
+                  "value": "80.2707"
+                },
+                {
+                  "key": "radius",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "• Route: `GET /api/stores/approved`\n• Citizen App: `near_stores_screen.dart`"
+          }
+        },
+        {
+          "name": "3.6 Get Pending Stores (Admin Web KYC)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/stores/pending",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "pending"
+              ]
+            },
+            "description": "• Route: `GET /api/stores/pending`\n• Admin Web Portal: KYC Verification tab"
+          }
+        },
+        {
+          "name": "3.7 Get All Stores (Admin Catalog)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/stores/all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "all"
+              ]
+            },
+            "description": "• Route: `GET /api/stores/all`\n• Admin Web: Store Management Table"
+          }
+        },
+        {
+          "name": "3.8 Get Single Store By StoreId",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/stores/{{storeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "{{storeId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/stores/:storeId`\n• Citizen App: `store_details_screen.dart`"
+          }
+        },
+        {
+          "name": "3.9 Toggle Store Online/Offline",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isOnline\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stores/{{storeId}}/online",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "{{storeId}}",
+                "online"
+              ]
+            },
+            "description": "• Route: `PATCH /api/stores/:storeId/online`\n• Store App: Online/Offline switch"
+          }
+        },
+        {
+          "name": "3.10 Review Store Status (Admin KYC Approve/Reject)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stores/{{storeId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "{{storeId}}",
+                "status"
+              ]
+            },
+            "description": "• Route: `PATCH /api/stores/:storeId/status`\n• Admin Web: Approve KYC button"
+          }
+        },
+        {
+          "name": "3.11 Update Store Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeName\": \"Gov Fair Price Ration Shop #42 Super\",\n  \"category\": \"Groceries & Ration\",\n  \"openTime\": \"07:30 AM\",\n  \"closeTime\": \"08:30 PM\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stores/{{storeId}}/update-profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "{{storeId}}",
+                "update-profile"
+              ]
+            },
+            "description": "• Route: `PUT /api/stores/:storeId/update-profile`\n• Store App: Settings/Profile screen"
+          }
+        },
+        {
+          "name": "3.12 Update Store FCM Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"{{storeId}}\",\n  \"fcmToken\": \"fcm_store_owner_token_123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stores/update-fcm-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "update-fcm-token"
+              ]
+            },
+            "description": "• Route: `POST /api/stores/update-fcm-token`\n• Store App: FCM Push Notification Sync"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. productRoutes (Products & Catalog - 5 APIs)",
+      "item": [
+        {
+          "name": "4.1 Create Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"{{storeId}}\",\n  \"name\": \"Ponni Boiled Rice (A-Grade)\",\n  \"description\": \"Subsidized PDS Government Supply 1st Quality Rice\",\n  \"category\": \"Grains & Rice\",\n  \"price\": 25,\n  \"unit\": \"kg\",\n  \"stockQuantity\": 500,\n  \"isAvailable\": true,\n  \"images\": [\n    \"http://192.168.1.12:5000/uploads/product_images/sample-rice.jpg\"\n  ],\n  \"hasVariants\": true,\n  \"variants\": [\n    {\n      \"weight\": \"5kg\",\n      \"price\": 125,\n      \"stockQuantity\": 200\n    },\n    {\n      \"weight\": \"10kg\",\n      \"price\": 240,\n      \"stockQuantity\": 150\n    },\n    {\n      \"weight\": \"25kg\",\n      \"price\": 580,\n      \"stockQuantity\": 50\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "create"
+              ]
+            },
+            "description": "• Route: `POST /api/products/create`\n• Store App: Add Product Form"
+          }
+        },
+        {
+          "name": "4.2 Get Products By Store",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/products/store/{{storeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "store",
+                "{{storeId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/products/store/:storeId`\n• Citizen App: `store_details_screen.dart`\n• Store App: Products Inventory"
+          }
+        },
+        {
+          "name": "4.3 Get Single Product By ProductId",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/products/:productId`\n• Citizen App: `product_details_screen.dart`"
+          }
+        },
+        {
+          "name": "4.4 Update Product",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 28,\n  \"stockQuantity\": 450,\n  \"isAvailable\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "description": "• Route: `PATCH /api/products/:productId`\n• Store App: Edit Product Screen"
+          }
+        },
+        {
+          "name": "4.5 Delete Product",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "description": "• Route: `DELETE /api/products/:productId`\n• Store App: Delete Product Action"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. cartRoutes (Cart - 6 APIs)",
+      "item": [
+        {
+          "name": "5.1 Get User Cart",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/cart/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "cart",
+                "{{userId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/cart/:userId`\n• Citizen App: `cart_screen.dart`"
+          }
+        },
+        {
+          "name": "5.2 Add Item to Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"storeId\": \"{{storeId}}\",\n  \"productId\": \"{{productId}}\",\n  \"name\": \"Ponni Boiled Rice (A-Grade)\",\n  \"price\": 25,\n  \"quantity\": 2,\n  \"image\": \"http://192.168.1.12:5000/uploads/product_images/sample-rice.jpg\",\n  \"selectedVariant\": \"5kg\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/cart/add",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "cart",
+                "add"
+              ]
+            },
+            "description": "• Route: `POST /api/cart/add`\n• Citizen App: Add to Cart button"
+          }
+        },
+        {
+          "name": "5.3 Update Item Quantity in Cart",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 3\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/cart/update",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "cart",
+                "update"
+              ]
+            },
+            "description": "• Route: `PUT /api/cart/update`\n• Citizen App: `+` / `-` quantity controls"
+          }
+        },
+        {
+          "name": "5.4 Remove Single Item from Cart",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/cart/{{userId}}/item/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "cart",
+                "{{userId}}",
+                "item",
+                "{{productId}}"
+              ]
+            },
+            "description": "• Route: `DELETE /api/cart/:userId/item/:productId`\n• Citizen App: Delete item swipe/trash icon"
+          }
+        },
+        {
+          "name": "5.5 Clear User Cart",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/cart/{{userId}}/clear",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "cart",
+                "{{userId}}",
+                "clear"
+              ]
+            },
+            "description": "• Route: `DELETE /api/cart/:userId/clear`\n• Citizen App: Clear cart upon order placement"
+          }
+        },
+        {
+          "name": "5.6 Bulk Sync Cart (Offline to Online)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"storeId\": \"{{storeId}}\",\n      \"productId\": \"{{productId}}\",\n      \"name\": \"Ponni Boiled Rice (A-Grade)\",\n      \"price\": 25,\n      \"quantity\": 2\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/cart/{{userId}}/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "cart",
+                "{{userId}}",
+                "sync"
+              ]
+            },
+            "description": "• Route: `POST /api/cart/:userId/sync`\n• Citizen App: Syncs local Hive cart on login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. wishlistRoutes (Wishlist - 4 APIs)",
+      "item": [
+        {
+          "name": "6.1 Get User Wishlist",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/wishlist/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wishlist",
+                "{{userId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/wishlist/:userId`\n• Citizen App: `wishlist_screen.dart`"
+          }
+        },
+        {
+          "name": "6.2 Toggle Wishlist (Add/Remove Favorite)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"productId\": \"{{productId}}\",\n  \"name\": \"Ponni Boiled Rice (A-Grade)\",\n  \"price\": 25,\n  \"image\": \"http://192.168.1.12:5000/uploads/product_images/sample-rice.jpg\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wishlist/toggle",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wishlist",
+                "toggle"
+              ]
+            },
+            "description": "• Route: `POST /api/wishlist/toggle`\n• Citizen App: Heart icon on product cards"
+          }
+        },
+        {
+          "name": "6.3 Remove Item from Wishlist",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/wishlist/{{userId}}/item/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wishlist",
+                "{{userId}}",
+                "item",
+                "{{productId}}"
+              ]
+            },
+            "description": "• Route: `DELETE /api/wishlist/:userId/item/:productId`\n• Citizen App: Trash icon in wishlist screen"
+          }
+        },
+        {
+          "name": "6.4 Bulk Sync Wishlist",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"name\": \"Ponni Rice\",\n      \"price\": 25\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wishlist/{{userId}}/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wishlist",
+                "{{userId}}",
+                "sync"
+              ]
+            },
+            "description": "• Route: `POST /api/wishlist/:userId/sync`\n• Citizen App: Syncs local favorites on login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "07. orderRoutes (Orders & Lifecycle - 11 APIs)",
+      "item": [
+        {
+          "name": "7.1 Create Order (Citizen Checkout)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"storeId\": \"{{storeId}}\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"name\": \"Ponni Boiled Rice (A-Grade)\",\n      \"price\": 25,\n      \"quantity\": 2,\n      \"total\": 50\n    }\n  ],\n  \"totalAmount\": 50,\n  \"deliveryFee\": 15,\n  \"platformFee\": 2,\n  \"grandTotal\": 67,\n  \"paymentMethod\": \"wallet\",\n  \"deliveryAddress\": {\n    \"label\": \"Home\",\n    \"doorNo\": \"12/A\",\n    \"street\": \"Gandhi Nagar\",\n    \"area\": \"Anna Nagar\",\n    \"city\": \"Chennai\",\n    \"pincode\": \"600040\",\n    \"lat\": 13.0827,\n    \"lng\": 80.2707,\n    \"receiverName\": \"Citizen Kumar\",\n    \"receiverPhone\": \"9999000000\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "create"
+              ]
+            },
+            "description": "• Route: `POST /api/orders/create`\n• Citizen App: `cart_screen.dart` Checkout button"
+          }
+        },
+        {
+          "name": "7.2 Get All Orders (Admin Web Overview)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/orders/all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "all"
+              ]
+            },
+            "description": "• Route: `GET /api/orders/all`\n• Admin Web Portal: Live Orders Monitoring"
+          }
+        },
+        {
+          "name": "7.3 Get Live Rider Locations",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/orders/riders/live-locations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "riders",
+                "live-locations"
+              ]
+            },
+            "description": "• Route: `GET /api/orders/riders/live-locations`\n• Admin Web: Live GPS Radar Map"
+          }
+        },
+        {
+          "name": "7.4 Get Orders for Citizen User",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/orders/user/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "user",
+                "{{userId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/orders/user/:userId`\n• Citizen App: `your_orders_screen.dart`"
+          }
+        },
+        {
+          "name": "7.5 Get Orders for Store",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/orders/store/{{storeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "store",
+                "{{storeId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/orders/store/:storeId`\n• Store App: Incoming & Active Orders"
+          }
+        },
+        {
+          "name": "7.6 Get Available Deliveries (Rider Pool)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/orders/available?lat=13.0827&lng=80.2707&radius=5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "available"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "13.0827"
+                },
+                {
+                  "key": "lng",
+                  "value": "80.2707"
+                },
+                {
+                  "key": "radius",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "• Route: `GET /api/orders/available`\n• Rider App: Available Delivery Jobs Screen"
+          }
+        },
+        {
+          "name": "7.7 Get Deliveries for Specific Rider",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/orders/rider/{{riderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "rider",
+                "{{riderId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/orders/rider/:riderId`\n• Rider App: Active & Past Deliveries Tab"
+          }
+        },
+        {
+          "name": "7.8 Get Single Order Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/orders/:orderId`\n• Citizen / Store / Rider Order Detail Screens"
+          }
+        },
+        {
+          "name": "7.9 Accept Delivery (Rider Concurrency Safe)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"riderId\": \"{{riderId}}\",\n  \"riderName\": \"Suresh Rider\",\n  \"riderPhone\": \"9999000003\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/accept-rider",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "accept-rider"
+              ]
+            },
+            "description": "• Route: `POST /api/orders/:orderId/accept-rider`\n• Rider App: 'Accept Order' Swipe action"
+          }
+        },
+        {
+          "name": "7.10 Update Order Status (3-Party Transition)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ready_for_pickup\",\n  \"otp\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}",
+                "status"
+              ]
+            },
+            "description": "• Route: `PATCH /api/orders/:orderId/status`\n• Transitions: preparing -> ready_for_pickup -> picked_up -> delivered"
+          }
+        },
+        {
+          "name": "7.11 Cancel / Delete Order",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "• Route: `DELETE /api/orders/:orderId`\n• Citizen / Admin Order Cancel action"
+          }
+        }
+      ]
+    },
+    {
+      "name": "08. riderRoutes (Riders & Delivery - 8 APIs)",
+      "item": [
+        {
+          "name": "8.1 Send OTP (Rider)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{riderPhone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/riders/auth/send-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "riders",
+                "auth",
+                "send-otp"
+              ]
+            },
+            "description": "• Route: `POST /api/riders/auth/send-otp`\n• Rider App: `login_screen.dart`"
+          }
+        },
+        {
+          "name": "8.2 Verify OTP (Rider)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{riderPhone}}\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/riders/auth/verify-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "riders",
+                "auth",
+                "verify-otp"
+              ]
+            },
+            "description": "• Route: `POST /api/riders/auth/verify-otp`\n• Rider App: `otp_screen.dart`"
+          }
+        },
+        {
+          "name": "8.3 Get Rider Profile",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/riders/profile/{{riderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "riders",
+                "profile",
+                "{{riderId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/riders/profile/:riderId`\n• Rider App: `rider_profile_view_screen.dart`"
+          }
+        },
+        {
+          "name": "8.4 Update Rider Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"riderId\": \"{{riderId}}\",\n  \"name\": \"Suresh Delivery Partner\",\n  \"vehicleType\": \"Bike\",\n  \"vehicleNumber\": \"TN 01 AB 1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/riders/update-profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "riders",
+                "update-profile"
+              ]
+            },
+            "description": "• Route: `PUT /api/riders/update-profile`\n• Rider App: Edit Profile screen"
+          }
+        },
+        {
+          "name": "8.5 Toggle Rider Online Duty Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"riderId\": \"{{riderId}}\",\n  \"isOnline\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/riders/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "riders",
+                "status"
+              ]
+            },
+            "description": "• Route: `PATCH /api/riders/status`\n• Rider App: Online/Offline Duty switch"
+          }
+        },
+        {
+          "name": "8.6 Update Rider Live GPS Location",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"riderId\": \"{{riderId}}\",\n  \"lat\": 13.0827,\n  \"lng\": 80.2707,\n  \"isOnline\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/riders/location",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "riders",
+                "location"
+              ]
+            },
+            "description": "• Route: `POST /api/riders/location`\n• Rider App: Background GPS tracker ping"
+          }
+        },
+        {
+          "name": "8.7 Update Rider FCM Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"riderId\": \"{{riderId}}\",\n  \"fcmToken\": \"fcm_rider_token_abc123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/riders/update-fcm-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "riders",
+                "update-fcm-token"
+              ]
+            },
+            "description": "• Route: `POST /api/riders/update-fcm-token`\n• Rider App: FCM Push Notification Sync"
+          }
+        },
+        {
+          "name": "8.8 Rider Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"riderId\": \"{{riderId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/riders/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "riders",
+                "logout"
+              ]
+            },
+            "description": "• Route: `POST /api/riders/logout`\n• Rider App: Log out & offline duty cleanup"
+          }
+        }
+      ]
+    },
+    {
+      "name": "09. walletRoutes (Wallet & Coins - 5 APIs)",
+      "item": [
+        {
+          "name": "9.1 Get User Wallet & Transactions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/wallet/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallet",
+                "{{userId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/wallet/:userId`\n• Citizen App: `transaction_screen.dart`"
+          }
+        },
+        {
+          "name": "9.2 Topup Wallet Balance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"amount\": 500,\n  \"description\": \"Wallet Add Money UPI\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wallet/topup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallet",
+                "topup"
+              ]
+            },
+            "description": "• Route: `POST /api/wallet/topup`\n• Citizen App: Add Money Dialog"
+          }
+        },
+        {
+          "name": "9.3 Deduct Wallet Balance (Order Payment)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"amount\": 67,\n  \"description\": \"Order Payment #ORD_00001\",\n  \"orderId\": \"{{orderId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wallet/deduct",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallet",
+                "deduct"
+              ]
+            },
+            "description": "• Route: `POST /api/wallet/deduct`\n• Citizen App: Checkout wallet payment"
+          }
+        },
+        {
+          "name": "9.4 Refund to Wallet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"amount\": 67,\n  \"orderId\": \"{{orderId}}\",\n  \"description\": \"Refund for cancelled order\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wallet/refund",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallet",
+                "refund"
+              ]
+            },
+            "description": "• Route: `POST /api/wallet/refund`\n• Order Cancel refund callback"
+          }
+        },
+        {
+          "name": "9.5 Redeem Reward Coins to Wallet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"coins\": 100\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/wallet/redeem-coins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallet",
+                "redeem-coins"
+              ]
+            },
+            "description": "• Route: `POST /api/wallet/redeem-coins`\n• Citizen App: Redeem coins button (100 coins = ₹10)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. complaintRoutes (Complaints - 8 APIs)",
+      "item": [
+        {
+          "name": "10.1 Get Complaint Analytics Stats",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/complaints/meta/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "complaints",
+                "meta",
+                "stats"
+              ]
+            },
+            "description": "• Route: `GET /api/complaints/meta/stats`\n• Citizen App: Home Dashboard banner / Admin Web KPIs"
+          }
+        },
+        {
+          "name": "10.2 Get All Public Complaints",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/complaints/all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "complaints",
+                "all"
+              ]
+            },
+            "description": "• Route: `GET /api/complaints/all`\n• Citizen App: `report_screen.dart` Feed"
+          }
+        },
+        {
+          "name": "10.3 Get Single Complaint By ID",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/complaints/{{complaintId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "complaints",
+                "{{complaintId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/complaints/:complaintId`\n• Citizen App: `complaint_details_screen.dart`"
+          }
+        },
+        {
+          "name": "10.4 Get My Filed Complaints",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/complaints/user/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "complaints",
+                "user",
+                "{{userId}}"
+              ]
+            },
+            "description": "• Route: `GET /api/complaints/user/:userId`\n• Citizen App: My Complaints Tab"
+          }
+        },
+        {
+          "name": "10.5 Create / Submit Complaint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"title\": \"Deep Pothole on Anna Main Road\",\n  \"category\": \"Roads & Traffic\",\n  \"description\": \"Severe pothole causing 2-wheeler accidents near bus stop.\",\n  \"location\": \"Anna Salai, Guindy, Chennai\",\n  \"lat\": 13.0067,\n  \"lng\": 80.2023,\n  \"images\": [\n    \"http://192.168.1.12:5000/uploads/complaint-sample.jpg\"\n  ],\n  \"citizenName\": \"Citizen Kumar\",\n  \"citizenPhone\": \"9999000000\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/complaints/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "complaints",
+                "create"
+              ]
+            },
+            "description": "• Route: `POST /api/complaints/create`\n• Citizen App: File Complaint Form"
+          }
+        },
+        {
+          "name": "10.6 Toggle Upvote / Like on Complaint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/complaints/{{complaintId}}/like",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "complaints",
+                "{{complaintId}}",
+                "like"
+              ]
+            },
+            "description": "• Route: `POST /api/complaints/:complaintId/like`\n• Citizen App: Community upvote thumb icon"
+          }
+        },
+        {
+          "name": "10.7 Add Comment to Complaint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"userName\": \"Citizen Kumar\",\n  \"text\": \"Officials visited and inspected this morning.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/complaints/{{complaintId}}/comment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "complaints",
+                "{{complaintId}}",
+                "comment"
+              ]
+            },
+            "description": "• Route: `POST /api/complaints/:complaintId/comment`\n• Citizen App: `complaint_details_screen.dart` comments"
+          }
+        },
+        {
+          "name": "10.8 Update Complaint Status (Admin Resolution)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"adminNotes\": \"Road patching completed by ward team.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/complaints/{{complaintId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "complaints",
+                "{{complaintId}}",
+                "status"
+              ]
+            },
+            "description": "• Route: `PATCH /api/complaints/:complaintId/status`\n• Admin Web Portal: Action Complaint dialog"
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. feedbackRoutes (Feedback & Survey - 3 APIs)",
+      "item": [
+        {
+          "name": "11.1 Submit Citizen Feedback / Rating",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"userName\": \"Citizen Kumar\",\n  \"phone\": \"9999000000\",\n  \"type\": \"app_rating\",\n  \"rating\": 5,\n  \"comments\": \"Very fast government delivery service. Loved the UI!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/feedback/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feedback",
+                "create"
+              ]
+            },
+            "description": "• Route: `POST /api/feedback/create`\n• Citizen App: `profile_screen.dart` Rate Dialog"
+          }
+        },
+        {
+          "name": "11.2 Get All Citizen Feedback (Admin)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feedback/all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feedback",
+                "all"
+              ]
+            },
+            "description": "• Route: `GET /api/feedback/all`\n• Admin Web Portal: Citizen Ratings & Feedback Table"
+          }
+        },
+        {
+          "name": "11.3 Get Feedback Analytics Stats",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/feedback/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "feedback",
+                "stats"
+              ]
+            },
+            "description": "• Route: `GET /api/feedback/stats`\n• Admin Web: Net Promoter Score & average stars KPI"
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. uploadRoutes (Uploads - 4 APIs)",
+      "item": [
+        {
+          "name": "12.1 Upload Profile Image",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/upload/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "upload",
+                "profile"
+              ]
+            },
+            "description": "• Route: `POST /api/upload/profile`\n• Flutter: `AuthApiService.uploadProfileImage()`"
+          }
+        },
+        {
+          "name": "12.2 Upload Complaint Evidence Photo",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/upload/complaint",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "upload",
+                "complaint"
+              ]
+            },
+            "description": "• Route: `POST /api/upload/complaint`\n• Flutter: `ComplaintApiService.uploadComplaintImage()`"
+          }
+        },
+        {
+          "name": "12.3 Upload Store Banner / Photo",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/upload/store",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "upload",
+                "store"
+              ]
+            },
+            "description": "• Route: `POST /api/upload/store`\n• Flutter: Store App KYC Image upload"
+          }
+        },
+        {
+          "name": "12.4 Upload Product Multiple Photos",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/upload/product",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "upload",
+                "product"
+              ]
+            },
+            "description": "• Route: `POST /api/upload/product`\n• Flutter: Store App Add Product multiple photos"
+          }
+        }
+      ]
+    }
+  ]
+}

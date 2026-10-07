@@ -27,7 +27,7 @@ class OrderApiService {
     String? userId,
   }) async {
     final uid = _getUserId(userId);
-    final url = '${ApiClient.baseUrl}/orders';
+    final url = '${ApiClient.baseUrl}/orders/create';
 
     final payload = jsonEncode({
       'userId': uid,

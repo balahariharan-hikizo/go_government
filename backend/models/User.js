@@ -8,13 +8,10 @@ const UserSchema = new mongoose.Schema(
     email: { type: String, default: '' },
     role: {
       type: String,
-      enum: ['citizen', 'store_owner', 'admin', 'rider', 'field_worker'],
       default: 'citizen',
       index: true,
     },
     profileImage: { type: String, default: '' },
-    vehicleType: { type: String, default: '' },
-    vehicleNumber: { type: String, default: '' },
     walletBalance: { type: Number, default: 0, min: 0 },
     coinsBalance: { type: Number, default: 0, min: 0 },
     otp: { type: String, default: '' },

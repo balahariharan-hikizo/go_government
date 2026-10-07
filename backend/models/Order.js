@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const OrderItemSchema = new mongoose.Schema({
   productId: { type: String, required: true },
+  variantId: { type: String, default: '' },
   title: { type: String, required: true },
   price: { type: Number, required: true },
   originalPrice: { type: Number, default: 0 },

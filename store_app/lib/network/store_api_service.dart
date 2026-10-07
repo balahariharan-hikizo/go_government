@@ -86,13 +86,16 @@ class StoreApiService {
     return null;
   }
 
-  static Future<String?> uploadProductImage(String localPath) async {
+  static Future<List<String>> uploadMultipleProductImages(List<String> localPaths) async {
+    if (localPaths.isEmpty) return [];
     final url = '${ApiClient.baseUrl}/upload/product';
     try {
-      ApiClient.logRequest('MULTIPART POST', url, body: 'File: $localPath');
+      ApiClient.logRequest('MULTIPART POST', url, body: 'Files count: ${localPaths.length}');
 
       final request = http.MultipartRequest('POST', Uri.parse(url));
-      request.files.add(await http.MultipartFile.fromPath('image', localPath));
+      for (final path in localPaths) {
+        request.files.add(await http.MultipartFile.fromPath('images', path));
+      }
 
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
@@ -101,28 +104,29 @@ class StoreApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['imageUrl'] as String?;
+        final list = data['imageUrls'] as List? ?? [];
+        return list.map((e) => e.toString()).toList();
       }
     } catch (e) {
       ApiClient.logError('MULTIPART POST', url, e);
     }
-    return null;
+    return [];
   }
 
   static Future<Map<String, dynamic>?> updateStoreProfile(String storeId, Map<String, dynamic> updates) async {
-    final url = '${ApiClient.baseUrl}/stores/$storeId/profile';
+    final url = '${ApiClient.baseUrl}/stores/$storeId/update-profile';
     final body = jsonEncode(updates);
 
     try {
-      ApiClient.logRequest('PATCH', url, body: body);
+      ApiClient.logRequest('PUT', url, body: body);
       final response = await http
-          .patch(Uri.parse(url), headers: ApiClient.defaultHeaders, body: body)
+          .put(Uri.parse(url), headers: ApiClient.defaultHeaders, body: body)
           .timeout(const Duration(seconds: 10));
 
-      ApiClient.logResponse('PATCH', url, response.statusCode, response.body);
+      ApiClient.logResponse('PUT', url, response.statusCode, response.body);
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
-      ApiClient.logError('PATCH', url, e);
+      ApiClient.logError('PUT', url, e);
       return {'success': false, 'error': 'Network error: $e'};
     }
   }

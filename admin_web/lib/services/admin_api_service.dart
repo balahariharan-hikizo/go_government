@@ -90,7 +90,7 @@ class AdminApiService {
       final query = status != null && status.isNotEmpty && status != 'all'
           ? '?status=${Uri.encodeComponent(status)}'
           : '';
-      final res = await http.get(Uri.parse('$_baseUrl/complaints$query'));
+      final res = await http.get(Uri.parse('$_baseUrl/complaints/all$query'));
       if (res.statusCode == 200) {
         final list = jsonDecode(res.body);
         return {'success': true, 'complaints': List<Map<String, dynamic>>.from(list)};
@@ -151,7 +151,7 @@ class AdminApiService {
       if (search != null && search.isNotEmpty) params.add('search=${Uri.encodeComponent(search)}');
       final query = params.isNotEmpty ? '?${params.join('&')}' : '';
 
-      final res = await http.get(Uri.parse('$_baseUrl/feedback$query'));
+      final res = await http.get(Uri.parse('$_baseUrl/feedback/all$query'));
       if (res.statusCode == 200) {
         return {'success': true, 'data': jsonDecode(res.body)};
       }
@@ -219,7 +219,7 @@ class AdminApiService {
   // 10. Fetch All Orders for Live Monitoring
   static Future<Map<String, dynamic>> getAllOrders() async {
     try {
-      final res = await http.get(Uri.parse('$_baseUrl/orders'));
+      final res = await http.get(Uri.parse('$_baseUrl/orders/all'));
       debugPrint('📦 [AdminApiService] GET /orders status: ${res.statusCode}');
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);

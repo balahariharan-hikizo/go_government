@@ -64,26 +64,56 @@ class AuthApiService {
     return null;
   }
 
-  // 3. Update Profile
+  // 3. Get User Profile by User ID
+  static Future<Map<String, dynamic>?> getUserProfile(String userId) async {
+    final url = '${ApiClient.baseUrl}/auth/profile/$userId';
+    try {
+      ApiClient.logRequest('GET', url);
+
+      final response = await http
+          .get(
+            Uri.parse(url),
+            headers: ApiClient.defaultHeaders,
+          )
+          .timeout(const Duration(seconds: 8));
+
+      ApiClient.logResponse('GET', url, response.statusCode, response.body);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) {
+          if (data['user'] is Map<String, dynamic>) {
+            return data['user'] as Map<String, dynamic>;
+          }
+          return data;
+        }
+      }
+    } catch (e) {
+      ApiClient.logError('GET', url, e);
+    }
+    return null;
+  }
+
+  // 4. Update Profile
   static Future<bool> updateProfile({
     required String userId,
     required String userName,
     required String email,
     String? profileImage,
   }) async {
-    final url = '${ApiClient.baseUrl}/auth/profile';
+    final url = '${ApiClient.baseUrl}/auth/update-profile';
     final payload = jsonEncode({
       'userId': userId,
       'userName': userName,
       'email': email,
-      'profileImage': ?profileImage,
+      'profileImage': profileImage,
     });
 
     try {
-      ApiClient.logRequest('POST', url, body: payload);
+      ApiClient.logRequest('PUT', url, body: payload);
 
       final response = await http
-          .post(
+          .put(
             Uri.parse(url),
             headers: ApiClient.defaultHeaders,
             body: payload,

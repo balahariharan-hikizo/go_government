@@ -6,7 +6,7 @@ class AuthApiService {
   AuthApiService._();
 
   static Future<Map<String, dynamic>?> sendOtp(String phone) async {
-    final url = '${ApiClient.baseUrl}/auth/send-otp';
+    final url = '${ApiClient.baseUrl}/stores/auth/send-otp';
     final body = jsonEncode({'phone': phone});
 
     try {
@@ -24,11 +24,10 @@ class AuthApiService {
   }
 
   static Future<Map<String, dynamic>?> verifyOtp(String phone, String otp) async {
-    final url = '${ApiClient.baseUrl}/auth/verify-otp';
+    final url = '${ApiClient.baseUrl}/stores/auth/verify-otp';
     final body = jsonEncode({
       'phone': phone,
       'otp': otp,
-      'role': 'store_owner',
     });
 
     try {
@@ -52,11 +51,10 @@ class AuthApiService {
     String? storeId,
   }) async {
     if (fcmToken.isEmpty) return false;
-    final url = '${ApiClient.baseUrl}/auth/update-fcm-token';
+    final url = '${ApiClient.baseUrl}/stores/update-fcm-token';
     final body = jsonEncode({
       'phone': phone,
-      'userId': userId ?? '',
-      'storeId': storeId ?? '',
+      'storeId': storeId ?? userId ?? '',
       'fcmToken': fcmToken,
       'role': 'store_owner',
     });

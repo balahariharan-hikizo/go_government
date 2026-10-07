@@ -5,7 +5,7 @@ const AddressSchema = new mongoose.Schema(
     addressId: { type: String, required: true, unique: true },
     userId: { type: String, required: true, index: true },
     type: { type: String, default: 'Home' }, // 'Home', 'Work', 'Other'
-    description: { type: String, required: true },
+    description: { type: String, default: '' },
     phone: { type: String, required: true },
     name: { type: String, default: '' },
     floor: { type: String, default: '' },
@@ -16,6 +16,7 @@ const AddressSchema = new mongoose.Schema(
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
   },
+  
   {
     timestamps: true,
   }

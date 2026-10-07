@@ -45,6 +45,7 @@ class StoreDetailsScreen extends StatefulWidget {
 
 class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
   String _currentStorePhone = '';
+  String _selectedCategory = 'All';
 
   @override
   void initState() {
@@ -75,24 +76,6 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
           storeId: widget.storeId,
           storeType: widget.storeType,
         ));
-
-    // 1. Setup filter categories based on store type
-    if (widget.storeType == 'medical') {
-      _categories = [
-        {'title': 'Respiratory', 'image': 'assets/images/medicines/Property 1=Default.png'},
-        {'title': 'Digestion', 'image': 'assets/images/medicines/Property 1=Default-1.png'},
-        {'title': 'Skincare', 'image': 'assets/images/medicines/Property 1=Default-2.png'},
-        {'title': 'Ortho', 'image': 'assets/images/medicines/Property 1=Default-3.png'},
-        {'title': 'General', 'image': 'assets/images/medicines/Property 1=Default-4.png'},
-        {'title': 'Baby Care', 'image': 'assets/images/medicines/Property 1=Default-5.png'},
-      ];
-    } else {
-      _categories = [
-        {'title': 'Veggies', 'image': 'assets/images/groceries/veg.png'},
-        {'title': 'Fruits', 'image': 'assets/images/groceries/fruit.png'},
-        {'title': 'Dairy', 'image': 'assets/images/groceries/milk.png'},
-      ];
-    }
   }
 
   Future<void> _fetchStoreContact() async {
@@ -107,12 +90,9 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
   }
 
   String _searchQuery = '';
-  int _selectedFilterIndex = 0;
 
   late final VoidCallback _cartListener;
   late final VoidCallback _favListener;
-
-  late final List<Map<String, String>> _categories;
 
   @override
   void dispose() {
@@ -131,10 +111,27 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
     final productState = context.watch<ProductBloc>().state;
     final List<Map<String, dynamic>> allProducts =
         (productState is ProductLoaded) ? productState.products : [];
+
+    // Extract unique categories from products
+    final Set<String> categoriesSet = {'All'};
+    for (final p in allProducts) {
+      final cat = p['category']?.toString().trim() ?? '';
+      if (cat.isNotEmpty) {
+        categoriesSet.add(cat);
+      }
+    }
+    final List<String> availableCategories = categoriesSet.toList();
+
     final filteredProducts = allProducts.where((p) {
       final name = p['title'].toString().toLowerCase();
       final query = _searchQuery.toLowerCase();
-      return name.contains(query);
+      final matchesSearch = name.contains(query);
+
+      final cat = p['category']?.toString().trim() ?? '';
+      final matchesCategory = (_selectedCategory == 'All') ||
+          (cat.toLowerCase() == _selectedCategory.toLowerCase());
+
+      return matchesSearch && matchesCategory;
     }).toList();
 
     return Scaffold(
@@ -204,48 +201,60 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                       ),
                       SizedBox(height: Responsive.h(14)),
 
-                      
-                      // Categories filter horizontal list
-                      SizedBox(
-                        height: Responsive.h(64),
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          itemCount: _categories.length,
-                          itemBuilder: (context, index) {
-                            final cat = _categories[index];
-                            final bool isSelected = _selectedFilterIndex == index;
-                            return Padding(
-                              padding: EdgeInsets.only(right: Responsive.w(12)),
-                              child: GestureDetector(
+                      // Category Filter Chips
+                      if (availableCategories.length > 1) ...[
+                        SizedBox(
+                          height: Responsive.h(38),
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: availableCategories.length,
+                            separatorBuilder: (context, index) => SizedBox(width: Responsive.w(8)),
+                            itemBuilder: (context, index) {
+                              final cat = availableCategories[index];
+                              final isSelected = _selectedCategory == cat;
+                              return GestureDetector(
                                 onTap: () {
-                                  setState(() {
-                                    _selectedFilterIndex = index;
-                                  });
+                                  setState(() => _selectedCategory = cat);
                                 },
-                                child: Container(
-                                  width: Responsive.h(64),
-                                  height: Responsive.h(64),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: Responsive.w(16),
+                                    vertical: Responsive.h(8),
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: AppColors.white,
+                                    color: isSelected ? AppColors.primary : AppColors.white,
                                     borderRadius: BorderRadius.circular(Responsive.w(20)),
                                     border: Border.all(
                                       color: isSelected ? AppColors.primary : AppColors.outliner,
-                                      width: isSelected ? Responsive.w(2.0) : Responsive.w(1.2),
+                                      width: 1.2,
+                                    ),
+                                    boxShadow: isSelected
+                                        ? [
+                                            BoxShadow(
+                                              color: AppColors.primary.withValues(alpha: 0.25),
+                                              blurRadius: 6,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ]
+                                        : [],
+                                  ),
+                                  child: Center(
+                                    child: CustomText.title(
+                                      cat,
+                                      fontSize: 13,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                      color: isSelected ? Colors.white : AppColors.black,
                                     ),
                                   ),
-                                  padding: EdgeInsets.all(Responsive.w(10)),
-                                  child: Image.asset(
-                                    cat['image']!,
-                                    fit: BoxFit.contain,
-                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                      SizedBox(height: Responsive.h(24)),
+                        SizedBox(height: Responsive.h(16)),
+                      ],
 
                       // Product Section Header
                       Row(
@@ -253,7 +262,7 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                         children: [
                           Expanded(
                             child: CustomText.header(
-                              'All Items',
+                              _selectedCategory == 'All' ? 'All Items' : _selectedCategory,
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                               maxLines: 1,

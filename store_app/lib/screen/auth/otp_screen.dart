@@ -141,13 +141,10 @@ class _OtpScreenState extends State<OtpScreen> {
                 );
               }
             } else if (state is StoreNotFound) {
-              final authState = context.read<AuthBloc>().state;
-              final userId = authState is AuthSuccessState ? authState.userId : '';
-
               Navigator.of(context).pushNamedAndRemoveUntil(
                 RouteConstants.registerStore,
                 (route) => false,
-                arguments: {'initialPhone': widget.phone, 'ownerId': userId},
+                arguments: {'initialPhone': widget.phone},
               );
             }
           },

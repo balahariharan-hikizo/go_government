@@ -90,17 +90,44 @@ class ProductApiService {
       stockBadge = 'Only $stock left';
     }
 
+    // Process multiple images
+    List<String> images = [];
+    if (p['images'] is List) {
+      images = (p['images'] as List)
+          .map((e) => e?.toString() ?? '')
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    final primaryImg = (p['image'] != null && p['image'].toString().trim().isNotEmpty)
+        ? p['image'].toString().trim()
+        : '';
+    if (images.isEmpty && primaryImg.isNotEmpty) {
+      images = [primaryImg];
+    }
+
+    // Process variants
+    List<Map<String, dynamic>> variants = [];
+    if (p['variants'] is List) {
+      variants = (p['variants'] as List)
+          .map((v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{})
+          .where((v) => v.isNotEmpty)
+          .toList();
+    }
+
     return {
       'id': p['productId'] ?? p['_id'] ?? '',
+      'productId': p['productId'] ?? p['_id'] ?? '',
       'title': p['title'] ?? 'Product',
       'price': price,
       'originalPrice': origPrice,
       'discountPercentage': discount,
       'stock': stock,
-      'unit': p['unit'] ?? '1 Units',
-      'image': (p['image'] != null && p['image'].toString().trim().isNotEmpty)
-          ? p['image'].toString().trim()
-          : '',
+      'unit': p['unit'] ?? (variants.isNotEmpty ? (variants[0]['unit'] ?? '1 Units') : '1 Units'),
+      'image': primaryImg.isNotEmpty ? primaryImg : (images.isNotEmpty ? images[0] : ''),
+      'images': images,
+      'hasVariants': p['hasVariants'] == true || variants.isNotEmpty,
+      'variants': variants,
+      'category': p['category'] ?? '',
       'stockBadge': stockBadge.isNotEmpty ? stockBadge : null,
       'brand': p['brand'] ?? 'Unbranded',
       'packOf': p['packOf'] ?? '1',

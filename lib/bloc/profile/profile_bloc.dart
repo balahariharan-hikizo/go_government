@@ -68,5 +68,30 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     on<ReloadProfileEvent>((event, emit) {
       emit(ProfileState.initial());
     });
+
+    on<FetchProfileEvent>((event, emit) async {
+      final uid = event.userId ?? HiveService.citizenId;
+      if (uid.isEmpty) return;
+
+      final userData = await ApiService.getUserProfile(uid);
+      if (userData != null) {
+        final name = (userData['userName'] ?? userData['name'] ?? '').toString();
+        final email = (userData['email'] ?? '').toString();
+        final phone = (userData['phone'] ?? '').toString();
+        final img = (userData['profileImage'] ?? '').toString();
+
+        if (name.isNotEmpty) await HiveService.setUserName(name);
+        if (email.isNotEmpty) await HiveService.setUserEmail(email);
+        if (phone.isNotEmpty) await HiveService.setUserPhone(phone);
+        if (img.isNotEmpty) await HiveService.setUserProfileImage(img);
+
+        emit(state.copyWith(
+          name: name.isNotEmpty ? name : state.name,
+          email: email.isNotEmpty ? email : state.email,
+          phone: phone.isNotEmpty ? phone : state.phone,
+          imagePath: img.isNotEmpty ? img : state.imagePath,
+        ));
+      }
+    });
   }
 }

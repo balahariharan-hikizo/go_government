@@ -19,3 +19,8 @@ class UpdateProfileImageEvent extends ProfileEvent {
 
 class ReloadProfileEvent extends ProfileEvent {}
 
+class FetchProfileEvent extends ProfileEvent {
+  final String? userId;
+  FetchProfileEvent([this.userId]);
+}
+

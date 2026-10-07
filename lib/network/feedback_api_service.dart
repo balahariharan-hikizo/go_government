@@ -14,7 +14,7 @@ class FeedbackApiService {
     String comments = '',
     List<Map<String, String>> surveyAnswers = const [],
   }) async {
-    final url = '${ApiClient.baseUrl}/feedback';
+    final url = '${ApiClient.baseUrl}/feedback/create';
     final body = jsonEncode({
       'userId': userId,
       'userName': userName,

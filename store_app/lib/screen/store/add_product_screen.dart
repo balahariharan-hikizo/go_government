@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
@@ -28,6 +27,32 @@ class AddProductScreen extends StatefulWidget {
   State<AddProductScreen> createState() => _AddProductScreenState();
 }
 
+class _VariantRowController {
+  final TextEditingController unitCtrl;
+  final TextEditingController priceCtrl;
+  final TextEditingController origPriceCtrl;
+  final TextEditingController stockCtrl;
+  final String variantId;
+
+  _VariantRowController({
+    required this.variantId,
+    String unit = '',
+    String price = '',
+    String origPrice = '',
+    String stock = '10',
+  })  : unitCtrl = TextEditingController(text: unit),
+        priceCtrl = TextEditingController(text: price),
+        origPriceCtrl = TextEditingController(text: origPrice),
+        stockCtrl = TextEditingController(text: stock);
+
+  void dispose() {
+    unitCtrl.dispose();
+    priceCtrl.dispose();
+    origPriceCtrl.dispose();
+    stockCtrl.dispose();
+  }
+}
+
 class _AddProductScreenState extends State<AddProductScreen> {
   final _formKey = GlobalKey<FormState>();
 
@@ -47,11 +72,28 @@ class _AddProductScreenState extends State<AddProductScreen> {
   late TextEditingController _descriptionController;
   late TextEditingController _subsidyLimitController;
 
-  String _selectedCategory = 'general';
+  final List<String> _categoryOptions = [
+    'Rice & Grains',
+    'Dals & Pulses',
+    'Atta & Flours',
+    'Oils & Ghee',
+    'Spices & Masala',
+    'Vegetables & Fruits',
+    'Dairy & Eggs',
+    'Medicines & Healthcare',
+    'Snacks & Beverages',
+    'General Staples',
+  ];
+  String _selectedCategory = 'Rice & Grains';
   bool _isSubsidized = false;
-  File? _pickedImage;
-  String? _uploadedImageUrl;
-  bool _isUploadingImage = false;
+
+  // Multiple Images Management
+  List<String> _productImages = [];
+  bool _isUploadingImages = false;
+
+  // Variants Management (Sizes / Weights)
+  bool _hasVariants = false;
+  final List<_VariantRowController> _variantControllers = [];
 
   final ImagePicker _picker = ImagePicker();
 
@@ -60,10 +102,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
     super.initState();
     final p = widget.initialProduct;
     if (p != null) {
-      _selectedCategory = p.category.isNotEmpty ? p.category : (widget.storeCategory.isNotEmpty ? widget.storeCategory : 'general');
+      _selectedCategory = p.category.isNotEmpty
+          ? p.category
+          : _categoryOptions.first;
       _titleController = TextEditingController(text: p.title);
       _priceController = TextEditingController(text: p.price.toStringAsFixed(0));
-      _origPriceController = TextEditingController(text: p.originalPrice > 0 ? p.originalPrice.toStringAsFixed(0) : '');
+      _origPriceController =
+          TextEditingController(text: p.originalPrice > 0 ? p.originalPrice.toStringAsFixed(0) : '');
       _stockController = TextEditingController(text: p.stock.toString());
       _unitController = TextEditingController(text: p.unit);
       _brandController = TextEditingController(text: p.brand);
@@ -75,11 +120,28 @@ class _AddProductScreenState extends State<AddProductScreen> {
       _descriptionController = TextEditingController(text: p.description);
       _subsidyLimitController = TextEditingController(text: p.subsidyLimit);
       _isSubsidized = p.isSubsidized;
-      if (p.image.isNotEmpty) {
-        _uploadedImageUrl = p.image;
+
+      // Populate multiple images
+      _productImages = List.from(p.images);
+      if (_productImages.isEmpty && p.image.isNotEmpty) {
+        _productImages.add(p.image);
+      }
+
+      // Populate variants if any
+      _hasVariants = p.hasVariants && p.variants.isNotEmpty;
+      if (_hasVariants) {
+        for (final v in p.variants) {
+          _variantControllers.add(_VariantRowController(
+            variantId: v.variantId,
+            unit: v.unit,
+            price: v.price.toStringAsFixed(0),
+            origPrice: v.originalPrice > 0 ? v.originalPrice.toStringAsFixed(0) : '',
+            stock: v.stock.toString(),
+          ));
+        }
       }
     } else {
-      _selectedCategory = widget.storeCategory.isNotEmpty ? widget.storeCategory : 'general';
+      _selectedCategory = _categoryOptions.first;
       _titleController = TextEditingController();
       _priceController = TextEditingController();
       _origPriceController = TextEditingController();
@@ -111,28 +173,70 @@ class _AddProductScreenState extends State<AddProductScreen> {
     _originController.dispose();
     _descriptionController.dispose();
     _subsidyLimitController.dispose();
+
+    for (final vc in _variantControllers) {
+      vc.dispose();
+    }
     super.dispose();
   }
 
-  Future<void> _pickImage(ImageSource source) async {
-    try {
-      final picked = await _picker.pickImage(source: source, imageQuality: 75);
-      if (picked != null) {
-        setState(() {
-          _pickedImage = File(picked.path);
-          _isUploadingImage = true;
-        });
+  void _addVariantRow({String unit = '', String price = '', String origPrice = '', String stock = '10'}) {
+    setState(() {
+      final defaultId = widget.initialProduct != null
+          ? '${widget.initialProduct!.productId}_V${_variantControllers.length + 1}'
+          : 'V${_variantControllers.length + 1}';
+      _variantControllers.add(_VariantRowController(
+        variantId: defaultId,
+        unit: unit,
+        price: price,
+        origPrice: origPrice,
+        stock: stock,
+      ));
+    });
+  }
 
-        final uploaded = await StoreApiService.uploadProductImage(picked.path);
+  void _removeVariantRow(int index) {
+    setState(() {
+      final removed = _variantControllers.removeAt(index);
+      removed.dispose();
+      if (_variantControllers.isEmpty) {
+        _hasVariants = false;
+      }
+    });
+  }
+
+  // Pick Multiple Images from Gallery
+  Future<void> _pickMultipleImages() async {
+    try {
+      final pickedList = await _picker.pickMultiImage(imageQuality: 75);
+      if (pickedList.isNotEmpty) {
+        setState(() => _isUploadingImages = true);
+        final paths = pickedList.map((e) => e.path).toList();
+        final uploaded = await StoreApiService.uploadMultipleProductImages(paths);
         setState(() {
-          _isUploadingImage = false;
-          if (uploaded != null) {
-            _uploadedImageUrl = uploaded;
-          }
+          _isUploadingImages = false;
+          _productImages.addAll(uploaded);
         });
       }
     } catch (e) {
-      setState(() => _isUploadingImage = false);
+      setState(() => _isUploadingImages = false);
+    }
+  }
+
+  // Pick Single Photo from Camera
+  Future<void> _pickCameraPhoto() async {
+    try {
+      final picked = await _picker.pickImage(source: ImageSource.camera, imageQuality: 75);
+      if (picked != null) {
+        setState(() => _isUploadingImages = true);
+        final uploaded = await StoreApiService.uploadMultipleProductImages([picked.path]);
+        setState(() {
+          _isUploadingImages = false;
+          _productImages.addAll(uploaded);
+        });
+      }
+    } catch (e) {
+      setState(() => _isUploadingImages = false);
     }
   }
 
@@ -156,6 +260,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
       'subsidyLimit': '',
       'description': 'Sweet, juicy farm-harvested watermelon with high hydration and rich antioxidant content.',
       'image': 'assets/images/product1.png',
+      'variants': [
+        {'unit': 'Small (1-2 kg)', 'price': '55', 'originalPrice': '70', 'stock': '10'},
+        {'unit': 'Medium (2-3 kg)', 'price': '83', 'originalPrice': '106', 'stock': '15'},
+        {'unit': 'Large (3-4 kg)', 'price': '110', 'originalPrice': '140', 'stock': '8'},
+      ],
     },
     {
       'presetName': '🌾 Ration Sona Masoori Rice',
@@ -175,6 +284,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
       'subsidyLimit': '10 kg per ration card',
       'description': 'Subsidized fine polished grain rice supplied by Civil Supplies Department for ration cardholders.',
       'image': 'assets/images/product2.png',
+      'variants': [
+        {'unit': '5 kg Bag', 'price': '125', 'originalPrice': '220', 'stock': '50'},
+        {'unit': '10 kg Bag', 'price': '240', 'originalPrice': '420', 'stock': '30'},
+      ],
     },
     {
       'presetName': '🍬 PDS Crystal Sugar',
@@ -194,6 +307,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
       'subsidyLimit': '2 kg per card',
       'description': 'PDS subsidized premium white sugar for essential family ration quota.',
       'image': 'assets/images/product3.png',
+      'variants': [
+        {'unit': '1 kg Pack', 'price': '25', 'originalPrice': '44', 'stock': '35'},
+        {'unit': '2 kg Pack', 'price': '48', 'originalPrice': '88', 'stock': '20'},
+      ],
     },
     {
       'presetName': '💊 Paracetamol 500mg',
@@ -232,6 +349,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
       'subsidyLimit': '',
       'description': 'Daily morning fresh pasteurized milk rich in calcium and essential vitamins.',
       'image': 'assets/images/product2.png',
+      'variants': [
+        {'unit': '500 ml Pouch', 'price': '26', 'originalPrice': '28', 'stock': '40'},
+        {'unit': '1 Liter Pouch', 'price': '50', 'originalPrice': '56', 'stock': '25'},
+      ],
     },
     {
       'presetName': '🍅 Country Tomatoes',
@@ -251,6 +372,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
       'subsidyLimit': '',
       'description': 'Freshly picked tangy country tomatoes suitable for daily culinary curries and salads.',
       'image': 'assets/images/product3.png',
+      'variants': [
+        {'unit': '500 g', 'price': '18', 'originalPrice': '26', 'stock': '20'},
+        {'unit': '1 kg Bag', 'price': '34', 'originalPrice': '50', 'stock': '25'},
+      ],
     },
   ];
 
@@ -271,7 +396,35 @@ class _AddProductScreenState extends State<AddProductScreen> {
       _isSubsidized = data['isSubsidized'] == true;
       _subsidyLimitController.text = data['subsidyLimit'] ?? '';
       _descriptionController.text = data['description'] ?? '';
-      _uploadedImageUrl = data['image'] ?? '';
+
+      _productImages = [data['image'] ?? ''];
+
+      // Clear existing variants and load preset variants if present
+      for (final vc in _variantControllers) {
+        vc.dispose();
+      }
+      _variantControllers.clear();
+
+      final rawVariants = data['variants'];
+      if (rawVariants is List && rawVariants.isNotEmpty) {
+        _hasVariants = true;
+        for (final rawPv in rawVariants) {
+          if (rawPv is Map) {
+            final defaultId = widget.initialProduct != null
+                ? '${widget.initialProduct!.productId}_V${_variantControllers.length + 1}'
+                : 'V${_variantControllers.length + 1}';
+            _variantControllers.add(_VariantRowController(
+              variantId: defaultId,
+              unit: rawPv['unit']?.toString() ?? '',
+              price: rawPv['price']?.toString() ?? '',
+              origPrice: rawPv['originalPrice']?.toString() ?? '',
+              stock: rawPv['stock']?.toString() ?? '10',
+            ));
+          }
+        }
+      } else {
+        _hasVariants = false;
+      }
     });
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -294,20 +447,55 @@ class _AddProductScreenState extends State<AddProductScreen> {
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
 
-    final price = double.tryParse(_priceController.text.trim()) ?? 0.0;
-    final origPrice = double.tryParse(_origPriceController.text.trim()) ?? 0.0;
-    final stock = int.tryParse(_stockController.text.trim()) ?? 10;
+    final fallbackPrice = double.tryParse(_priceController.text.trim()) ?? 0.0;
+    final fallbackOrigPrice = double.tryParse(_origPriceController.text.trim()) ?? 0.0;
+    final fallbackStock = int.tryParse(_stockController.text.trim()) ?? 10;
+    final fallbackUnit = _unitController.text.trim().isNotEmpty ? _unitController.text.trim() : '1 Units';
+
+    List<ProductVariant> formattedVariants = [];
+    if (_hasVariants && _variantControllers.isNotEmpty) {
+      formattedVariants = _variantControllers.map((vc) {
+        final p = double.tryParse(vc.priceCtrl.text.trim()) ?? fallbackPrice;
+        final op = double.tryParse(vc.origPriceCtrl.text.trim()) ?? 0.0;
+        final st = int.tryParse(vc.stockCtrl.text.trim()) ?? fallbackStock;
+        final u = vc.unitCtrl.text.trim().isNotEmpty ? vc.unitCtrl.text.trim() : '1 Units';
+
+        return ProductVariant(
+          variantId: vc.variantId,
+          unit: u,
+          price: p,
+          originalPrice: op > 0 ? op : p,
+          stock: st,
+        );
+      }).toList();
+    }
+
+    final effectivePrice = (_hasVariants && formattedVariants.isNotEmpty)
+        ? formattedVariants.first.price
+        : fallbackPrice;
+    final effectiveOrigPrice = (_hasVariants && formattedVariants.isNotEmpty)
+        ? formattedVariants.first.originalPrice
+        : (fallbackOrigPrice > 0 ? fallbackOrigPrice : fallbackPrice);
+    final effectiveUnit = (_hasVariants && formattedVariants.isNotEmpty)
+        ? formattedVariants.first.unit
+        : fallbackUnit;
+    final effectiveStock = (_hasVariants && formattedVariants.isNotEmpty)
+        ? formattedVariants.first.stock
+        : fallbackStock;
 
     final product = ProductModel(
       productId: _isEditing ? widget.initialProduct!.productId : '',
       storeId: widget.storeId,
       title: _titleController.text.trim(),
       category: _selectedCategory,
-      unit: _unitController.text.trim(),
-      price: price,
-      originalPrice: origPrice > 0 ? origPrice : price,
-      stock: stock,
-      image: _uploadedImageUrl ?? widget.initialProduct?.image ?? '',
+      unit: effectiveUnit,
+      price: effectivePrice,
+      originalPrice: effectiveOrigPrice,
+      stock: effectiveStock,
+      image: _productImages.isNotEmpty ? _productImages.first : '',
+      images: _productImages,
+      hasVariants: _hasVariants && formattedVariants.isNotEmpty,
+      variants: formattedVariants,
       brand: _brandController.text.trim(),
       packOf: _packOfController.text.trim(),
       type: _typeController.text.trim(),
@@ -317,7 +505,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       isSubsidized: _isSubsidized,
       subsidyLimit: _isSubsidized ? _subsidyLimitController.text.trim() : '',
       description: _descriptionController.text.trim(),
-      isAvailable: stock > 0,
+      isAvailable: effectiveStock > 0,
     );
 
     if (_isEditing) {
@@ -353,401 +541,135 @@ class _AddProductScreenState extends State<AddProductScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: AppColors.screenColor,
-        appBar: AppBar(
-          backgroundColor: AppColors.screenColor,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.black, size: 20),
-            onPressed: () => Navigator.pop(context),
-          ),
-          title: CustomText.title(_isEditing ? 'Edit Store Product' : 'Add New Store Product', fontSize: 16, color: AppColors.black),
-          centerTitle: true,
-          actions: [
-            if (!_isEditing)
-              TextButton.icon(
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  padding: EdgeInsets.only(right: Responsive.w(12)),
-                ),
-                icon: const Icon(Icons.bolt_rounded, size: 18, color: Colors.amber),
-                label: const Text(
-                  'Demo Fill',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
-                ),
-                onPressed: () {
-                  final matching = _mockPresets.firstWhere(
-                    (p) => p['category'] == widget.storeCategory,
-                    orElse: () => _mockPresets.first,
-                  );
-                  _applyMockPreset(matching);
-                },
-              ),
-          ],
-        ),
         body: CommonBackground(
           child: SafeArea(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.symmetric(horizontal: Responsive.w(20), vertical: Responsive.h(12)),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 🧪 Quick Demo Autofill Bar for Rapid Testing
-                    Container(
-                      margin: EdgeInsets.only(bottom: Responsive.h(16)),
-                      padding: EdgeInsets.all(Responsive.w(12)),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [
-                            Color(0xFF1E293B),
-                            Color(0xFF0F172A),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(Responsive.w(16)),
-                        boxShadow: const [
-                          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
-                        ],
-                      ),
+            child: Column(
+              children: [
+                _buildHeader(),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.symmetric(horizontal: Responsive.w(16), vertical: Responsive.h(12)),
+                    child: Form(
+                      key: _formKey,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          _buildMockPresetsBar(),
+                          SizedBox(height: Responsive.h(16)),
+
+                          // 📸 Multiple Product Images Section
+                          _buildMultipleImagesSection(),
+
+                          SizedBox(height: Responsive.h(20)),
+
+                          // 1. Basic Information
+                          _buildSectionHeader('Basic Product Details'),
+                          _buildCategoryDropdown(),
+                          SizedBox(height: Responsive.h(12)),
+                          _buildInputField(
+                            controller: _titleController,
+                            label: 'Product Title / Name',
+                            hint: 'e.g. Sona Masoori Rice, Paracetamol 500mg',
+                            validator: (v) =>
+                                (v == null || v.trim().isEmpty) ? 'Product name is required' : null,
+                          ),
+                          SizedBox(height: Responsive.h(12)),
                           Row(
                             children: [
-                              const Icon(Icons.science_outlined, color: Colors.amber, size: 18),
-                              SizedBox(width: Responsive.w(6)),
-                              CustomText.title('Testing Presets (1-Tap Auto-Fill)', fontSize: 12, color: Colors.white),
+                              Expanded(
+                                child: _buildInputField(
+                                  controller: _brandController,
+                                  label: 'Brand / Manufacturer',
+                                  hint: 'e.g. Govt PDS, Cipla',
+                                ),
+                              ),
+                              SizedBox(width: Responsive.w(12)),
+                              Expanded(
+                                child: _buildInputField(
+                                  controller: _packOfController,
+                                  label: 'Pack Of',
+                                  hint: 'e.g. 1, 2, 4',
+                                ),
+                              ),
                             ],
                           ),
-                          SizedBox(height: Responsive.h(10)),
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const BouncingScrollPhysics(),
-                            child: Row(
-                              children: _mockPresets.map((preset) {
-                                return Padding(
-                                  padding: EdgeInsets.only(right: Responsive.w(8)),
-                                  child: ActionChip(
-                                    backgroundColor: const Color(0xFF334155),
-                                    side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-                                    label: Text(
-                                      preset['presetName'],
-                                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
-                                    ),
-                                    onPressed: () => _applyMockPreset(preset),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
+
+                          SizedBox(height: Responsive.h(20)),
+
+                          // ⚖️ 2. Product Variants / Size / Pricing Section
+                          _buildVariantsSection(),
+
+                          SizedBox(height: Responsive.h(20)),
+
+                          // 3. Citizen App Specifications
+                          _buildSectionHeader('Citizen App Highlights & Specs'),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildInputField(
+                                  controller: _shelfLifeController,
+                                  label: 'Shelf Life',
+                                  hint: 'e.g. 7 Days, 6 Months',
+                                ),
+                              ),
+                              SizedBox(width: Responsive.w(12)),
+                              Expanded(
+                                child: _buildInputField(
+                                  controller: _formFactorController,
+                                  label: 'Form Factor',
+                                  hint: 'e.g. Whole, Liquid, Tablet',
+                                ),
+                              ),
+                            ],
                           ),
+                          SizedBox(height: Responsive.h(12)),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildInputField(
+                                  controller: _typeController,
+                                  label: 'Sub-Type / Variety',
+                                  hint: 'e.g. Raw Rice, Antibiotic',
+                                ),
+                              ),
+                              SizedBox(width: Responsive.w(12)),
+                              Expanded(
+                                child: _buildInputField(
+                                  controller: _originController,
+                                  label: 'Country of Origin',
+                                  hint: 'e.g. India',
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          SizedBox(height: Responsive.h(20)),
+
+                          // 4. Government Subsidy Section
+                          _buildSubsidySection(),
+
+                          SizedBox(height: Responsive.h(20)),
+
+                          // 5. Description
+                          _buildSectionHeader('Product Description'),
+                          _buildInputField(
+                            controller: _descriptionController,
+                            label: 'Description & Benefits',
+                            hint: 'Write detailed product information, usage guidelines, storage tips...',
+                            maxLines: 4,
+                          ),
+
+                          SizedBox(height: Responsive.h(30)),
+
+                          // Submit Button
+                          _buildSubmitButton(),
+                          SizedBox(height: Responsive.h(24)),
                         ],
                       ),
                     ),
-
-                    // Product Photo Picker
-                    Center(
-                      child: GestureDetector(
-                        onTap: () {
-                          showModalBottomSheet(
-                            context: context,
-                            builder: (ctx) => SafeArea(
-                              child: Wrap(
-                                children: [
-                                  ListTile(
-                                    leading: const Icon(Icons.photo_camera_rounded, color: AppColors.primary),
-                                    title: const Text('Take Photo with Camera'),
-                                    onTap: () {
-                                      Navigator.pop(ctx);
-                                      _pickImage(ImageSource.camera);
-                                    },
-                                  ),
-                                  ListTile(
-                                    leading: const Icon(Icons.photo_library_rounded, color: AppColors.primary),
-                                    title: const Text('Choose from Gallery'),
-                                    onTap: () {
-                                      Navigator.pop(ctx);
-                                      _pickImage(ImageSource.gallery);
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          width: Responsive.w(110),
-                          height: Responsive.w(110),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(Responsive.w(20)),
-                            border: Border.all(
-                              color: AppColors.primary.withValues(alpha: 0.5),
-                              width: 1.5,
-                              style: BorderStyle.solid,
-                            ),
-                            boxShadow: const [
-                              BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
-                            ],
-                          ),
-                          child: _isUploadingImage
-                              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                              : (_pickedImage != null
-                                  ? ClipRRect(
-                                      borderRadius: BorderRadius.circular(Responsive.w(20)),
-                                      child: Image.file(_pickedImage!, fit: BoxFit.cover),
-                                    )
-                                  : (_uploadedImageUrl != null && _uploadedImageUrl!.isNotEmpty
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(Responsive.w(20)),
-                                          child: _uploadedImageUrl!.startsWith('assets/')
-                                              ? Image.asset(
-                                                  _uploadedImageUrl!,
-                                                  fit: BoxFit.contain,
-                                                  errorBuilder: (ctx, err, st) => const Icon(Icons.inventory_2_outlined, color: AppColors.primary, size: 36),
-                                                )
-                                              : Image.network(
-                                                  _uploadedImageUrl!,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (ctx, err, st) => const Icon(Icons.inventory_2_outlined, color: AppColors.primary, size: 36),
-                                                ),
-                                        )
-                                      : Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(Icons.add_a_photo_outlined, size: 28, color: AppColors.primary),
-                                            SizedBox(height: Responsive.h(6)),
-                                            CustomText.body('Product Photo', fontSize: 11, color: AppColors.grayFont),
-                                          ],
-                                        ))),
-                        ),
-                      ),
-                    ),
-
-                    SizedBox(height: Responsive.h(20)),
-
-                    // 1. Basic Information
-                    _buildSectionHeader('Basic Product Details'),
-                    _buildInputField(
-                      controller: _titleController,
-                      label: 'Product Title / Name',
-                      hint: 'e.g. Sona Masoori Rice, Paracetamol 500mg',
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Product name is required' : null,
-                    ),
-                    SizedBox(height: Responsive.h(12)),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildInputField(
-                            controller: _unitController,
-                            label: 'Unit / Packaging',
-                            hint: 'e.g. 1 kg, 500 g, 1 Units',
-                          ),
-                        ),
-                        SizedBox(width: Responsive.w(12)),
-                        Expanded(
-                          child: _buildInputField(
-                            controller: _brandController,
-                            label: 'Brand / Manufacturer',
-                            hint: 'e.g. Govt PDS, Cipla',
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    SizedBox(height: Responsive.h(20)),
-
-                    // 2. Pricing & Stock
-                    _buildSectionHeader('Pricing & Available Stock'),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildInputField(
-                            controller: _priceController,
-                            label: 'Selling Price (₹)',
-                            hint: 'e.g. 99',
-                            keyboardType: TextInputType.number,
-                            validator: (v) {
-                              if (v == null || v.trim().isEmpty) return 'Selling price required';
-                              if (double.tryParse(v.trim()) == null) return 'Invalid number';
-                              return null;
-                            },
-                          ),
-                        ),
-                        SizedBox(width: Responsive.w(12)),
-                        Expanded(
-                          child: _buildInputField(
-                            controller: _origPriceController,
-                            label: 'Original MRP (₹)',
-                            hint: 'e.g. 150',
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: Responsive.h(12)),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildInputField(
-                            controller: _stockController,
-                            label: 'Total Stock Quantity',
-                            hint: 'e.g. 25',
-                            keyboardType: TextInputType.number,
-                            validator: (v) => (v == null || int.tryParse(v.trim()) == null) ? 'Enter valid stock count' : null,
-                          ),
-                        ),
-                        SizedBox(width: Responsive.w(12)),
-                        Expanded(
-                          child: _buildInputField(
-                            controller: _packOfController,
-                            label: 'Pack Of',
-                            hint: 'e.g. 1, 2, 4',
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    SizedBox(height: Responsive.h(20)),
-
-                    // 3. Citizen App Specifications
-                    _buildSectionHeader('Citizen App Highlights & Specs'),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildInputField(
-                            controller: _shelfLifeController,
-                            label: 'Shelf Life',
-                            hint: 'e.g. 7 Days, 6 Months',
-                          ),
-                        ),
-                        SizedBox(width: Responsive.w(12)),
-                        Expanded(
-                          child: _buildInputField(
-                            controller: _formFactorController,
-                            label: 'Form Factor',
-                            hint: 'e.g. Whole, Liquid, Tablet',
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: Responsive.h(12)),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildInputField(
-                            controller: _typeController,
-                            label: 'Sub-Type / Variety',
-                            hint: 'e.g. Raw Rice, Antibiotic',
-                          ),
-                        ),
-                        SizedBox(width: Responsive.w(12)),
-                        Expanded(
-                          child: _buildInputField(
-                            controller: _originController,
-                            label: 'Country of Origin',
-                            hint: 'e.g. India',
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    SizedBox(height: Responsive.h(20)),
-
-                    // 4. Government Subsidy Quota
-                    _buildSectionHeader('Government Subsidy Status'),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: Responsive.w(16), vertical: Responsive.h(12)),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(Responsive.w(16)),
-                        border: Border.all(color: AppColors.outliner.withValues(alpha: 0.5)),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  CustomText.title('Govt Subsidized Item', fontSize: 13, color: AppColors.black),
-                                  SizedBox(height: Responsive.h(2)),
-                                  CustomText.body('Apply public distribution / PDS quota', fontSize: 11, color: AppColors.grayFont),
-                                ],
-                              ),
-                              Switch(
-                                value: _isSubsidized,
-                                activeThumbColor: AppColors.primary,
-                                onChanged: (v) => setState(() => _isSubsidized = v),
-                              ),
-                            ],
-                          ),
-                          if (_isSubsidized) ...[
-                            SizedBox(height: Responsive.h(10)),
-                            _buildInputField(
-                              controller: _subsidyLimitController,
-                              label: 'Monthly Citizen Quota',
-                              hint: 'e.g. 5 kg per ration card / month',
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-
-                    SizedBox(height: Responsive.h(20)),
-
-                    // 5. Description
-                    _buildSectionHeader('Product Description & Key Features'),
-                    _buildInputField(
-                      controller: _descriptionController,
-                      label: 'Description',
-                      hint: 'Enter detailed specifications, usage advice, or features for citizens...',
-                      maxLines: 3,
-                    ),
-
-                    SizedBox(height: Responsive.h(30)),
-
-                    // Submit Button
-                    BlocBuilder<ProductBloc, ProductState>(
-                      builder: (context, state) {
-                        final isLoading = state is ProductSubmitting;
-                        return SizedBox(
-                          width: double.infinity,
-                          height: Responsive.h(50),
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(Responsive.w(16)),
-                              ),
-                              elevation: 0,
-                            ),
-                            onPressed: isLoading ? null : _submit,
-                            child: isLoading
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                                  )
-                                : Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(_isEditing ? Icons.check_circle_outline_rounded : Icons.add_circle_outline_rounded, color: Colors.white, size: 20),
-                                      SizedBox(width: Responsive.w(8)),
-                                      CustomText.title(_isEditing ? 'Save Product Changes' : 'Add Product to Catalog', fontSize: 15, color: Colors.white),
-                                    ],
-                                  ),
-                          ),
-                        );
-                      },
-                    ),
-
-                    SizedBox(height: Responsive.h(20)),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ),
@@ -755,10 +677,508 @@ class _AddProductScreenState extends State<AddProductScreen> {
     );
   }
 
+  // ================= UI WIDGET BUILDERS ================= //
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: Responsive.w(16), vertical: Responsive.h(12)),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+            color: AppColors.black,
+          ),
+          SizedBox(width: Responsive.w(8)),
+          CustomText.header(
+            _isEditing ? 'Edit Product' : 'Add New Product',
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMockPresetsBar() {
+    return Container(
+      padding: EdgeInsets.all(Responsive.w(12)),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(Responsive.w(12)),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: Color(0xFF2563EB), size: 18),
+              SizedBox(width: Responsive.w(6)),
+              CustomText.title('Quick Demo Presets', fontSize: 13, color: const Color(0xFF1E40AF)),
+            ],
+          ),
+          SizedBox(height: Responsive.h(8)),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _mockPresets.map((preset) {
+                return Padding(
+                  padding: EdgeInsets.only(right: Responsive.w(8)),
+                  child: ActionChip(
+                    backgroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFF93C5FD)),
+                    label: Text(
+                      preset['presetName'],
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1D4ED8)),
+                    ),
+                    onPressed: () => _applyMockPreset(preset),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 📸 Multiple Product Images UI
+  Widget _buildMultipleImagesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('Product Photos (Multiple)'),
+            Text(
+              '${_productImages.length} images added',
+              style: TextStyle(fontSize: 12, color: AppColors.grayFont, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+        SizedBox(height: Responsive.h(10)),
+        SizedBox(
+          height: Responsive.h(115),
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              // Add Image Button
+              InkWell(
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                    ),
+                    builder: (ctx) => SafeArea(
+                      child: Wrap(
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.photo_library, color: AppColors.primary),
+                            title: const Text('Select Multiple from Gallery'),
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              _pickMultipleImages();
+                            },
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.camera_alt, color: AppColors.primary),
+                            title: const Text('Capture with Camera'),
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              _pickCameraPhoto();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: Responsive.w(100),
+                  height: Responsive.h(110),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(Responsive.w(16)),
+                    border: Border.all(color: AppColors.primary, width: 1.5, style: BorderStyle.solid),
+                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                  ),
+                  child: _isUploadingImages
+                      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.add_photo_alternate_outlined, size: 30, color: AppColors.primary),
+                            SizedBox(height: Responsive.h(6)),
+                            CustomText.body('+ Add Photos', fontSize: 11, color: AppColors.primary),
+                          ],
+                        ),
+                ),
+              ),
+
+              // Existing Images List
+              ..._productImages.asMap().entries.map((entry) {
+                final idx = entry.key;
+                final imgUrl = entry.value;
+
+                return Container(
+                  width: Responsive.w(100),
+                  height: Responsive.h(110),
+                  margin: EdgeInsets.only(left: Responsive.w(12)),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(Responsive.w(16)),
+                          child: imgUrl.startsWith('assets/')
+                              ? Image.asset(imgUrl, fit: BoxFit.cover)
+                              : Image.network(
+                                  imgUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (c, e, s) =>
+                                      const Icon(Icons.broken_image, color: Colors.grey),
+                                ),
+                        ),
+                      ),
+                      if (idx == 0)
+                        Positioned(
+                          top: 6,
+                          left: 6,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text('Cover',
+                                style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _productImages.removeAt(idx);
+                            });
+                          },
+                          child: Container(
+                            decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                            padding: const EdgeInsets.all(4),
+                            child: const Icon(Icons.close, size: 14, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ⚖️ Product Variants & Sizes Section
+  Widget _buildVariantsSection() {
+    return Container(
+      padding: EdgeInsets.all(Responsive.w(14)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(Responsive.w(16)),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CustomText.title('Multiple Sizes / Weights (Variants)', fontSize: 14, fontWeight: FontWeight.bold),
+                    SizedBox(height: Responsive.h(2)),
+                    CustomText.body(
+                      'Enable if product has multiple weights (e.g. 500g, 1kg) with different prices.',
+                      fontSize: 11,
+                      color: AppColors.grayFont,
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _hasVariants,
+                activeThumbColor: AppColors.primary,
+                onChanged: (val) {
+                  setState(() {
+                    _hasVariants = val;
+                    if (val && _variantControllers.isEmpty) {
+                      _addVariantRow(unit: '500 g', price: '50', stock: '20');
+                      _addVariantRow(unit: '1 kg', price: '95', stock: '20');
+                    }
+                  });
+                },
+              ),
+            ],
+          ),
+
+          if (_hasVariants) ...[
+            const Divider(height: 24),
+            CustomText.title('Configured Sizes & Prices:', fontSize: 12, fontWeight: FontWeight.w600),
+            SizedBox(height: Responsive.h(10)),
+
+            ..._variantControllers.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final vc = entry.value;
+
+              return Container(
+                margin: EdgeInsets.only(bottom: Responsive.h(10)),
+                padding: EdgeInsets.all(Responsive.w(10)),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(Responsive.w(12)),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Text('Size #${idx + 1}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.primary)),
+                        const Spacer(),
+                        if (_variantControllers.length > 1)
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                            onPressed: () => _removeVariantRow(idx),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                      ],
+                    ),
+                    SizedBox(height: Responsive.h(6)),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: _buildMiniInput(
+                            controller: vc.unitCtrl,
+                            hint: 'Size/Unit (e.g. 1 kg)',
+                          ),
+                        ),
+                        SizedBox(width: Responsive.w(8)),
+                        Expanded(
+                          flex: 2,
+                          child: _buildMiniInput(
+                            controller: vc.priceCtrl,
+                            hint: 'Price (₹)',
+                            isNumber: true,
+                          ),
+                        ),
+                        SizedBox(width: Responsive.w(8)),
+                        Expanded(
+                          flex: 2,
+                          child: _buildMiniInput(
+                            controller: vc.origPriceCtrl,
+                            hint: 'MRP (₹)',
+                            isNumber: true,
+                          ),
+                        ),
+                        SizedBox(width: Responsive.w(8)),
+                        Expanded(
+                          flex: 2,
+                          child: _buildMiniInput(
+                            controller: vc.stockCtrl,
+                            hint: 'Stock',
+                            isNumber: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+
+            SizedBox(height: Responsive.h(6)),
+            OutlinedButton.icon(
+              onPressed: () => _addVariantRow(),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Another Size / Variant'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                side: const BorderSide(color: AppColors.primary),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ] else ...[
+            const Divider(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildInputField(
+                    controller: _unitController,
+                    label: 'Unit / Packaging',
+                    hint: 'e.g. 1 kg, 500 g',
+                  ),
+                ),
+                SizedBox(width: Responsive.w(12)),
+                Expanded(
+                  child: _buildInputField(
+                    controller: _stockController,
+                    label: 'Stock Quantity',
+                    hint: 'e.g. 25',
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: Responsive.h(12)),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildInputField(
+                    controller: _priceController,
+                    label: 'Selling Price (₹)',
+                    hint: 'e.g. 99',
+                    keyboardType: TextInputType.number,
+                    validator: (v) {
+                      if (_hasVariants) return null;
+                      if (v == null || v.trim().isEmpty) return 'Price required';
+                      return null;
+                    },
+                  ),
+                ),
+                SizedBox(width: Responsive.w(12)),
+                Expanded(
+                  child: _buildInputField(
+                    controller: _origPriceController,
+                    label: 'Original MRP (₹)',
+                    hint: 'e.g. 150',
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniInput({
+    required TextEditingController controller,
+    required String hint,
+    bool isNumber = false,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      style: const TextStyle(fontSize: 12),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.primary)),
+      ),
+    );
+  }
+
+  Widget _buildSubsidySection() {
+    return Container(
+      padding: EdgeInsets.all(Responsive.w(14)),
+      decoration: BoxDecoration(
+        color: _isSubsidized ? const Color(0xFFF0FDF4) : Colors.white,
+        borderRadius: BorderRadius.circular(Responsive.w(14)),
+        border: Border.all(color: _isSubsidized ? const Color(0xFF86EFAC) : Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.verified, color: _isSubsidized ? Colors.green : Colors.grey, size: 20),
+              SizedBox(width: Responsive.w(8)),
+              Expanded(
+                child: CustomText.title('Government Subsidized (Ration / PDS)', fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              Switch(
+                value: _isSubsidized,
+                activeThumbColor: Colors.green,
+                onChanged: (val) => setState(() => _isSubsidized = val),
+              ),
+            ],
+          ),
+          if (_isSubsidized) ...[
+            SizedBox(height: Responsive.h(8)),
+            _buildInputField(
+              controller: _subsidyLimitController,
+              label: 'Ration Limit per Card / Citizen',
+              hint: 'e.g. Max 5 kg / ration card per month',
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CustomText.title(
+          'Product Category / Shelf',
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: AppColors.black,
+        ),
+        SizedBox(height: Responsive.h(6)),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: Responsive.w(14)),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(Responsive.w(12)),
+            border: Border.all(color: Colors.grey.shade300, width: 1),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _categoryOptions.contains(_selectedCategory)
+                  ? _selectedCategory
+                  : _categoryOptions.first,
+              isExpanded: true,
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.primary),
+              items: _categoryOptions.map((cat) {
+                return DropdownMenuItem<String>(
+                  value: cat,
+                  child: CustomText.body(cat, fontSize: 14, color: AppColors.black),
+                );
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedCategory = val);
+                }
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildSectionHeader(String title) {
     return Padding(
-      padding: EdgeInsets.only(left: Responsive.w(4), bottom: Responsive.h(8)),
-      child: CustomText.title(title, fontSize: 13, color: AppColors.black),
+      padding: EdgeInsets.only(bottom: Responsive.h(8)),
+      child: CustomText.title(title, fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.black),
     );
   }
 
@@ -770,38 +1190,47 @@ class _AddProductScreenState extends State<AddProductScreen> {
     int maxLines = 1,
     String? Function(String?)? validator,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CustomText.body(label, fontSize: 11, color: AppColors.grayFont),
-        SizedBox(height: Responsive.h(4)),
-        TextFormField(
-          controller: controller,
-          keyboardType: keyboardType,
-          maxLines: maxLines,
-          validator: validator,
-          style: const TextStyle(fontSize: 13, color: AppColors.black),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: EdgeInsets.symmetric(horizontal: Responsive.w(14), vertical: Responsive.h(12)),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(Responsive.w(14)),
-              borderSide: BorderSide(color: AppColors.outliner.withValues(alpha: 0.6)),
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: EdgeInsets.symmetric(horizontal: Responsive.w(14), vertical: Responsive.h(12)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(Responsive.w(12)), borderSide: BorderSide(color: Colors.grey.shade300)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Responsive.w(12)), borderSide: BorderSide(color: Colors.grey.shade300)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Responsive.w(12)), borderSide: const BorderSide(color: AppColors.primary)),
+      ),
+    );
+  }
+
+  Widget _buildSubmitButton() {
+    return BlocBuilder<ProductBloc, ProductState>(
+      builder: (context, state) {
+        final isLoading = state is ProductSubmitting;
+
+        return SizedBox(
+          width: double.infinity,
+          height: Responsive.h(50),
+          child: ElevatedButton(
+            onPressed: isLoading ? null : _submit,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(14))),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(Responsive.w(14)),
-              borderSide: BorderSide(color: AppColors.outliner.withValues(alpha: 0.6)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(Responsive.w(14)),
-              borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-            ),
+            child: isLoading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : Text(
+                    _isEditing ? 'Update Product Catalog' : 'Add Product to Store',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

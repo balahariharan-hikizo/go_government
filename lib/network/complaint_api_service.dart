@@ -15,7 +15,7 @@ class ComplaintApiService {
       return localPath;
     }
 
-    final url = '${ApiClient.baseUrl}/upload';
+    final url = '${ApiClient.baseUrl}/upload/complaint';
     try {
       ApiClient.logRequest('MULTIPART POST', url, body: 'File: $localPath, ComplaintId: $complaintId');
 
@@ -47,7 +47,7 @@ class ComplaintApiService {
     dataToSend.remove('id');
     dataToSend.remove('citizenId');
 
-    final url = '${ApiClient.baseUrl}/complaints';
+    final url = '${ApiClient.baseUrl}/complaints/create';
     final payload = jsonEncode(dataToSend);
 
     try {
@@ -67,7 +67,7 @@ class ComplaintApiService {
 
   // 3. Fetch All Complaints
   static Future<List<Map<String, dynamic>>> fetchComplaints() async {
-    final url = '${ApiClient.baseUrl}/complaints';
+    final url = '${ApiClient.baseUrl}/complaints/all';
     try {
       ApiClient.logRequest('GET', url);
 

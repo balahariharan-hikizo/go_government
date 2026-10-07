@@ -31,6 +31,9 @@ class ApiService {
   static Future<Map<String, dynamic>?> verifyOtp(String phone, String otp) =>
       AuthApiService.verifyOtp(phone, otp);
 
+  static Future<Map<String, dynamic>?> getUserProfile(String userId) =>
+      AuthApiService.getUserProfile(userId);
+
   static Future<Map<String, dynamic>?> sendPhoneUpdateOtp({
     required String userId,
     required String newPhone,

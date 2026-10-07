@@ -2,6 +2,9 @@ const mongoose = require('mongoose');
 
 const CartItemSchema = new mongoose.Schema({
   productId: { type: String, required: true },
+  variantId: { type: String, default: '' }, // Specific size / weight variant ID if applicable
+  unit: { type: String, default: '1 Units' },
+  price: { type: Number, default: 0 },
   quantity: { type: Number, required: true, default: 1, min: 1 },
   product: { type: Object, default: {} },
 });

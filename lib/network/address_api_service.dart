@@ -35,7 +35,7 @@ class AddressApiService {
   // 2. Add a new address
   static Future<AddressModel?> addAddress(AddressModel address, {String? userId}) async {
     final uid = (userId != null && userId.isNotEmpty) ? userId : HiveService.citizenId;
-    final url = '${ApiClient.baseUrl}/addresses';
+    final url = '${ApiClient.baseUrl}/addresses/create';
 
     final payloadMap = address.toMap();
     payloadMap['userId'] = uid;
@@ -64,7 +64,7 @@ class AddressApiService {
 
   // 3. Update an existing address
   static Future<AddressModel?> updateAddress(String addressId, AddressModel address) async {
-    final url = '${ApiClient.baseUrl}/addresses/$addressId';
+    final url = '${ApiClient.baseUrl}/addresses/update/$addressId';
     final payload = jsonEncode(address.toMap());
 
     try {
@@ -90,7 +90,7 @@ class AddressApiService {
 
   // 4. Delete an address
   static Future<bool> deleteAddress(String addressId) async {
-    final url = '${ApiClient.baseUrl}/addresses/$addressId';
+    final url = '${ApiClient.baseUrl}/addresses/delete/$addressId';
 
     try {
       ApiClient.logRequest('DELETE', url);

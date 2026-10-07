@@ -26,6 +26,7 @@ const cartRoutes = require('./routes/cartRoutes');
 const wishlistRoutes = require('./routes/wishlistRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const walletRoutes = require('./routes/walletRoutes');
+const riderRoutes = require('./routes/riderRoutes');
 const fcmService = require('./services/fcmService');
 const User = require('./models/User');
 
@@ -382,6 +383,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/riders', riderRoutes);
 
 // Connect to MongoDB & Start Server
 const MONGO_URI = process.env.MONGO_URI;

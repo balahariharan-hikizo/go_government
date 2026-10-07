@@ -27,6 +27,7 @@ class AllProductsScreen extends StatefulWidget {
 
 class _AllProductsScreenState extends State<AllProductsScreen> {
   String _searchQuery = '';
+  String _selectedCategory = 'All';
   late final VoidCallback _cartListener;
   late final VoidCallback _favListener;
 
@@ -54,10 +55,26 @@ class _AllProductsScreenState extends State<AllProductsScreen> {
   Widget build(BuildContext context) {
     final int totalCartCount = CartManager.instance.totalCartCount;
 
+    // Extract unique categories
+    final Set<String> categoriesSet = {'All'};
+    for (final p in widget.products) {
+      final cat = p['category']?.toString().trim() ?? '';
+      if (cat.isNotEmpty) {
+        categoriesSet.add(cat);
+      }
+    }
+    final List<String> availableCategories = categoriesSet.toList();
+
     final filteredProducts = widget.products.where((p) {
       final name = p['title'].toString().toLowerCase();
       final query = _searchQuery.toLowerCase();
-      return name.contains(query);
+      final matchesSearch = name.contains(query);
+
+      final cat = p['category']?.toString().trim() ?? '';
+      final matchesCategory = (_selectedCategory == 'All') ||
+          (cat.toLowerCase() == _selectedCategory.toLowerCase());
+
+      return matchesSearch && matchesCategory;
     }).toList();
 
     return Scaffold(
@@ -119,7 +136,61 @@ class _AllProductsScreenState extends State<AllProductsScreen> {
                           ],
                         ),
                       ),
-                      SizedBox(height: Responsive.h(20)),
+                      // Category Filter Chips
+                      if (availableCategories.length > 1) ...[
+                        SizedBox(height: Responsive.h(14)),
+                        SizedBox(
+                          height: Responsive.h(38),
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: availableCategories.length,
+                            separatorBuilder: (_, __) => SizedBox(width: Responsive.w(8)),
+                            itemBuilder: (context, index) {
+                              final cat = availableCategories[index];
+                              final isSelected = _selectedCategory == cat;
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() => _selectedCategory = cat);
+                                },
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: Responsive.w(16),
+                                    vertical: Responsive.h(8),
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? AppColors.primary : AppColors.white,
+                                    borderRadius: BorderRadius.circular(Responsive.w(20)),
+                                    border: Border.all(
+                                      color: isSelected ? AppColors.primary : AppColors.outliner,
+                                      width: 1.2,
+                                    ),
+                                    boxShadow: isSelected
+                                        ? [
+                                            BoxShadow(
+                                              color: AppColors.primary.withValues(alpha: 0.25),
+                                              blurRadius: 6,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ]
+                                        : [],
+                                  ),
+                                  child: Center(
+                                    child: CustomText.title(
+                                      cat,
+                                      fontSize: 13,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                      color: isSelected ? Colors.white : AppColors.black,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: Responsive.h(16)),
 
                       // Grid of Products
                       GridView.builder(

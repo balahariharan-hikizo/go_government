@@ -1,5 +1,6 @@
 class DeliveryOrderItem {
   final String productId;
+  final String variantId;
   final String title;
   final double price;
   final int quantity;
@@ -8,6 +9,7 @@ class DeliveryOrderItem {
 
   DeliveryOrderItem({
     required this.productId,
+    this.variantId = '',
     required this.title,
     required this.price,
     required this.quantity,
@@ -18,6 +20,7 @@ class DeliveryOrderItem {
   factory DeliveryOrderItem.fromJson(Map<String, dynamic> json) {
     return DeliveryOrderItem(
       productId: json['productId']?.toString() ?? '',
+      variantId: json['variantId']?.toString() ?? '',
       title: json['title']?.toString() ?? 'Item',
       price: (json['price'] as num?)?.toDouble() ?? 0.0,
       quantity: (json['quantity'] as num?)?.toInt() ?? 1,

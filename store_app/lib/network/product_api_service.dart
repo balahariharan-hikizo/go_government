@@ -28,7 +28,7 @@ class ProductApiService {
   }
 
   static Future<Map<String, dynamic>?> addProduct(ProductModel product) async {
-    final url = '${ApiClient.baseUrl}/products';
+    final url = '${ApiClient.baseUrl}/products/create';
     final body = jsonEncode(product.toJson());
 
     try {

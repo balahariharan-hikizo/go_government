@@ -48,9 +48,8 @@ class AppRouter {
       case RouteConstants.registerStore:
         final args = settings.arguments as Map<String, dynamic>? ?? {};
         final phone = args['initialPhone']?.toString() ?? HiveService.userPhone;
-        final ownerId = args['ownerId']?.toString() ?? HiveService.userId;
         return MaterialPageRoute(
-          builder: (_) => RegisterStoreScreen(initialPhone: phone, ownerId: ownerId),
+          builder: (_) => RegisterStoreScreen(initialPhone: phone),
         );
 
       case RouteConstants.applicationStatus:

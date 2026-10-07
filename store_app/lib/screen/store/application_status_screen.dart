@@ -34,7 +34,7 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
   }
 
   void _checkStatus() {
-    context.read<StoreBloc>().add(RefreshStoreStatusEvent(_store.ownerId.isNotEmpty ? _store.ownerId : _store.phone));
+    context.read<StoreBloc>().add(RefreshStoreStatusEvent(_store.storeId.isNotEmpty ? _store.storeId : _store.phone));
   }
 
   @override
@@ -230,7 +230,7 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
           onPressed: () {
             Navigator.of(context).pushReplacementNamed(
               RouteConstants.registerStore,
-              arguments: {'initialPhone': _store.phone, 'ownerId': _store.ownerId},
+              arguments: {'initialPhone': _store.phone},
             );
           },
           child: CustomText.title('Update & Re-Submit Application', fontSize: 15, color: Colors.white),

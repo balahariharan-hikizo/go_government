@@ -1,3 +1,63 @@
+class ProductVariant {
+  final String variantId;
+  final String unit;
+  final double price;
+  final double originalPrice;
+  final String discountPercentage;
+  final int stock;
+  final bool isAvailable;
+  final String image;
+
+  ProductVariant({
+    required this.variantId,
+    required this.unit,
+    required this.price,
+    this.originalPrice = 0.0,
+    this.discountPercentage = '',
+    this.stock = 10,
+    this.isAvailable = true,
+    this.image = '',
+  });
+
+  factory ProductVariant.fromJson(Map<dynamic, dynamic> json) {
+    double parseDouble(dynamic val, double fallback) {
+      if (val == null) return fallback;
+      if (val is num) return val.toDouble();
+      return double.tryParse(val.toString()) ?? fallback;
+    }
+
+    int parseInt(dynamic val, int fallback) {
+      if (val == null) return fallback;
+      if (val is num) return val.toInt();
+      return int.tryParse(val.toString()) ?? fallback;
+    }
+
+    return ProductVariant(
+      variantId: json['variantId']?.toString() ?? '',
+      unit: json['unit']?.toString() ?? '1 Units',
+      price: parseDouble(json['price'], 0.0),
+      originalPrice: parseDouble(json['originalPrice'], 0.0),
+      discountPercentage: json['discountPercentage']?.toString() ?? '',
+      stock: parseInt(json['stock'], 10),
+      isAvailable: json['isAvailable'] == true || json['isAvailable'] == 'true' || json['isAvailable'] == null,
+      image: json['image']?.toString() ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'variantId': variantId,
+      'unit': unit,
+      'price': price,
+      'originalPrice': originalPrice,
+      'discountPercentage': discountPercentage,
+      'stock': stock,
+      'isAvailable': isAvailable,
+      'image': image,
+    };
+  }
+}
+
 class ProductModel {
   final String productId;
   final String storeId;
@@ -10,6 +70,9 @@ class ProductModel {
   final int stock;
   final bool isAvailable;
   final String image;
+  final List<String> images;
+  final bool hasVariants;
+  final List<ProductVariant> variants;
   final String description;
 
   // Citizen App Highlights & Specs
@@ -36,6 +99,9 @@ class ProductModel {
     this.stock = 10,
     this.isAvailable = true,
     this.image = '',
+    this.images = const [],
+    this.hasVariants = false,
+    this.variants = const [],
     this.description = '',
     this.brand = 'Unbranded',
     this.packOf = '1',
@@ -66,18 +132,44 @@ class ProductModel {
       return int.tryParse(val.toString()) ?? fallback;
     }
 
+    // Parse images array with fallback to primary image
+    List<String> parsedImages = [];
+    if (json['images'] is List) {
+      parsedImages = (json['images'] as List)
+          .map((e) => e?.toString() ?? '')
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    final primaryImg = json['image']?.toString() ?? '';
+    if (parsedImages.isEmpty && primaryImg.isNotEmpty) {
+      parsedImages = [primaryImg];
+    }
+
+    // Parse variants list
+    List<ProductVariant> parsedVariants = [];
+    if (json['variants'] is List) {
+      parsedVariants = (json['variants'] as List)
+          .map((v) => ProductVariant.fromJson(v is Map ? v : {}))
+          .toList();
+    }
+
+    final hasVars = json['hasVariants'] == true || parsedVariants.isNotEmpty;
+
     return ProductModel(
       productId: json['productId']?.toString() ?? json['id']?.toString() ?? '',
       storeId: json['storeId']?.toString() ?? '',
       title: json['title']?.toString() ?? json['name']?.toString() ?? '',
       category: json['category']?.toString() ?? 'general',
-      unit: json['unit']?.toString() ?? '1 Units',
+      unit: json['unit']?.toString() ?? (parsedVariants.isNotEmpty ? parsedVariants[0].unit : '1 Units'),
       price: parseDouble(json['price'], 0.0),
       originalPrice: parseDouble(json['originalPrice'], 0.0),
       discountPercentage: json['discountPercentage']?.toString() ?? '',
       stock: parseInt(json['stock'], 10),
       isAvailable: json['isAvailable'] == true || json['isAvailable'] == 'true' || json['isAvailable'] == null,
-      image: json['image']?.toString() ?? '',
+      image: primaryImg.isNotEmpty ? primaryImg : (parsedImages.isNotEmpty ? parsedImages[0] : ''),
+      images: parsedImages,
+      hasVariants: hasVars,
+      variants: parsedVariants,
       description: json['description']?.toString() ?? '',
       brand: json['brand']?.toString() ?? 'Unbranded',
       packOf: json['packOf']?.toString() ?? '1',
@@ -102,7 +194,10 @@ class ProductModel {
       'discountPercentage': discountPercentage,
       'stock': stock,
       'isAvailable': isAvailable,
-      'image': image,
+      'image': image.isNotEmpty ? image : (images.isNotEmpty ? images[0] : ''),
+      'images': images,
+      'hasVariants': hasVariants,
+      'variants': variants.map((v) => v.toJson()).toList(),
       'description': description,
       'brand': brand,
       'packOf': packOf,
@@ -127,6 +222,9 @@ class ProductModel {
     int? stock,
     bool? isAvailable,
     String? image,
+    List<String>? images,
+    bool? hasVariants,
+    List<ProductVariant>? variants,
     String? description,
     String? brand,
     String? packOf,
@@ -149,6 +247,9 @@ class ProductModel {
       stock: stock ?? this.stock,
       isAvailable: isAvailable ?? this.isAvailable,
       image: image ?? this.image,
+      images: images ?? this.images,
+      hasVariants: hasVariants ?? this.hasVariants,
+      variants: variants ?? this.variants,
       description: description ?? this.description,
       brand: brand ?? this.brand,
       packOf: packOf ?? this.packOf,

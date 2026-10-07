@@ -22,6 +22,16 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<ProfileBloc>().add(FetchProfileEvent());
+      }
+    });
+  }
+
   void _showRatingDialog(BuildContext context) {
     int selectedRating = 5;
     final feedbackController = TextEditingController();

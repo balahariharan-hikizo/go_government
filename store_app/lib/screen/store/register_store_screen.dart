@@ -19,12 +19,10 @@ import '../../widget/custom_text.dart';
 
 class RegisterStoreScreen extends StatefulWidget {
   final String initialPhone;
-  final String? ownerId;
 
   const RegisterStoreScreen({
     super.key,
     required this.initialPhone,
-    this.ownerId,
   });
 
   @override
@@ -305,7 +303,6 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
     }
 
     final newStore = StoreModel(
-      ownerId: widget.ownerId ?? '',
       name: _nameController.text.trim(),
       ownerName: _ownerNameController.text.trim(),
       phone: _phoneController.text.trim(),

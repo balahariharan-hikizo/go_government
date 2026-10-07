@@ -2,7 +2,6 @@ import 'bank_details_model.dart';
 
 class StoreModel {
   final String storeId;
-  final String ownerId;
   final String name;
   final String ownerName;
   final String phone;
@@ -22,7 +21,6 @@ class StoreModel {
 
   StoreModel({
     this.storeId = '',
-    this.ownerId = '',
     this.name = '',
     this.ownerName = '',
     this.phone = '',
@@ -66,7 +64,6 @@ class StoreModel {
 
     return StoreModel(
       storeId: json['storeId']?.toString() ?? '',
-      ownerId: json['ownerId']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
       ownerName: json['ownerName']?.toString() ?? '',
       phone: json['phone']?.toString() ?? '',
@@ -89,7 +86,6 @@ class StoreModel {
   Map<String, dynamic> toJson() {
     return {
       'storeId': storeId,
-      'ownerId': ownerId,
       'name': name,
       'ownerName': ownerName,
       'phone': phone,

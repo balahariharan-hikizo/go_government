@@ -1,12 +1,11 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 
 const StoreSchema = new mongoose.Schema(
   {
     storeId: { type: String, required: true, unique: true },
-    ownerId: { type: String, default: '', index: true },
     name: { type: String, required: true, trim: true },
     ownerName: { type: String, required: true, trim: true },
-    phone: { type: String, required: true, index: true },
+    phone: { type: String, required: true, unique: true, index: true },
     email: { type: String, default: '', trim: true },
     category: {
       type: String,
@@ -29,6 +28,7 @@ const StoreSchema = new mongoose.Schema(
       ifscCode: { type: String, default: '' },
       accountHolderName: { type: String, default: '' },
     },
+    role:{type: String, default: 'store_owner', index: true,},
     status: {
       type: String,
       enum: ['pending', 'approved', 'rejected'],
@@ -42,9 +42,14 @@ const StoreSchema = new mongoose.Schema(
     },
     isOnline: { type: Boolean, default: true },
     rating: { type: Number, default: 4.5 },
+    walletBalance: { type: Number, default: 0, min: 0 },
     verifiedAt: { type: Date },
     verifiedBy: { type: String, default: '' },
     fcmToken: { type: String, default: '' },
+
+    // Auth OTP Fields for Store Owner Login
+    otp: { type: String, default: '' },
+    otpExpires: { type: Date },
   },
   {
     timestamps: true,
@@ -56,6 +61,8 @@ StoreSchema.set('toJSON', {
   versionKey: false,
   transform: function (doc, ret) {
     delete ret._id;
+    delete ret.otp;
+    delete ret.otpExpires;
   },
 });
 

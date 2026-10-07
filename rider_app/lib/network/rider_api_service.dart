@@ -25,7 +25,7 @@ class RiderApiService {
   // 1. Send OTP
   // --------------------------------------------------------------------------
   static Future<Map<String, dynamic>> sendOtp(String phone) async {
-    final url = '${ApiClient.baseUrl}/auth/send-otp';
+    final url = '${ApiClient.baseUrl}/riders/auth/send-otp';
     ApiClient.logRequest('POST', url, body: {'phone': phone});
 
     try {
@@ -49,11 +49,11 @@ class RiderApiService {
   }
 
   // --------------------------------------------------------------------------
-  // 2. Verify OTP (Role = rider)
+  // 2. Verify OTP
   // --------------------------------------------------------------------------
   static Future<Map<String, dynamic>> verifyOtp(String phone, String otp) async {
-    final url = '${ApiClient.baseUrl}/auth/verify-otp';
-    final body = {'phone': phone, 'otp': otp, 'role': 'rider'};
+    final url = '${ApiClient.baseUrl}/riders/auth/verify-otp';
+    final body = {'phone': phone, 'otp': otp};
     ApiClient.logRequest('POST', url, body: body);
 
     try {
@@ -86,19 +86,19 @@ class RiderApiService {
     String? vehicleType,
     String? vehicleNumber,
   }) async {
-    final url = '${ApiClient.baseUrl}/auth/profile';
+    final url = '${ApiClient.baseUrl}/riders/update-profile';
     final body = {
-      'userId': userId,
-      'userName': userName,
+      'riderId': userId,
+      'name': userName,
       if (email != null) 'email': email,
       if (vehicleType != null) 'vehicleType': vehicleType,
       if (vehicleNumber != null) 'vehicleNumber': vehicleNumber,
     };
-    ApiClient.logRequest('POST', url, body: body);
+    ApiClient.logRequest('PUT', url, body: body);
 
     try {
       final response = await http
-          .post(
+          .put(
             Uri.parse(url),
             headers: ApiClient.defaultHeaders,
             body: jsonEncode(body),
@@ -277,7 +277,7 @@ class RiderApiService {
   // --------------------------------------------------------------------------
   static Future<Map<String, dynamic>?> fetchRiderProfile(String userId) async {
     if (userId.isEmpty) return null;
-    final url = '${ApiClient.baseUrl}/auth/profile/$userId';
+    final url = '${ApiClient.baseUrl}/riders/profile/$userId';
     ApiClient.logRequest('GET', url);
 
     try {
@@ -335,12 +335,11 @@ class RiderApiService {
     required String fcmToken,
   }) async {
     if (fcmToken.isEmpty) return false;
-    final url = '${ApiClient.baseUrl}/auth/update-fcm-token';
+    final url = '${ApiClient.baseUrl}/riders/update-fcm-token';
     final body = {
-      'userId': userId,
+      'riderId': userId,
       'phone': phone,
       'fcmToken': fcmToken,
-      'role': 'rider',
     };
     ApiClient.logRequest('POST', url, body: body);
 
@@ -368,9 +367,9 @@ class RiderApiService {
     required String userId,
     required String phone,
   }) async {
-    final url = '${ApiClient.baseUrl}/auth/logout';
+    final url = '${ApiClient.baseUrl}/riders/logout';
     final body = {
-      'userId': userId,
+      'riderId': userId,
       'phone': phone,
     };
     ApiClient.logRequest('POST', url, body: body);
