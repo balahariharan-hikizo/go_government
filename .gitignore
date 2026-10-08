@@ -51,3 +51,6 @@ backend/config/*.json
 
 # Ignore PDFs
 *.pdf
+
+# Ignore PDFs
+*.pdf
