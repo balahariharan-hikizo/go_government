@@ -363,11 +363,11 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
           appBar: AppBar(
             title: CustomText.header('Register Store', fontSize: 18, color: AppColors.black),
             backgroundColor: AppColors.screenColor,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: AppColors.black),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
+            // elevation: 0,
+            // leading: IconButton(
+            //   icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: AppColors.black),
+            //   onPressed: () => Navigator.of(context).pop(),
+            // ),
           ),
           body: SingleChildScrollView(
             padding: EdgeInsets.symmetric(horizontal: Responsive.w(20), vertical: Responsive.h(12)),

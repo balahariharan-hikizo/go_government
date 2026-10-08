@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 class ApiClient {
   static String? _resolvedBaseUrl;
 
-  // Active Wi-Fi IP is 192.168.1.12
-  static String get defaultBaseUrl => 'http://192.168.1.12:5000/api';
+  // Active Wi-Fi IP is 192.168.1.24
+  static String get defaultBaseUrl => 'http://192.168.1.24:5000/api';
 
   static String get baseUrl => _resolvedBaseUrl ?? defaultBaseUrl;
 
@@ -20,7 +20,8 @@ class ApiClient {
 
   /// Auto-candidate hosts for seamless switching between PG, Office, Emulator & Localhost
   static List<String> get candidateHosts => [
-    'http://192.168.1.12:5000/api',  // Current Wi-Fi IP
+    'http://192.168.1.24:5000/api',  // Current Wi-Fi IP
+    'http://192.168.1.12:5000/api',  // Previous Wi-Fi IP
     'http://192.168.1.11:5000/api',  // Previous Wi-Fi IP
     'http://192.168.1.8:5000/api',   // PG / Home Wi-Fi
     'http://127.0.0.1:5000/api',     // Localhost / Web / Desktop

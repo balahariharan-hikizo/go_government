@@ -60,6 +60,7 @@ class StoreBloc extends Bloc<StoreEvent, StoreState> {
       if (res != null && res['success'] == true && res['store'] != null) {
         final store = StoreModel.fromJson(res['store'] as Map<String, dynamic>);
         await HiveService.setStoreStatus(store.status);
+        await HiveService.setCachedStoreData(res['store'] as Map<String, dynamic>);
         emit(StoreLoaded(store));
       }
     });

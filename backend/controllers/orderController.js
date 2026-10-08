@@ -513,7 +513,7 @@ exports.acceptOrder = async (req, res) => {
           status: 'accepted',
         },
       },
-      { returnDocument: 'after' }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!order) {
@@ -716,7 +716,7 @@ exports.updateOrderStatus = async (req, res) => {
     const order = await Order.findOneAndUpdate(
       { orderId },
       { $set: updateFields },
-      { returnDocument: 'after' }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!order) {
@@ -810,7 +810,8 @@ exports.updateOrderStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating order status:', error);
-    return res.status(500).json({ success: false, message: 'Failed to update order status', error: error.message });
+    const statusCode = error.name === 'ValidationError' ? 400 : 500;
+    return res.status(statusCode).json({ success: false, message: 'Failed to update order status', error: error.message });
   }
 };
 

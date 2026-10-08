@@ -475,11 +475,11 @@
           }
         },
         {
-          "name": "3.5 Get Approved Stores (Citizen App GPS)",
+          "name": "3.5 Get Approved Stores (Citizen App Discovery)",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/stores/approved?lat=13.0827&lng=80.2707&radius=10",
+              "raw": "{{baseUrl}}/stores/approved?isOnline=true",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -489,16 +489,15 @@
               ],
               "query": [
                 {
-                  "key": "lat",
-                  "value": "13.0827"
+                  "key": "isOnline",
+                  "value": "true",
+                  "description": "true for open stores only, false for closed stores only"
                 },
                 {
-                  "key": "lng",
-                  "value": "80.2707"
-                },
-                {
-                  "key": "radius",
-                  "value": "10"
+                  "key": "category",
+                  "value": "ration",
+                  "description": "Filter by category (optional): ration, medical, vegstore, supermarket, general, dairy",
+                  "disabled": true
                 }
               ]
             },

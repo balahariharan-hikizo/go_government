@@ -1,6 +1,9 @@
 const Store = require('../models/Store');
 const { getNextSequence } = require('../utils/sequenceGenerator');
 
+// In-memory cache for new store merchant registration OTPs: phone -> { otp, otpExpires }
+const pendingRegistrationOtps = new Map();
+
 // 1. STORE AUTH: SEND OTP
 exports.sendOtp = async (req, res) => {
   try {
@@ -15,17 +18,21 @@ exports.sendOtp = async (req, res) => {
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
     const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 min validity
 
-    // Check if store exists with this phone
+    // Check if store already exists with this phone
     let store = await Store.findOne({ phone: cleanPhone });
 
     if (!store) {
-      // Store doesn't exist yet - prompt registration or temporary OTP record
+      // Store does NOT exist yet - store OTP in memory map for new registration
+      pendingRegistrationOtps.set(cleanPhone, { otp, otpExpires });
+
+      console.log(`🏪 [Store OTP for New Registration] Sent to ${cleanPhone}: ${otp}`);
+
       return res.status(200).json({
         success: true,
         isRegistered: false,
-        message: 'No store found with this phone. Please register your store.',
+        message: `OTP sent successfully to ${cleanPhone}. Please verify to complete store registration.`,
         phone: cleanPhone,
-    
+        otp: otp, // Returned for testing
       });
     }
 
@@ -61,7 +68,36 @@ exports.verifyOtp = async (req, res) => {
     const store = await Store.findOne({ phone: cleanPhone });
 
     if (!store) {
-      return res.status(404).json({ error: 'Store not found. Please register first.' });
+      // Check pending registration OTP map
+      const pendingRecord = pendingRegistrationOtps.get(cleanPhone);
+      if (!pendingRecord) {
+        return res.status(404).json({ error: 'No verification request found for this phone. Please request OTP first.' });
+      }
+
+      if (pendingRecord.otpExpires && new Date() > pendingRecord.otpExpires) {
+        pendingRegistrationOtps.delete(cleanPhone);
+        return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
+      }
+
+      if (pendingRecord.otp !== otp.toString().trim()) {
+        return res.status(400).json({ error: 'Invalid OTP code. Please enter the correct OTP.' });
+      }
+
+      // OTP verified successfully! Clear from pending map
+      pendingRegistrationOtps.delete(cleanPhone);
+
+      console.log(`✅ [Store Registration Phone Verified] ${cleanPhone}`);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Phone verified successfully! Please complete store registration.',
+        storeId: '',
+        phone: cleanPhone,
+        status: 'not_registered',
+        isNewUser: true,
+        role: 'store_owner',
+        store: null,
+      });
     }
 
     if (store.otpExpires && new Date() > store.otpExpires) {
@@ -182,8 +218,8 @@ exports.registerStore = async (req, res) => {
       address,
       pincode: pincode || '',
       location: {
-        lat: lat !== undefined ? Number(lat) : 13.0827,
-        lng: lng !== undefined ? Number(lng) : 80.2707,
+        lat: lat !== undefined ? Number(lat) : 0,
+        lng: lng !== undefined ? Number(lng) : 0,
       },
       storeImage: storeImage || '',
       licenseDoc: licenseDoc || '',
@@ -235,10 +271,12 @@ exports.getMyStore = async (req, res) => {
 // 5. GET APPROVED STORES (Citizen App)
 exports.getApprovedStores = async (req, res) => {
   try {
-    const { category, includeOffline } = req.query;
+    const { category, includeOffline, isOnline } = req.query;
     const filter = { status: 'approved' };
 
-    if (includeOffline !== 'true') {
+    if (isOnline !== undefined) {
+      filter.isOnline = isOnline === 'true';
+    } else if (includeOffline !== 'true') {
       filter.isOnline = { $ne: false };
     }
 
@@ -326,7 +364,7 @@ exports.toggleOnline = async (req, res) => {
     const updatedStore = await Store.findOneAndUpdate(
       { storeId },
       { $set: { isOnline: Boolean(isOnline) } },
-      { new: true }
+      { new: true, runValidators: true }
     );
     if (!updatedStore) {
       return res.status(404).json({ error: 'Store not found' });
@@ -335,7 +373,8 @@ exports.toggleOnline = async (req, res) => {
     res.status(200).json({ success: true, store: updatedStore });
   } catch (error) {
     console.error('Error toggling online status:', error);
-    res.status(500).json({ error: 'Failed to update store online status' });
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    res.status(status).json({ error: 'Failed to update store online status', details: error.message });
   }
 };
 
@@ -349,7 +388,7 @@ exports.reviewStore = async (req, res) => {
       const updatedStore = await Store.findOneAndUpdate(
         { storeId },
         { $set: { isOnline: Boolean(isOnline) } },
-        { new: true }
+        { new: true, runValidators: true }
       );
       if (!updatedStore) return res.status(404).json({ error: 'Store not found' });
       return res.status(200).json({ success: true, store: updatedStore });
@@ -377,7 +416,7 @@ exports.reviewStore = async (req, res) => {
     const updatedStore = await Store.findOneAndUpdate(
       { storeId },
       { $set: updateFields },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     if (!updatedStore) {
@@ -395,7 +434,8 @@ exports.reviewStore = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating store status:', error);
-    res.status(500).json({ error: 'Failed to update store status', details: error.message });
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    res.status(status).json({ error: 'Failed to update store status', details: error.message });
   }
 };
 
@@ -419,6 +459,15 @@ exports.updateProfile = async (req, res) => {
     ];
 
     const updates = {};
+    if (req.body.storeName && !req.body.name) {
+      updates.name = req.body.storeName;
+    }
+    if ((req.body.openTime || req.body.closeTime) && !req.body.timings) {
+      updates.timings = {
+        open: req.body.openTime || '08:00 AM',
+        close: req.body.closeTime || '09:00 PM',
+      };
+    }
     for (const key of allowedUpdates) {
       if (req.body[key] !== undefined) {
         updates[key] = req.body[key];
@@ -432,7 +481,7 @@ exports.updateProfile = async (req, res) => {
     const updatedStore = await Store.findOneAndUpdate(
       { storeId },
       { $set: updates },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     if (!updatedStore) {
@@ -448,7 +497,8 @@ exports.updateProfile = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating store profile:', error);
-    res.status(500).json({ success: false, error: 'Failed to update store profile', details: error.message });
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    res.status(status).json({ success: false, error: error.message, details: error.message });
   }
 };
 
@@ -466,10 +516,12 @@ exports.updateFcmToken = async (req, res) => {
     else if (phone) query.phone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
     else return res.status(400).json({ error: 'storeId or phone is required' });
 
-    await Store.findOneAndUpdate(query, { $set: { fcmToken: fcmToken.trim() } });
+    await Store.findOneAndUpdate(query, { $set: { fcmToken: fcmToken.trim() } }, { new: true, runValidators: true });
 
     res.status(200).json({ success: true, message: 'Store FCM token updated' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update store FCM token', details: error.message });
+    console.error('Error updating store FCM token:', error);
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    res.status(status).json({ error: 'Failed to update store FCM token', details: error.message });
   }
 };

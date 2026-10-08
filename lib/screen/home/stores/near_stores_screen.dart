@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import '../../../network/store_api_service.dart';
+import '../../../bloc/store/store_bloc.dart';
+import '../../../bloc/store/store_event.dart';
+import '../../../bloc/store/store_state.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/responsive_helper.dart';
 import '../../../widget/common_background.dart';
@@ -44,11 +47,23 @@ class _NearStoresScreenState extends State<NearStoresScreen> {
       _userPos = LocationService.defaultLocation;
     }
     _initStores();
-    _loadRealStores();
     _cartListener = () {
       if (mounted) setState(() {});
     };
     CartManager.instance.cartItems.addListener(_cartListener);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final storeState = context.read<StoreBloc>().state;
+        if (storeState is StoreLoaded && storeState.stores.isNotEmpty) {
+          _processStoreList(storeState.stores);
+          context.read<StoreBloc>().add(const RefreshApprovedStores());
+        } else {
+          _loadRealStores();
+        }
+      }
+    });
+
     _detectLocation();
   }
 
@@ -71,46 +86,44 @@ class _NearStoresScreenState extends State<NearStoresScreen> {
     }
   }
 
-  Future<void> _loadRealStores() async {
-    if (mounted) setState(() => _isLoadingStores = true);
+  void _loadRealStores() {
+    if (mounted && _stores.isEmpty) setState(() => _isLoadingStores = true);
+    context.read<StoreBloc>().add(const LoadApprovedStores());
+  }
+
+  void _processStoreList(List<Map<String, dynamic>> rawList) {
     final basePos = _userPos ?? LocationService.defaultLocation;
-
-    // Fetch live approved stores from our GoGovernment database ONLY
     final approvedBackendStores = <Map<String, dynamic>>[];
-    try {
-      final list = await StoreApiService.fetchApprovedStores();
-      for (final s in list) {
-        // Skip offline stores - only online stores should be visible to citizens
-        if (s['isOnline'] == false) continue;
 
-          final lat = (s['location']?['lat'] as num?)?.toDouble() ?? (basePos.latitude + 0.001);
-          final lng = (s['location']?['lng'] as num?)?.toDouble() ?? (basePos.longitude + 0.001);
-          final dist = LocationService.calculateDistance(basePos.latitude, basePos.longitude, lat, lng);
-          final category = (s['category'] ?? 'general').toString().toLowerCase();
+    for (final s in rawList) {
+      // Skip offline stores - only online stores should be visible to citizens
+      if (s['isOnline'] == false) continue;
 
-          final bool isMedical = category == 'medical';
-          final fallbackImg = isMedical ? 'assets/images/medical.png' : 'assets/images/vegstore.png';
-          final rawImg = (s['storeImage'] ?? '').toString().trim();
-          final storeImg = rawImg.isNotEmpty ? rawImg : fallbackImg;
+      final lat = (s['location']?['lat'] as num?)?.toDouble() ?? (basePos.latitude + 0.001);
+      final lng = (s['location']?['lng'] as num?)?.toDouble() ?? (basePos.longitude + 0.001);
+      final dist = LocationService.calculateDistance(basePos.latitude, basePos.longitude, lat, lng);
+      final category = (s['category'] ?? 'general').toString().toLowerCase();
 
-          approvedBackendStores.add({
-            'id': s['storeId'] ?? s['_id'] ?? 'STORE_${approvedBackendStores.length + 1}',
-            'title': s['name'] ?? 'Approved Store',
-            'address': s['address'] ?? '',
-            'image': storeImg,
-            'type': isMedical ? 'medical' : 'vegstore',
-            'category': category,
-            'lat': lat,
-            'lng': lng,
-            'distance': LocationService.formatDistance(dist),
-            'isGovApproved': true,
-            'isOnline': s['isOnline'] ?? true,
-            'phone': (s['phone'] ?? '').toString(),
-            'ownerName': (s['ownerName'] ?? '').toString(),
-          });
-        }
-      } catch (e) {
-      debugPrint('[NearStores] Backend approved stores fetch error: $e');
+      final bool isMedical = category == 'medical';
+      final fallbackImg = isMedical ? 'assets/images/medical.png' : 'assets/images/vegstore.png';
+      final rawImg = (s['storeImage'] ?? '').toString().trim();
+      final storeImg = rawImg.isNotEmpty ? rawImg : fallbackImg;
+
+      approvedBackendStores.add({
+        'id': s['storeId'] ?? s['_id'] ?? 'STORE_${approvedBackendStores.length + 1}',
+        'title': s['name'] ?? 'Approved Store',
+        'address': s['address'] ?? '',
+        'image': storeImg,
+        'type': isMedical ? 'medical' : 'vegstore',
+        'category': category,
+        'lat': lat,
+        'lng': lng,
+        'distance': LocationService.formatDistance(dist),
+        'isGovApproved': true,
+        'isOnline': s['isOnline'] ?? true,
+        'phone': (s['phone'] ?? '').toString(),
+        'ownerName': (s['ownerName'] ?? '').toString(),
+      });
     }
 
     if (!mounted) return;
@@ -149,9 +162,21 @@ class _NearStoresScreenState extends State<NearStoresScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.screenColor,
-      body: CommonBackground(
+    return BlocListener<StoreBloc, StoreState>(
+      listener: (context, state) {
+        if (state is StoreLoaded) {
+          _processStoreList(state.stores);
+        } else if (state is StoreError) {
+          if (mounted) setState(() => _isLoadingStores = false);
+        } else if (state is StoreLoading) {
+          if (mounted && _stores.isEmpty) {
+            setState(() => _isLoadingStores = true);
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.screenColor,
+        body: CommonBackground(
         child: SafeArea(
           bottom: false,
           child: Stack(
@@ -365,6 +390,7 @@ class _NearStoresScreenState extends State<NearStoresScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 

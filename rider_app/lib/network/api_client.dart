@@ -5,7 +5,7 @@ class ApiClient {
   static String? _resolvedBaseUrl;
 
   // Active Wi-Fi backend URL
-  static String get defaultBaseUrl => 'http://192.168.1.12:5000/api';
+  static String get defaultBaseUrl => 'http://192.168.1.24:5000/api';
 
   static String get baseUrl => _resolvedBaseUrl ?? defaultBaseUrl;
 
@@ -20,7 +20,8 @@ class ApiClient {
 
   /// Candidate hosts for automatic resolution
   static List<String> get candidateHosts => [
-        'http://192.168.1.12:5000/api', // Active Wi-Fi IP
+        'http://192.168.1.24:5000/api', // Active Wi-Fi IP
+        'http://192.168.1.12:5000/api', // Previous Wi-Fi IP
         'http://192.168.1.11:5000/api', // Previous Wi-Fi IP
         'http://192.168.1.8:5000/api',  // Home Wi-Fi
         'http://127.0.0.1:5000/api',    // Localhost / Web / Desktop

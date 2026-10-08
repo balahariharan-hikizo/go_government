@@ -18,7 +18,7 @@ void startCallback() {
 class RiderBackgroundTaskHandler extends TaskHandler {
   io.Socket? _socket;
   String _riderId = 'rider_bg';
-  String _serverUrl = 'http://192.168.1.12:5000';
+  String _serverUrl = 'http://192.168.1.24:5000';
   double _lastLat = 0;
   double _lastLng = 0;
   final FlutterLocalNotificationsPlugin _notificationsPlugin =

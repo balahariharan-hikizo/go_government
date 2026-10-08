@@ -1,4 +1,4 @@
-﻿const User = require('../models/User');
+const User = require('../models/User');
 const { getNextSequence } = require('../utils/sequenceGenerator');
 
 // 1. SEND OTP (Citizen / General User)
@@ -140,7 +140,7 @@ exports.updateProfile = async (req, res) => {
           ...(profileImage && { profileImage }),
         },
       },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     if (!updatedUser) {
@@ -303,7 +303,7 @@ exports.updateFcmToken = async (req, res) => {
     const user = await User.findOneAndUpdate(
       query,
       { $set: { fcmToken: fcmToken.trim() } },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     res.status(200).json({

@@ -6,6 +6,7 @@ class AdminApiService {
   static const List<String> candidateBases = [
     'http://localhost:5000/api',
     'http://127.0.0.1:5000/api',
+    'http://192.168.1.24:5000/api',
     'http://192.168.1.12:5000/api',
     'http://192.168.1.11:5000/api',
   ];
@@ -32,7 +33,7 @@ class AdminApiService {
   static Future<Map<String, dynamic>> getAllStores({String? status}) async {
     try {
       final query = status != null && status.isNotEmpty ? '?status=$status' : '';
-      final res = await http.get(Uri.parse('$_baseUrl/stores$query'));
+      final res = await http.get(Uri.parse('$_baseUrl/stores/all$query'));
       if (res.statusCode == 200) {
         return {'success': true, 'data': jsonDecode(res.body)};
       }

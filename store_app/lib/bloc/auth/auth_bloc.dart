@@ -54,7 +54,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final res = await AuthApiService.verifyOtp(event.phone, event.otp);
 
       if (res != null && res['success'] == true) {
-        final userId = res['userId']?.toString() ?? res['user']?['userId']?.toString() ?? '';
+        final userId = (res['storeId'] != null && res['storeId'].toString().isNotEmpty)
+            ? res['storeId'].toString()
+            : (res['phone'] != null && res['phone'].toString().isNotEmpty)
+                ? res['phone'].toString()
+                : (res['userId']?.toString() ?? event.phone);
         final isNewUser = res['isNewUser'] == true;
 
         await HiveService.setLoggedIn(true);

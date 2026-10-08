@@ -157,7 +157,7 @@ exports.updateProfile = async (req, res) => {
           ...(drivingLicenseDoc && { drivingLicenseDoc }),
         },
       },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     if (!updatedRider) {
@@ -170,7 +170,8 @@ exports.updateProfile = async (req, res) => {
       rider: updatedRider,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update Rider profile', details: error.message });
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    res.status(status).json({ error: 'Failed to update Rider profile', details: error.message });
   }
 };
 
@@ -186,7 +187,7 @@ exports.toggleOnline = async (req, res) => {
     const rider = await Rider.findOneAndUpdate(
       { riderId },
       { $set: { isOnline: Boolean(isOnline) } },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     if (!rider) {
@@ -199,7 +200,8 @@ exports.toggleOnline = async (req, res) => {
       isOnline: rider.isOnline,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update status', details: error.message });
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    res.status(status).json({ error: 'Failed to update status', details: error.message });
   }
 };
 
@@ -219,12 +221,14 @@ exports.updateLocation = async (req, res) => {
           'currentLocation.lat': Number(lat), 
           'currentLocation.lng': Number(lng) 
         } 
-      }
+      },
+      { runValidators: true }
     );
 
     res.status(200).json({ success: true, message: 'Location updated' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update location', details: error.message });
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    res.status(status).json({ error: 'Failed to update location', details: error.message });
   }
 };
 
@@ -248,12 +252,14 @@ exports.updateFcmToken = async (req, res) => {
 
     await Rider.findOneAndUpdate(
       query,
-      { $set: { fcmToken: fcmToken.trim() } }
+      { $set: { fcmToken: fcmToken.trim() } },
+      { runValidators: true }
     );
 
     res.status(200).json({ success: true, message: 'Rider FCM token updated' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update FCM token', details: error.message });
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    res.status(status).json({ error: 'Failed to update FCM token', details: error.message });
   }
 };
 

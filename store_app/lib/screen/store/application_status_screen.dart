@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../bloc/auth/auth_bloc.dart';
+import '../../bloc/auth/auth_event.dart';
+import '../../bloc/auth/auth_state.dart';
 import '../../bloc/store/store_bloc.dart';
 import '../../bloc/store/store_event.dart';
 import '../../bloc/store/store_state.dart';
@@ -13,11 +16,13 @@ import '../../widget/custom_text.dart';
 class ApplicationStatusScreen extends StatefulWidget {
   final StoreModel store;
   final bool justSubmitted;
+  final bool isColdStart;
 
   const ApplicationStatusScreen({
     super.key,
     required this.store,
     this.justSubmitted = false,
+    this.isColdStart = false,
   });
 
   @override
@@ -31,28 +36,81 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
   void initState() {
     super.initState();
     _store = widget.store;
+    // Auto-check live store approval status ONLY when app boots from cold start
+    if (widget.isColdStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkStatus();
+      });
+    }
   }
 
   void _checkStatus() {
     context.read<StoreBloc>().add(RefreshStoreStatusEvent(_store.storeId.isNotEmpty ? _store.storeId : _store.phone));
   }
 
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Confirm Logout'),
+        content: const Text(
+          'Are you sure you want to log out? You can sign in with a different phone number afterwards.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              context.read<AuthBloc>().add(LogoutEvent());
+            },
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     Responsive.init(context);
 
-    return BlocListener<StoreBloc, StoreState>(
-      listener: (context, state) {
-        if (state is StoreLoaded) {
-          setState(() => _store = state.store);
-          if (_store.status == 'approved') {
-            Navigator.of(context).pushReplacementNamed(
-              RouteConstants.storeDashboard,
-              arguments: {'store': _store},
-            );
-          }
-        }
-      },
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<StoreBloc, StoreState>(
+          listener: (context, state) {
+            if (state is StoreLoaded) {
+              if (state.store.status == 'approved') {
+                _store = state.store;
+                Navigator.of(context).pushReplacementNamed(
+                  RouteConstants.storeDashboard,
+                  arguments: {'store': _store},
+                );
+              } else if (_store.status != state.store.status) {
+                setState(() => _store = state.store);
+              }
+            }
+          },
+        ),
+        BlocListener<AuthBloc, AuthState>(
+          listener: (context, state) {
+            if (state is AuthInitial) {
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                RouteConstants.login,
+                (r) => false,
+              );
+            }
+          },
+        ),
+      ],
       child: Scaffold(
         backgroundColor: AppColors.screenColor,
         appBar: AppBar(
@@ -62,7 +120,13 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
+              tooltip: 'Refresh Status',
               onPressed: _checkStatus,
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626)),
+              tooltip: 'Logout',
+              onPressed: _showLogoutDialog,
             ),
           ],
         ),
@@ -77,6 +141,8 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
                   _buildStoreSummaryCard(),
                   SizedBox(height: Responsive.h(24)),
                   _buildActionButtons(),
+                  SizedBox(height: Responsive.h(14)),
+                  _buildLogoutButton(),
                   SizedBox(height: Responsive.h(24)),
                 ],
               ),
@@ -249,6 +315,23 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(14))),
         ),
         onPressed: _checkStatus,
+      ),
+    );
+  }
+
+  Widget _buildLogoutButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: Responsive.h(50),
+      child: OutlinedButton.icon(
+        icon: const Icon(Icons.logout_rounded, size: 18, color: Color(0xFFDC2626)),
+        label: CustomText.title('Logout & Switch Account', fontSize: 14, color: const Color(0xFFDC2626)),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Color(0xFFFCA5A5), width: 1.2),
+          backgroundColor: const Color(0xFFFEF2F2),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(14))),
+        ),
+        onPressed: _showLogoutDialog,
       ),
     );
   }

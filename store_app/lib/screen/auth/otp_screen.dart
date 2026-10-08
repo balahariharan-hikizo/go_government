@@ -18,18 +18,17 @@ class OtpScreen extends StatefulWidget {
   final String phone;
   final String? testOtp;
 
-  const OtpScreen({
-    super.key,
-    required this.phone,
-    this.testOtp,
-  });
+  const OtpScreen({super.key, required this.phone, this.testOtp});
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
 class _OtpScreenState extends State<OtpScreen> {
-  final List<TextEditingController> _controllers = List.generate(4, (_) => TextEditingController());
+  final List<TextEditingController> _controllers = List.generate(
+    4,
+    (_) => TextEditingController(),
+  );
   final List<FocusNode> _focusNodes = List.generate(4, (_) => FocusNode());
 
   Timer? _timer;
@@ -156,7 +155,11 @@ class _OtpScreenState extends State<OtpScreen> {
           backgroundColor: AppColors.screenColor,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: AppColors.black),
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              size: 20,
+              color: AppColors.black,
+            ),
             onPressed: () => Navigator.of(context).pop(),
           ),
         ),
@@ -179,17 +182,29 @@ class _OtpScreenState extends State<OtpScreen> {
                       shape: BoxShape.circle,
                       border: Border.all(color: AppColors.outliner, width: 2),
                       boxShadow: const [
-                        BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 3)),
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 10,
+                          offset: Offset(0, 3),
+                        ),
                       ],
                     ),
                     child: const Center(
-                      child: Icon(Icons.mark_email_read_outlined, color: AppColors.primary, size: 36),
+                      child: Icon(
+                        Icons.mark_email_read_outlined,
+                        color: AppColors.primary,
+                        size: 36,
+                      ),
                     ),
                   ),
                   SizedBox(height: Responsive.h(24)),
 
                   // Title & Mobile Subtitle
-                  CustomText.header('Verify Mobile Number', fontSize: 22, color: AppColors.black),
+                  CustomText.header(
+                    'Verify Mobile Number',
+                    fontSize: 22,
+                    color: AppColors.black,
+                  ),
                   SizedBox(height: Responsive.h(8)),
                   RichText(
                     textAlign: TextAlign.center,
@@ -200,10 +215,15 @@ class _OtpScreenState extends State<OtpScreen> {
                         height: 1.4,
                       ),
                       children: [
-                        const TextSpan(text: 'Enter the 4-digit code sent to\n'),
+                        const TextSpan(
+                          text: 'Enter the 4-digit code sent to\n',
+                        ),
                         TextSpan(
                           text: '+91 ${widget.phone}',
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.black),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.black,
+                          ),
                         ),
                       ],
                     ),
@@ -222,7 +242,9 @@ class _OtpScreenState extends State<OtpScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       CustomText.body(
-                        _canResend ? "Didn't receive code? " : 'Resend code in ',
+                        _canResend
+                            ? "Didn't receive code? "
+                            : 'Resend code in ',
                         fontSize: 13,
                         color: AppColors.grayFont,
                       ),
@@ -250,7 +272,9 @@ class _OtpScreenState extends State<OtpScreen> {
                     builder: (context, authState) {
                       return BlocBuilder<StoreBloc, StoreState>(
                         builder: (context, storeState) {
-                          final isLoading = authState is AuthLoading || storeState is StoreLoading;
+                          final isLoading =
+                              authState is AuthLoading ||
+                              storeState is StoreLoading;
 
                           return SizedBox(
                             width: double.infinity,
@@ -260,7 +284,9 @@ class _OtpScreenState extends State<OtpScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.primary,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(Responsive.w(16)),
+                                  borderRadius: BorderRadius.circular(
+                                    Responsive.w(16),
+                                  ),
                                 ),
                                 elevation: 0,
                               ),
@@ -268,14 +294,26 @@ class _OtpScreenState extends State<OtpScreen> {
                                   ? const SizedBox(
                                       width: 22,
                                       height: 22,
-                                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                        color: Colors.white,
+                                      ),
                                     )
                                   : Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
-                                        const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 18),
+                                        const Icon(
+                                          Icons.check_circle_outline_rounded,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
                                         SizedBox(width: Responsive.w(8)),
-                                        CustomText.title('Verify & Proceed', fontSize: 15, color: Colors.white),
+                                        CustomText.title(
+                                          'Verify & Proceed',
+                                          fontSize: 15,
+                                          color: Colors.white,
+                                        ),
                                       ],
                                     ),
                             ),
@@ -303,7 +341,9 @@ class _OtpScreenState extends State<OtpScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(Responsive.w(16)),
         border: Border.all(
-          color: _controllers[index].text.isNotEmpty ? AppColors.primary : AppColors.outliner,
+          color: _controllers[index].text.isNotEmpty
+              ? AppColors.primary
+              : AppColors.outliner,
           width: _controllers[index].text.isNotEmpty ? 2 : 1,
         ),
         boxShadow: const [

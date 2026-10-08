@@ -19,6 +19,7 @@ import 'bloc/complaint/complaint_bloc.dart';
 import 'bloc/order_tracking/order_tracking_bloc.dart';
 import 'bloc/rider_chat/rider_chat_bloc.dart';
 import 'bloc/address/address_bloc.dart';
+import 'bloc/store/store_bloc.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'services/notification_service.dart';
@@ -123,7 +124,8 @@ class MainApp extends StatelessWidget {
           BlocProvider<CouponBloc>(create: (context) => CouponBloc()),
           BlocProvider<DirectionBloc>(create: (context) => DirectionBloc()),
           BlocProvider<ProductBloc>(create: (context) => ProductBloc()),
-          ],
+          BlocProvider<StoreBloc>(create: (context) => StoreBloc()),
+        ],
       child: MaterialApp(
         title: 'GoGovernment',
         debugShowCheckedModeBanner: false,

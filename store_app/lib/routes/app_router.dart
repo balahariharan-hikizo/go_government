@@ -23,12 +23,13 @@ class AppRouter {
       case RouteConstants.initial:
         if (HiveService.isLoggedIn) {
           final cachedData = HiveService.cachedStoreData;
+          final savedStatus = HiveService.storeStatus;
           if (cachedData != null) {
             final store = StoreModel.fromJson(cachedData);
-            if (store.status == 'approved') {
+            if (store.status == 'approved' || savedStatus == 'approved') {
               return MaterialPageRoute(builder: (_) => StoreDashboardScreen(store: store));
             } else {
-              return MaterialPageRoute(builder: (_) => ApplicationStatusScreen(store: store));
+              return MaterialPageRoute(builder: (_) => ApplicationStatusScreen(store: store, isColdStart: true));
             }
           }
         }
@@ -56,8 +57,13 @@ class AppRouter {
         final args = settings.arguments as Map<String, dynamic>? ?? {};
         final store = args['store'] as StoreModel? ?? StoreModel();
         final justSubmitted = args['justSubmitted'] == true;
+        final isColdStart = args['isColdStart'] == true;
         return MaterialPageRoute(
-          builder: (_) => ApplicationStatusScreen(store: store, justSubmitted: justSubmitted),
+          builder: (_) => ApplicationStatusScreen(
+            store: store,
+            justSubmitted: justSubmitted,
+            isColdStart: isColdStart,
+          ),
         );
 
       case RouteConstants.storeDashboard:

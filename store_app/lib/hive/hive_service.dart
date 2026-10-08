@@ -82,6 +82,13 @@ class HiveService {
   // Clear Session
   // ----------------------------------------------------
   static Future<void> clearAuth() async {
+    await _authBox.put(HiveKeys.isLoggedIn, false);
+    await _authBox.put(HiveKeys.userPhone, '');
+    await _authBox.put(HiveKeys.userId, '');
+    await _authBox.put(HiveKeys.userName, '');
+    await _storeBox.put(HiveKeys.storeStatus, '');
+    await _storeBox.put(HiveKeys.storeId, '');
+    await _storeBox.delete(HiveKeys.storeData);
     await _authBox.clear();
     await _storeBox.clear();
   }

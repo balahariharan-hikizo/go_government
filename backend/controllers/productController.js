@@ -213,7 +213,7 @@ exports.updateProduct = async (req, res) => {
     const updated = await Product.findOneAndUpdate(
       { productId },
       { $set: updateData },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     res.status(200).json({
@@ -223,7 +223,8 @@ exports.updateProduct = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating product:', error);
-    res.status(500).json({ error: 'Failed to update product', details: error.message });
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    res.status(status).json({ error: 'Failed to update product', details: error.message });
   }
 };
 

@@ -276,7 +276,7 @@ exports.updateStatus = async (req, res) => {
         },
         $push: { comments: adminComment },
       },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     if (!updated) {
@@ -306,6 +306,7 @@ exports.updateStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating complaint status:', error);
-    res.status(500).json({ error: 'Failed to update complaint status', details: error.message });
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    res.status(status).json({ error: error.message || 'Failed to update complaint status', details: error.message });
   }
 };
