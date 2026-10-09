@@ -27,13 +27,43 @@ class CartBloc extends Bloc<CartEvent, CartState> {
             updatedCart.clear();
             for (final it in items) {
               final pid = (it['productId'] ?? '').toString();
-              final qty = (it['quantity'] as num?)?.toInt() ?? 1;
+              var vid = (it['variantId'] ?? '').toString();
+              final unit = (it['unit'] ?? '').toString().trim();
               final prod = it['product'] is Map
                   ? Map<String, dynamic>.from(it['product'])
                   : <String, dynamic>{'id': pid};
-              if (pid.isNotEmpty) {
-                updatedCart[pid] = qty;
-                updatedDetails[pid] = {...updatedDetails[pid] ?? {}, ...prod, 'id': pid};
+
+              // Auto-resolve vid if backend saved it empty but product has variants
+              if (vid.isEmpty && prod['variants'] is List && (prod['variants'] as List).isNotEmpty) {
+                final variants = prod['variants'] as List;
+                if (unit.isNotEmpty) {
+                  final match = variants.firstWhere(
+                    (v) => (v is Map && (v['unit']?.toString().trim().toLowerCase() ?? '') == unit.toLowerCase()),
+                    orElse: () => null,
+                  );
+                  if (match is Map && match['variantId'] != null) {
+                    vid = match['variantId'].toString();
+                  }
+                }
+                if (vid.isEmpty && variants.first is Map && variants.first['variantId'] != null) {
+                  vid = variants.first['variantId'].toString();
+                }
+              }
+
+              final itemKey = vid.isNotEmpty ? '$pid:$vid' : pid;
+              final qty = (it['quantity'] as num?)?.toInt() ?? 1;
+              prod['id'] = itemKey;
+              prod['productId'] = pid;
+              prod['variantId'] = vid;
+              if (it['unit'] != null && it['unit'].toString().isNotEmpty) {
+                prod['unit'] = it['unit'];
+              }
+              if (it['price'] != null) {
+                prod['price'] = it['price'];
+              }
+              if (itemKey.isNotEmpty) {
+                updatedCart[itemKey] = qty;
+                updatedDetails[itemKey] = {...updatedDetails[itemKey] ?? {}, ...prod};
               }
             }
             cartChanged = true;

@@ -556,8 +556,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
           ),
         ];
 
-        // Rider marker when active
-        if (currentStep >= 2 && currentStep <= 3) {
+        final agent =
+            _serverOrderData?['deliveryAgent'] as Map<String, dynamic>?;
+        final bool hasAssignedRider = agent != null &&
+            ((agent['riderId']?.toString().trim().isNotEmpty ?? false) ||
+                (agent['name']?.toString().trim().isNotEmpty ?? false));
+
+        // Rider marker when active and assigned
+        if (hasAssignedRider && currentStep >= 2 && currentStep <= 3) {
           markers.add(
             Marker(
               point: riderPoint,
@@ -640,7 +646,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
             state.isCancelled || _serverOrderData?['status'] == 'cancelled';
         final int currentStep = state.currentStep;
         final bool isMapVisible = !isCancelled && currentStep > 0;
-        final bool isDriverCardVisible = !isCancelled && currentStep >= 2;
+        final agent =
+            _serverOrderData?['deliveryAgent'] as Map<String, dynamic>?;
+        final bool hasAssignedRider = agent != null &&
+            ((agent['riderId']?.toString().trim().isNotEmpty ?? false) ||
+                (agent['name']?.toString().trim().isNotEmpty ?? false));
+        final bool isDriverCardVisible =
+            !isCancelled && hasAssignedRider && currentStep >= 2;
+        final bool isAwaitingRiderVisible =
+            !isCancelled && !hasAssignedRider && currentStep >= 2;
 
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: const SystemUiOverlayStyle(
@@ -916,9 +930,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                           ],
                           SizedBox(height: Responsive.h(20)),
 
-                          // 3. Driver card (step 2+)
+                          // 3. Driver card or Awaiting rider card (step 2+)
                           if (isDriverCardVisible) ...[
                             _buildDriverDetailCard(),
+                            SizedBox(height: Responsive.h(20)),
+                          ] else if (isAwaitingRiderVisible) ...[
+                            _buildAwaitingRiderCard(),
                             SizedBox(height: Responsive.h(20)),
                           ],
 
@@ -1217,17 +1234,76 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     );
   }
 
+  Widget _buildAwaitingRiderCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(Responsive.w(20)),
+        border: Border.all(color: AppColors.outliner, width: Responsive.w(1.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: EdgeInsets.all(Responsive.w(16)),
+      child: Row(
+        children: [
+          Container(
+            width: Responsive.w(40),
+            height: Responsive.w(40),
+            decoration: const BoxDecoration(
+              color: Color(0xFFFFF3E0),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: Responsive.w(14)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CustomText.title(
+                  'Assigning Delivery Partner...',
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+                SizedBox(height: Responsive.h(3)),
+                CustomText.subtitle(
+                  'Order is packed & waiting for a rider to accept',
+                  fontSize: 10,
+                  color: AppColors.grayFont,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDriverDetailCard() {
     final agent = _serverOrderData?['deliveryAgent'] as Map<String, dynamic>?;
     final driverName =
         (agent != null &&
             agent['name'] != null &&
             agent['name'].toString().trim().isNotEmpty)
-        ? agent['name'].toString()
-        : 'Assigned Express Rider';
-    final driverPhone = agent?['phone']?.toString() ?? '';
-    final vehicleNumber = agent?['vehicleNumber']?.toString() ?? '';
-    final rating = agent?['rating']?.toString() ?? '4.9';
+        ? agent['name'].toString().trim()
+        : 'Delivery Partner';
+    final driverPhone = agent?['phone']?.toString().trim() ?? '';
+    final vehicleNumber = agent?['vehicleNumber']?.toString().trim() ?? '';
+    final rating = agent?['rating']?.toString().trim() ?? '5.0';
 
     return Container(
       decoration: BoxDecoration(

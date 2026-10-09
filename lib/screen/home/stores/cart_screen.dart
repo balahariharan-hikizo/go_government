@@ -17,6 +17,7 @@ import '../../../service/cart_manager.dart';
 import '../../../widget/common_wishlist_button.dart';
 import '../../../network/api_client.dart';
 import '../../../network/order_api_service.dart';
+import '../../../network/product_api_service.dart';
 import '../../../hive/hive_service.dart';
 
 class CartScreen extends StatefulWidget {
@@ -39,8 +40,8 @@ class _CartScreenState extends State<CartScreen> {
   bool _useComplaintCoins = false;
   bool _isCheckingOut = false;
 
-  // Cross-sell items list
-  late final List<Map<String, dynamic>> _crossSellProducts;
+  // Cross-sell items list (Real-time from store)
+  List<Map<String, dynamic>> _crossSellProducts = [];
   late final VoidCallback _cartListener;
   late final VoidCallback _favListener;
 
@@ -64,19 +65,31 @@ class _CartScreenState extends State<CartScreen> {
     CartManager.instance.cartItems.addListener(_cartListener);
     WishlistManager.instance.favoriteIds.addListener(_favListener);
 
-    if (widget.storeType == 'medical') {
-      _crossSellProducts = [
-        {'id': 'cs1', 'title': 'Watermelon striped', 'image': 'assets/images/product1.png', 'isFav': false, 'qty': 0},
-        {'id': 'cs2', 'title': 'Watermelon striped', 'image': 'assets/images/product1.png', 'isFav': true, 'qty': 1},
-        {'id': 'cs3', 'title': 'Watermelon striped', 'image': 'assets/images/product1.png', 'isFav': false, 'qty': 0},
-      ];
-    } else {
-      _crossSellProducts = [
-        {'id': 'cs1', 'title': 'Watermelon striped', 'image': 'assets/images/product2.png', 'isFav': false, 'qty': 0},
-        {'id': 'cs2', 'title': 'Watermelon striped', 'image': 'assets/images/product3.png', 'isFav': true, 'qty': 1},
-        {'id': 'cs3', 'title': 'Watermelon striped', 'image': 'assets/images/product2.png', 'isFav': false, 'qty': 0},
-      ];
-    }
+    _loadCrossSellProducts();
+  }
+
+  Future<void> _loadCrossSellProducts() async {
+    final storeId = CartManager.instance.currentStoreId;
+    if (storeId == null || storeId.trim().isEmpty) return;
+
+    try {
+      final realProducts = await ProductApiService.fetchProductsByStore(
+        storeId,
+        limit: 10,
+        storeType: widget.storeType,
+      );
+
+      final filtered = realProducts.where((p) {
+        final id = (p['id'] ?? p['productId'] ?? '')?.toString();
+        return id != null && id.isNotEmpty && CartManager.instance.getQuantity(id) == 0;
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _crossSellProducts = filtered;
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -181,8 +194,11 @@ class _CartScreenState extends State<CartScreen> {
       }
       final p = parsePrice(prod['price'], 83);
       final orig = parsePrice(prod['originalPrice'], 106);
+      final basePid = e.key.contains(':') ? e.key.split(':').first : (prod['productId'] ?? e.key).toString();
+      final vid = (prod['variantId'] ?? (e.key.contains(':') ? e.key.split(':').last : '')).toString();
       backendItems.add({
-        'productId': e.key,
+        'productId': basePid,
+        'variantId': vid,
         'title': prod['title'] ?? 'Product',
         'price': p.toDouble(),
         'originalPrice': orig.toDouble(),
@@ -625,12 +641,37 @@ class _CartScreenState extends State<CartScreen> {
                                 children: [
                                   _buildCartItem(
                                     title: product['title'] ?? 'Product',
-                                    subtitle: '1 units',
+                                    subtitle: (product['unit'] != null && product['unit'].toString().trim().isNotEmpty)
+                                        ? product['unit'].toString().trim()
+                                        : '1 Unit',
                                     image: product['image'] ?? 'assets/images/product1.png',
                                     qty: qty,
                                     stock: stock,
                                     originalPrice: '₹${parsePrice(product['originalPrice'], 106)}',
                                     price: '₹${parsePrice(product['price'], 83)}',
+                                    onTap: () {
+                                      final prodData = Map<String, dynamic>.from(product);
+                                      final basePid = id.contains(':')
+                                          ? id.split(':').first
+                                          : (prodData['productId'] ?? prodData['id'] ?? id).toString();
+                                      final vid = prodData['variantId']?.toString() ??
+                                          (id.contains(':') ? id.split(':').last : '');
+                                      prodData['id'] = basePid;
+                                      prodData['productId'] = basePid;
+                                      if (vid.isNotEmpty) {
+                                        prodData['variantId'] = vid;
+                                      }
+                                      if (product['unit'] != null && product['unit'].toString().trim().isNotEmpty) {
+                                        prodData['unit'] = product['unit'].toString().trim();
+                                      }
+                                      Navigator.of(context).pushNamed(
+                                        RouteConstants.productDetails,
+                                        arguments: {
+                                          'product': prodData,
+                                          'storeType': widget.storeType,
+                                        },
+                                      );
+                                    },
                                     onDecrement: () {
                                       CartManager.instance.updateQuantityById(id, qty - 1);
                                     },
@@ -651,9 +692,11 @@ class _CartScreenState extends State<CartScreen> {
                       ),
                       SizedBox(height: Responsive.h(20)),
 
-                      // "You May Also Like.." horizontal cross-sell
-                      _buildCrossSellSection(),
-                      SizedBox(height: Responsive.h(20)),
+                      // "You May Also Like.." horizontal cross-sell (Real-time from store)
+                      if (_crossSellProducts.isNotEmpty) ...[
+                        _buildCrossSellSection(),
+                        SizedBox(height: Responsive.h(20)),
+                      ],
 
                       // Coupons Apply Banner Card
                       _buildCouponsBannerCard(isCouponApplied),
@@ -1059,64 +1102,76 @@ class _CartScreenState extends State<CartScreen> {
     required int stock,
     required VoidCallback onDecrement,
     required VoidCallback onIncrement,
+    VoidCallback? onTap,
   }) {
     final bool isMaxStock = qty >= stock;
 
     return Row(
       children: [
-        // Product Thumbnail
-        ClipRRect(
-          borderRadius: BorderRadius.circular(Responsive.w(8)),
-          child: _buildCartItemImage(
-            image,
-            width: Responsive.w(52),
-            height: Responsive.w(52),
-          ),
-        ),
-        SizedBox(width: Responsive.w(12)),
-
-        // Product details
+        // Product Thumbnail & Details (Tappable to view product)
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CustomText.title(title, fontSize: 13, fontWeight: FontWeight.bold),
-              SizedBox(height: Responsive.h(4)),
-              Row(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(Responsive.w(6)),
-                    ),
-                    padding: EdgeInsets.symmetric(horizontal: Responsive.w(8), vertical: Responsive.h(3)),
-                    child: CustomText.subtitle(
-                      subtitle,
-                      fontSize: 10,
-                      color: Colors.grey.shade700,
-                    ),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Row(
+              children: [
+                // Product Thumbnail
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(Responsive.w(8)),
+                  child: _buildCartItemImage(
+                    image,
+                    width: Responsive.w(52),
+                    height: Responsive.w(52),
                   ),
-                  if (stock <= 3) ...[
-                    SizedBox(width: Responsive.w(6)),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF3E0),
-                        borderRadius: BorderRadius.circular(Responsive.w(6)),
+                ),
+                SizedBox(width: Responsive.w(12)),
+
+                // Product details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CustomText.title(title, fontSize: 13, fontWeight: FontWeight.bold),
+                      SizedBox(height: Responsive.h(4)),
+                      Row(
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(Responsive.w(6)),
+                            ),
+                            padding: EdgeInsets.symmetric(horizontal: Responsive.w(8), vertical: Responsive.h(3)),
+                            child: CustomText.subtitle(
+                              subtitle,
+                              fontSize: 10,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          if (stock <= 3) ...[
+                            SizedBox(width: Responsive.w(6)),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF3E0),
+                                borderRadius: BorderRadius.circular(Responsive.w(6)),
+                              ),
+                              padding: EdgeInsets.symmetric(horizontal: Responsive.w(6), vertical: Responsive.h(2)),
+                              child: Text(
+                                'Only $stock left',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange.shade800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                      padding: EdgeInsets.symmetric(horizontal: Responsive.w(6), vertical: Responsive.h(2)),
-                      child: Text(
-                        'Only $stock left',
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange.shade800,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
 
@@ -1261,106 +1316,124 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   Widget _buildCrossSellCard(Map<String, dynamic> prod, int index) {
-    final String id = prod['id'];
+    final String id = (prod['id'] ?? prod['productId'] ?? '')?.toString() ?? '';
     final int qty = CartManager.instance.getQuantity(id);
+    final double price = (prod['price'] as num?)?.toDouble() ?? 0.0;
+    final double origPrice = (prod['originalPrice'] as num?)?.toDouble() ?? price;
+    final int discount = origPrice > price && origPrice > 0 ? (((origPrice - price) / origPrice) * 100).round() : 0;
+    final String title = (prod['title'] ?? prod['name'] ?? 'Product').toString();
+    final String? img = prod['image']?.toString();
 
-    return Container(
-      width: Responsive.w(130),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(Responsive.w(16)),
-        border: Border.all(color: AppColors.outliner, width: 1.2),
-      ),
-      padding: EdgeInsets.all(Responsive.w(10)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              if (index == 1)
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: Responsive.w(4), vertical: Responsive.h(2)),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
-                    borderRadius: BorderRadius.circular(Responsive.w(4)),
-                  ),
-                  child: const Text('Only 3 left', style: TextStyle(color: Colors.green, fontSize: 7, fontWeight: FontWeight.bold)),
-                )
-              else
-                const Spacer(),
-              CommonWishlistButton(
-                product: prod,
-                size: 14,
-              ),
-            ],
-          ),
-          SizedBox(height: Responsive.h(4)),
-          Center(
-            child: _buildCartItemImage(prod['image'], height: Responsive.h(56)),
-          ),
-          const Spacer(),
-          CustomText.title(prod['title'], fontSize: 10, maxLines: 1),
-          SizedBox(height: Responsive.h(2)),
-          Row(
-            children: [
-              const Icon(Icons.arrow_downward, color: Colors.green, size: 8),
-              const Text('68% ', style: TextStyle(color: Colors.green, fontSize: 9, fontWeight: FontWeight.bold)),
-              Text('₹307 ', style: TextStyle(color: Colors.grey.shade400, fontSize: 8, decoration: TextDecoration.lineThrough)),
-              const Text('₹99', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          SizedBox(height: Responsive.h(6)),
-
-          if (qty > 0)
-            Container(
-              height: Responsive.h(26),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(Responsive.w(13)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.remove, color: Colors.white, size: 10),
-                    onPressed: () {
-                      CartManager.instance.updateQuantity(prod, qty - 1);
-                    },
-                  ),
-                  Text(qty.toString(), style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.add, color: Colors.white, size: 10),
-                    onPressed: () {
-                      CartManager.instance.updateQuantity(prod, qty + 1);
-                    },
-                  ),
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).pushNamed(
+          RouteConstants.productDetails,
+          arguments: {
+            'product': prod,
+            'storeType': widget.storeType,
+          },
+        );
+      },
+      child: Container(
+        width: Responsive.w(130),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(Responsive.w(16)),
+          border: Border.all(color: AppColors.outliner, width: 1.2),
+        ),
+        padding: EdgeInsets.all(Responsive.w(10)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (index == 1)
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: Responsive.w(4), vertical: Responsive.h(2)),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(Responsive.w(4)),
+                    ),
+                    child: const Text('Top Pick', style: TextStyle(color: Colors.green, fontSize: 7, fontWeight: FontWeight.bold)),
+                  )
+                else
+                  const Spacer(),
+                CommonWishlistButton(
+                  product: prod,
+                  size: 14,
+                ),
+              ],
+            ),
+            SizedBox(height: Responsive.h(4)),
+            Center(
+              child: _buildCartItemImage(img, height: Responsive.h(56)),
+            ),
+            const Spacer(),
+            CustomText.title(title, fontSize: 10, maxLines: 1),
+            SizedBox(height: Responsive.h(2)),
+            Row(
+              children: [
+                if (discount > 0) ...[
+                  const Icon(Icons.arrow_downward, color: Colors.green, size: 8),
+                  Text('$discount% ', style: const TextStyle(color: Colors.green, fontSize: 9, fontWeight: FontWeight.bold)),
+                  Text('₹${origPrice.toStringAsFixed(0)} ', style: TextStyle(color: Colors.grey.shade400, fontSize: 8, decoration: TextDecoration.lineThrough)),
                 ],
-              ),
-            )
-          else
-            Align(
-              alignment: Alignment.centerRight,
-              child: GestureDetector(
-                onTap: () {
-                  CartManager.instance.updateQuantity(prod, 1);
-                },
-                child: Container(
-                  width: Responsive.w(24),
-                  height: Responsive.w(24),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.primary, width: 1.2),
+                Text('₹${price.toStringAsFixed(0)}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            SizedBox(height: Responsive.h(6)),
+
+            if (qty > 0)
+              Container(
+                height: Responsive.h(26),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(Responsive.w(13)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: const Icon(Icons.remove, color: Colors.white, size: 10),
+                      onPressed: () {
+                        CartManager.instance.updateQuantity(prod, qty - 1);
+                      },
+                    ),
+                    Text(qty.toString(), style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: const Icon(Icons.add, color: Colors.white, size: 10),
+                      onPressed: () {
+                        CartManager.instance.updateQuantity(prod, qty + 1);
+                      },
+                    ),
+                  ],
+                ),
+              )
+            else
+              Align(
+                alignment: Alignment.centerRight,
+                child: GestureDetector(
+                  onTap: () {
+                    CartManager.instance.updateQuantity(prod, 1);
+                  },
+                  child: Container(
+                    width: Responsive.w(24),
+                    height: Responsive.w(24),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.primary, width: 1.2),
+                    ),
+                    child: const Icon(Icons.add, color: AppColors.primary, size: 12),
                   ),
-                  child: const Icon(Icons.add, color: AppColors.primary, size: 12),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

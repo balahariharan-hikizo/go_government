@@ -3,18 +3,63 @@ import 'package:http/http.dart' as http;
 import 'api_client.dart';
 
 class ProductApiService {
-  /// 1. Fetch all products for a specific store from backend
+  /// 1. Fetch products for a specific store (Delegates to fetchProductsPaginated, returns pure List)
   static Future<List<Map<String, dynamic>>> fetchProductsByStore(
     String storeId, {
     String? storeType,
+    int? page,
+    int? limit,
+    String? category,
+    String? search,
   }) async {
-    if (storeId.trim().isEmpty) return [];
-    final url = '${ApiClient.baseUrl}/products/store/$storeId';
+    final res = await fetchProductsPaginated(
+      storeId,
+      page: page ?? 1,
+      limit: limit ?? 20,
+      category: category,
+      search: search,
+      storeType: storeType,
+    );
+    final rawList = res['products'];
+    if (rawList is List) {
+      return rawList.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  /// 1b. Fetch products with pagination metadata (hasMore, total, page, totalPages)
+  static Future<Map<String, dynamic>> fetchProductsPaginated(
+    String storeId, {
+    int page = 1,
+    int limit = 20,
+    String? category,
+    String? search,
+    String? storeType,
+  }) async {
+    if (storeId.trim().isEmpty) {
+      return {'products': <Map<String, dynamic>>[], 'hasMore': false, 'total': 0, 'page': page, 'totalPages': 1};
+    }
+
+    final queryParams = <String, String>{
+      'page': page.toString(),
+      'limit': limit.toString(),
+    };
+    if (category != null && category.isNotEmpty && category != 'all') {
+      queryParams['category'] = category;
+    }
+    if (search != null && search.trim().isNotEmpty) {
+      queryParams['search'] = search.trim();
+    }
+
+    final uri = Uri.parse('${ApiClient.baseUrl}/products/store/$storeId').replace(
+      queryParameters: queryParams,
+    );
+    final url = uri.toString();
 
     try {
       ApiClient.logRequest('GET', url);
       final response = await http
-          .get(Uri.parse(url), headers: ApiClient.defaultHeaders)
+          .get(uri, headers: ApiClient.defaultHeaders)
           .timeout(const Duration(seconds: 8));
 
       ApiClient.logResponse('GET', url, response.statusCode, response.body);
@@ -23,15 +68,23 @@ class ProductApiService {
         final data = jsonDecode(response.body);
         final rawProducts = (data['products'] as List? ?? []);
 
-        return rawProducts
+        final list = rawProducts
             .where((p) => p['isAvailable'] != false)
             .map<Map<String, dynamic>>((p) => normalizeProduct(p, defaultStoreId: storeId, storeType: storeType))
             .toList();
+
+        return {
+          'products': list,
+          'hasMore': data['hasMore'] == true,
+          'total': data['total'] ?? list.length,
+          'page': data['page'] ?? page,
+          'totalPages': data['totalPages'] ?? 1,
+        };
       }
     } catch (e) {
       ApiClient.logError('GET', url, e);
     }
-    return [];
+    return {'products': <Map<String, dynamic>>[], 'hasMore': false, 'total': 0, 'page': page, 'totalPages': 1};
   }
 
   /// 2. Fetch single product details by productId

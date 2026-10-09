@@ -9,13 +9,61 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
   factory ProductBloc() => instance;
 
   List<ProductModel> _currentProducts = [];
+  int _currentPage = 1;
+  bool _hasMore = false;
+  int _total = 0;
+  bool _isLoadingMore = false;
 
   ProductBloc._internal() : super(ProductInitial()) {
     on<LoadStoreProductsEvent>((event, emit) async {
       emit(ProductLoading());
-      final prods = await ProductApiService.getProductsByStore(event.storeId);
-      _currentProducts = prods;
-      emit(ProductLoaded(List.from(_currentProducts)));
+      _currentPage = 1;
+      final res = await ProductApiService.getProductsByStorePaginated(event.storeId, page: 1, limit: 20);
+      _currentProducts = res['products'] as List<ProductModel>;
+      _hasMore = res['hasMore'] as bool;
+      _total = res['total'] as int;
+      _currentPage = res['page'] as int;
+      emit(ProductLoaded(List.from(_currentProducts), hasMore: _hasMore, page: _currentPage, total: _total));
+    });
+
+    on<LoadMoreStoreProductsEvent>((event, emit) async {
+      if (!_hasMore || _isLoadingMore) return;
+      _isLoadingMore = true;
+      emit(ProductLoaded(
+        List.from(_currentProducts),
+        hasMore: _hasMore,
+        page: _currentPage,
+        total: _total,
+        isLoadingMore: true,
+      ));
+
+      try {
+        final nextPage = _currentPage + 1;
+        final res = await ProductApiService.getProductsByStorePaginated(event.storeId, page: nextPage, limit: 20);
+        final newItems = res['products'] as List<ProductModel>;
+        _currentPage = res['page'] as int;
+        _hasMore = res['hasMore'] as bool;
+        _total = res['total'] as int;
+        _currentProducts.addAll(newItems);
+
+        emit(ProductLoaded(
+          List.from(_currentProducts),
+          hasMore: _hasMore,
+          page: _currentPage,
+          total: _total,
+          isLoadingMore: false,
+        ));
+      } catch (_) {
+        emit(ProductLoaded(
+          List.from(_currentProducts),
+          hasMore: _hasMore,
+          page: _currentPage,
+          total: _total,
+          isLoadingMore: false,
+        ));
+      } finally {
+        _isLoadingMore = false;
+      }
     });
 
     on<AddProductEvent>((event, emit) async {
@@ -25,10 +73,10 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
         final newProd = ProductModel.fromJson(res['product'] as Map<String, dynamic>);
         _currentProducts.insert(0, newProd);
         emit(ProductSubmitSuccess(newProd, message: res['message'] ?? 'Product added successfully!'));
-        emit(ProductLoaded(List.from(_currentProducts)));
+        emit(ProductLoaded(List.from(_currentProducts), hasMore: _hasMore, page: _currentPage, total: _total));
       } else {
         emit(ProductError(res?['error'] ?? 'Failed to add product'));
-        emit(ProductLoaded(List.from(_currentProducts)));
+        emit(ProductLoaded(List.from(_currentProducts), hasMore: _hasMore, page: _currentPage, total: _total));
       }
     });
 
@@ -38,7 +86,7 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
         final idx = _currentProducts.indexWhere((p) => p.productId == event.productId);
         if (idx != -1) {
           _currentProducts[idx] = _currentProducts[idx].copyWith(isAvailable: event.isAvailable);
-          emit(ProductLoaded(List.from(_currentProducts)));
+          emit(ProductLoaded(List.from(_currentProducts), hasMore: _hasMore, page: _currentPage, total: _total));
         }
       }
     });
@@ -47,7 +95,7 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
       final success = await ProductApiService.deleteProduct(event.productId);
       if (success) {
         _currentProducts.removeWhere((p) => p.productId == event.productId);
-        emit(ProductLoaded(List.from(_currentProducts)));
+        emit(ProductLoaded(List.from(_currentProducts), hasMore: _hasMore, page: _currentPage, total: _total));
       }
     });
 
@@ -60,25 +108,24 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
         if (idx != -1) {
           _currentProducts[idx] = updated;
         }
-        emit(ProductSubmitSuccess(updated, message: res['message'] ?? 'Product updated successfully!'));
-        emit(ProductLoaded(List.from(_currentProducts)));
+        emit(ProductSubmitSuccess(updated, message: res['message'] ?? 'Product updated successfully! 🎉'));
+        emit(ProductLoaded(List.from(_currentProducts), hasMore: _hasMore, page: _currentPage, total: _total));
       } else {
         emit(ProductError(res?['error'] ?? 'Failed to update product'));
-        emit(ProductLoaded(List.from(_currentProducts)));
+        emit(ProductLoaded(List.from(_currentProducts), hasMore: _hasMore, page: _currentPage, total: _total));
       }
     });
 
     on<AdjustProductStockEvent>((event, emit) async {
       final idx = _currentProducts.indexWhere((p) => p.productId == event.productId);
       if (idx != -1) {
-        final currentStock = _currentProducts[idx].stock;
-        final newStock = (currentStock + event.delta).clamp(0, 99999);
-        _currentProducts[idx] = _currentProducts[idx].copyWith(
-          stock: newStock,
-          isAvailable: newStock > 0,
-        );
-        emit(ProductLoaded(List.from(_currentProducts)));
-        await ProductApiService.updateProductStock(event.productId, newStock);
+        final current = _currentProducts[idx];
+        final newStock = (current.stock + event.delta).clamp(0, 99999);
+        final success = await ProductApiService.updateProductStock(event.productId, newStock);
+        if (success) {
+          _currentProducts[idx] = current.copyWith(stock: newStock);
+          emit(ProductLoaded(List.from(_currentProducts), hasMore: _hasMore, page: _currentPage, total: _total));
+        }
       }
     });
   }

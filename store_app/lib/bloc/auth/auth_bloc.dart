@@ -5,7 +5,7 @@ import '../../bloc/store/store_bloc.dart';
 import '../../bloc/store/store_event.dart';
 import '../../hive/hive_service.dart';
 import '../../network/auth_api_service.dart';
-import '../../service/socket_service.dart';
+import '../../services/socket_service.dart';
 import '../../services/notification_service.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';

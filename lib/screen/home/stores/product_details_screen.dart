@@ -8,6 +8,7 @@ import '../../../constants/route_constants.dart';
 import '../../../service/cart_manager.dart';
 import '../../../widget/common_wishlist_button.dart';
 import '../../../network/api_client.dart';
+import '../../../network/product_api_service.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -24,6 +25,7 @@ class ProductDetailsScreen extends StatefulWidget {
 }
 
 class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
+  late Map<String, dynamic> _product;
   bool _isHighlightsExpanded = false; // Start collapsed
   bool _isAllDetailsExpanded = false; // Start collapsed
   bool _isSpecsMoreExpanded = false; // Sub-section specs toggle
@@ -32,18 +34,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   Map<String, dynamic>? _selectedVariant;
 
   List<String> get _productImages {
-    final raw = widget.product['images'];
+    final raw = _product['images'];
     if (raw is List && raw.isNotEmpty) {
       final list = raw.map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty).toList();
       if (list.isNotEmpty) return list;
     }
-    final single = widget.product['image']?.toString();
+    final single = _product['image']?.toString();
     if (single != null && single.isNotEmpty) return [single];
     return [];
   }
 
   List<Map<String, dynamic>> get _productVariants {
-    final raw = widget.product['variants'];
+    final raw = _product['variants'];
     if (raw is List && raw.isNotEmpty) {
       return raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
     }
@@ -51,19 +53,31 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   }
 
   String get _currentUnit => _selectedVariant != null
-      ? (_selectedVariant!['unit']?.toString() ?? widget.product['unit']?.toString() ?? '1 Units')
-      : (widget.product['unit']?.toString() ?? '1 Units');
+      ? (_selectedVariant!['unit']?.toString() ?? _product['unit']?.toString() ?? '1 Units')
+      : (_product['unit']?.toString() ?? '1 Units');
+
+  String get _activeCartKey {
+    final pid = (_product['productId'] ?? _product['id'])?.toString() ?? '';
+    final vid = _selectedVariant?['variantId']?.toString() ?? '';
+    return vid.isNotEmpty ? '$pid:$vid' : pid;
+  }
 
   Map<String, dynamic> _getActiveProductMap() {
-    final map = Map<String, dynamic>.from(widget.product);
+    final map = Map<String, dynamic>.from(_product);
+    final basePid = (_product['productId'] ?? _product['id'])?.toString() ?? '';
+    map['productId'] = basePid;
     if (_selectedVariant != null) {
-      map['variantId'] = _selectedVariant!['variantId'];
-      map['unit'] = _selectedVariant!['unit'];
-      map['price'] = _selectedVariant!['price'];
-      map['originalPrice'] = _selectedVariant!['originalPrice'];
+      final vid = _selectedVariant!['variantId']?.toString() ?? '';
+      map['variantId'] = vid;
+      map['id'] = vid.isNotEmpty ? '$basePid:$vid' : basePid;
+      map['unit'] = _selectedVariant!['unit'] ?? map['unit'];
+      map['price'] = _selectedVariant!['price'] ?? map['price'];
+      map['originalPrice'] = _selectedVariant!['originalPrice'] ?? map['originalPrice'];
       if (_selectedVariant!['stock'] != null) {
         map['stock'] = _selectedVariant!['stock'];
       }
+    } else {
+      map['id'] = basePid;
     }
     return map;
   }
@@ -71,19 +85,35 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   late final VoidCallback _cartListener;
   late final VoidCallback _favListener;
 
-  int get _quantity => CartManager.instance.getQuantity(widget.product['id']);
+  int get _quantity => CartManager.instance.getQuantity(_activeCartKey);
   int get _cartCount => CartManager.instance.totalCartCount;
 
-  // Similar products mock list
-  late final List<Map<String, dynamic>> _similarProducts;
+  // Real-time products lists
+  List<Map<String, dynamic>> _similarProducts = [];
+  List<Map<String, dynamic>> _youMayAlsoLike = [];
 
   @override
   void initState() {
     super.initState();
+    _product = Map<String, dynamic>.from(widget.product);
 
     final variants = _productVariants;
     if (variants.isNotEmpty) {
-      _selectedVariant = variants.first;
+      final initialVid = widget.product['variantId']?.toString();
+      final initialUnit = widget.product['unit']?.toString().trim();
+      if (initialVid != null && initialVid.isNotEmpty) {
+        _selectedVariant = variants.firstWhere(
+          (v) => v['variantId']?.toString() == initialVid,
+          orElse: () => variants.first,
+        );
+      } else if (initialUnit != null && initialUnit.isNotEmpty) {
+        _selectedVariant = variants.firstWhere(
+          (v) => (v['unit']?.toString().trim().toLowerCase() ?? '') == initialUnit.toLowerCase(),
+          orElse: () => variants.first,
+        );
+      } else {
+        _selectedVariant = variants.first;
+      }
     }
 
     _cartListener = () {
@@ -95,21 +125,84 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     CartManager.instance.cartItems.addListener(_cartListener);
     WishlistManager.instance.favoriteIds.addListener(_favListener);
 
-    // Register product details
-    CartManager.instance.productDetails[widget.product['id']] = _getActiveProductMap();
+    // Register active product details
+    CartManager.instance.productDetails[_activeCartKey] = _getActiveProductMap();
 
-    if (widget.storeType == 'medical') {
-      _similarProducts = [
-        {'id': 'sm1', 'title': 'Watermelon striped', 'image': 'assets/images/product1.png', 'isFav': false, 'qty': 0},
-        {'id': 'sm2', 'title': 'Watermelon striped', 'image': 'assets/images/product1.png', 'isFav': true, 'qty': 1},
-        {'id': 'sm3', 'title': 'Watermelon striped', 'image': 'assets/images/product1.png', 'isFav': false, 'qty': 0},
-      ];
-    } else {
-      _similarProducts = [
-        {'id': 'sv1', 'title': 'Watermelon striped', 'image': 'assets/images/product2.png', 'isFav': false, 'qty': 0},
-        {'id': 'sv2', 'title': 'Watermelon striped', 'image': 'assets/images/product3.png', 'isFav': true, 'qty': 1},
-        {'id': 'sv3', 'title': 'Watermelon striped', 'image': 'assets/images/product2.png', 'isFav': false, 'qty': 0},
-      ];
+    // Live background refresh from single product API & real store products
+    _loadLiveProductDetails();
+    _loadSimilarAndCrossSellProducts();
+  }
+
+  Future<void> _loadSimilarAndCrossSellProducts() async {
+    final storeId = (_product['storeId'] ?? widget.product['storeId'])?.toString();
+    if (storeId == null || storeId.trim().isEmpty) return;
+
+    try {
+      final realProducts = await ProductApiService.fetchProductsByStore(
+        storeId,
+        limit: 12,
+        storeType: widget.storeType,
+      );
+
+      final currentId = (_product['id'] ?? _product['productId'] ?? _product['_id'])?.toString();
+      final filtered = realProducts.where((p) {
+        final pId = (p['id'] ?? p['productId'] ?? p['_id'])?.toString();
+        return pId != null && pId.isNotEmpty && pId != currentId;
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          final currentCat = _product['category']?.toString().toLowerCase().trim();
+          if (currentCat != null && currentCat.isNotEmpty && currentCat != 'all' && currentCat != 'general') {
+            final sameCat = filtered.where((p) => (p['category'] ?? '').toString().toLowerCase().trim() == currentCat).toList();
+            final diffCat = filtered.where((p) => (p['category'] ?? '').toString().toLowerCase().trim() != currentCat).toList();
+
+            _similarProducts = sameCat.isNotEmpty ? sameCat : filtered.take(6).toList();
+            _youMayAlsoLike = sameCat.isNotEmpty ? diffCat : filtered.skip(6).toList();
+          } else {
+            _similarProducts = filtered.take(6).toList();
+            _youMayAlsoLike = filtered.skip(6).toList();
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadLiveProductDetails() async {
+    final prodId = (_product['id'] ?? _product['productId'] ?? _product['_id'])?.toString();
+    if (prodId == null || prodId.trim().isEmpty) return;
+
+    try {
+      final fresh = await ProductApiService.fetchProductDetails(prodId);
+      if (fresh != null && mounted) {
+        setState(() {
+          _product.addAll(fresh);
+          final variants = _productVariants;
+          if (variants.isNotEmpty) {
+            final curVid = _selectedVariant?['variantId']?.toString() ?? widget.product['variantId']?.toString();
+            final curUnit = _selectedVariant?['unit']?.toString().trim() ?? widget.product['unit']?.toString().trim();
+            if (curVid != null && curVid.isNotEmpty) {
+              _selectedVariant = variants.firstWhere(
+                (v) => v['variantId']?.toString() == curVid,
+                orElse: () => variants.first,
+              );
+            } else if (curUnit != null && curUnit.isNotEmpty) {
+              _selectedVariant = variants.firstWhere(
+                (v) => (v['unit']?.toString().trim().toLowerCase() ?? '') == curUnit.toLowerCase(),
+                orElse: () => variants.first,
+              );
+            } else {
+              _selectedVariant ??= variants.first;
+            }
+          }
+          CartManager.instance.productDetails[_activeCartKey] = _getActiveProductMap();
+        });
+        if (_similarProducts.isEmpty) {
+          _loadSimilarAndCrossSellProducts();
+        }
+      }
+    } catch (_) {
+      // Retain existing cached/passed product on network failure
     }
   }
 
@@ -124,7 +217,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   Widget build(BuildContext context) {
     final int stock = _selectedVariant != null && _selectedVariant!['stock'] != null
         ? ((_selectedVariant!['stock'] as num).toInt())
-        : CartManager.instance.getStock(widget.product);
+        : CartManager.instance.getStock(_product);
 
     return Scaffold(
       backgroundColor: AppColors.screenColor,
@@ -172,7 +265,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         if (images.isEmpty) {
                           return Center(
                             child: _buildProductHeroImage(
-                              widget.product['image'],
+                              _product['image'],
                               widget.storeType,
                             ),
                           );
@@ -226,7 +319,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       SizedBox(height: Responsive.h(20)),
 
                       // Subsidized Badge (if applicable)
-                      if (widget.product['isSubsidized'] == true) ...[
+                      if (_product['isSubsidized'] == true) ...[
                         Container(
                           margin: EdgeInsets.only(bottom: Responsive.h(8)),
                           padding: EdgeInsets.symmetric(
@@ -245,7 +338,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                               SizedBox(width: Responsive.w(4)),
                               Flexible(
                                 child: Text(
-                                  'Govt Subsidized Rate${(widget.product['subsidyLimit'] != null && widget.product['subsidyLimit'].toString().trim().isNotEmpty) ? ' (Limit: ${widget.product['subsidyLimit']})' : ''}',
+                                  'Govt Subsidized Rate${(_product['subsidyLimit'] != null && _product['subsidyLimit'].toString().trim().isNotEmpty) ? ' (Limit: ${_product['subsidyLimit']})' : ''}',
                                   style: const TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
@@ -296,7 +389,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
                       // Product Title with dynamic unit
                       CustomText.header(
-                        '${widget.product['title']} ($_currentUnit)',
+                        '${_product['title']} ($_currentUnit)',
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
@@ -306,13 +399,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       Builder(builder: (context) {
                         final double price = _selectedVariant != null
                             ? ((_selectedVariant!['price'] as num?)?.toDouble() ?? 0.0)
-                            : ((widget.product['price'] as num?)?.toDouble() ?? 0.0);
+                            : ((_product['price'] as num?)?.toDouble() ?? 0.0);
                         final double origPrice = _selectedVariant != null
                             ? ((_selectedVariant!['originalPrice'] as num?)?.toDouble() ?? price)
-                            : ((widget.product['originalPrice'] as num?)?.toDouble() ?? price);
+                            : ((_product['originalPrice'] as num?)?.toDouble() ?? price);
                         final int discount = origPrice > price && origPrice > 0
                             ? (((origPrice - price) / origPrice) * 100).round()
-                            : ((widget.product['discountPercentage'] as num?)?.toInt() ?? 0);
+                            : ((_product['discountPercentage'] as num?)?.toInt() ?? 0);
 
                         return Row(
                           children: [
@@ -366,7 +459,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                               onTap: () {
                                 setState(() {
                                   _selectedVariant = v;
-                                  CartManager.instance.productDetails[widget.product['id']] = _getActiveProductMap();
+                                  CartManager.instance.productDetails[_activeCartKey] = _getActiveProductMap();
                                 });
                               },
                               borderRadius: BorderRadius.circular(Responsive.w(10)),
@@ -495,13 +588,17 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       const Divider(),
                       SizedBox(height: Responsive.h(16)),
 
-                      // Section similar products
-                      _buildCrossSellSection('Similar products'),
-                      SizedBox(height: Responsive.h(24)),
+                      // Section similar products (Real-time from store/category)
+                      if (_similarProducts.isNotEmpty) ...[
+                        _buildCrossSellSection('Similar Products', _similarProducts),
+                        SizedBox(height: Responsive.h(24)),
+                      ],
 
-                      // Section you may also like
-                      _buildCrossSellSection('You May Also Like..'),
-                      SizedBox(height: Responsive.h(24)),
+                      // Section you may also like (Real-time cross-sell from store)
+                      if (_youMayAlsoLike.isNotEmpty) ...[
+                        _buildCrossSellSection('You May Also Like..', _youMayAlsoLike),
+                        SizedBox(height: Responsive.h(24)),
+                      ],
 
                       // Bottom Trust/Value Badges
                       _buildTrustBadgesRow(),
@@ -566,7 +663,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       Row(
                         children: [
                           CommonWishlistButton(
-                            product: widget.product,
+                            product: _product,
                             isCircleStyle: true,
                           ),
                           SizedBox(width: Responsive.w(8)),
@@ -675,7 +772,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   Widget _buildCartActionButton() {
     final int qty = _quantity;
-    final int stock = CartManager.instance.getStock(widget.product);
+    final int stock = CartManager.instance.getStock(_product);
     final bool isOutOfStock = stock <= 0;
     final bool isMaxStock = qty >= stock;
 
@@ -811,30 +908,30 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 children: [
                   _buildSpecRow(
                     'Pack of',
-                    widget.product['packOf']?.toString() ?? '1',
+                    _product['packOf']?.toString() ?? '1',
                     'Brand',
-                    widget.product['brand']?.toString() ?? 'Unbranded',
+                    _product['brand']?.toString() ?? 'Unbranded',
                   ),
                   const Divider(),
                   _buildSpecRow(
                     'Type',
-                    widget.product['type']?.toString() ?? (widget.storeType == 'medical' ? 'Medicine' : 'Grocery'),
+                    _product['type']?.toString() ?? (widget.storeType == 'medical' ? 'Medicine' : 'Grocery'),
                     'Quantity',
                     _currentUnit,
                   ),
                   const Divider(),
                   _buildSpecRow(
                     'Shelf Life',
-                    widget.product['shelfLife']?.toString() ?? '7 Days',
+                    _product['shelfLife']?.toString() ?? '7 Days',
                     'Form Factor',
-                    widget.product['formFactor']?.toString() ?? 'Standard',
+                    _product['formFactor']?.toString() ?? 'Standard',
                   ),
                   const Divider(),
                   _buildSpecRow(
                     'Subsidized',
-                    widget.product['isSubsidized'] == true ? 'Yes (Govt Scheme)' : 'No',
+                    _product['isSubsidized'] == true ? 'Yes (Govt Scheme)' : 'No',
                     'Origin',
-                    widget.product['origin']?.toString() ?? 'India',
+                    _product['origin']?.toString() ?? 'India',
                   ),
                 ],
               ),
@@ -976,11 +1073,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       ? Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if ((widget.product['description'] ?? '').toString().trim().isNotEmpty) ...[
+                            if ((_product['description'] ?? '').toString().trim().isNotEmpty) ...[
                               CustomText.subtitle('Description', fontSize: 10, color: Colors.grey),
                               SizedBox(height: Responsive.h(2)),
                               CustomText.title(
-                                widget.product['description'].toString(),
+                                _product['description'].toString(),
                                 fontSize: 12,
                                 fontWeight: FontWeight.normal,
                               ),
@@ -989,7 +1086,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                             CustomText.subtitle('Generic name', fontSize: 10, color: Colors.grey),
                             SizedBox(height: Responsive.h(2)),
                             CustomText.title(
-                              widget.product['type']?.toString() ?? (widget.storeType == 'medical' ? 'Medicine' : 'Grocery'),
+                              _product['type']?.toString() ?? (widget.storeType == 'medical' ? 'Medicine' : 'Grocery'),
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
@@ -997,7 +1094,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                             CustomText.subtitle('Country of origin', fontSize: 10, color: Colors.grey),
                             SizedBox(height: Responsive.h(2)),
                             CustomText.title(
-                              widget.product['origin']?.toString() ?? 'India',
+                              _product['origin']?.toString() ?? 'India',
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
@@ -1083,7 +1180,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     );
   }
 
-  Widget _buildCrossSellSection(String heading) {
+  Widget _buildCrossSellSection(String heading, List<Map<String, dynamic>> items) {
+    if (items.isEmpty) return const SizedBox.shrink();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1106,7 +1205,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                   RouteConstants.allProducts,
                   arguments: {
                     'title': heading,
-                    'products': _similarProducts,
+                    'products': items,
                     'storeType': widget.storeType,
                   },
                 );
@@ -1121,9 +1220,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
-            itemCount: _similarProducts.length,
+            itemCount: items.length,
             itemBuilder: (context, index) {
-              final prod = _similarProducts[index];
+              final prod = items[index];
               return Padding(
                 padding: EdgeInsets.only(right: Responsive.w(12)),
                 child: _buildCrossSellCard(prod, index),
@@ -1136,112 +1235,130 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   }
 
   Widget _buildCrossSellCard(Map<String, dynamic> prod, int index) {
-    final String id = prod['id'];
+    final String id = (prod['id'] ?? prod['productId'] ?? '')?.toString() ?? '';
     final int qty = CartManager.instance.getQuantity(id);
+    final double price = (prod['price'] as num?)?.toDouble() ?? 0.0;
+    final double origPrice = (prod['originalPrice'] as num?)?.toDouble() ?? price;
+    final int discount = origPrice > price && origPrice > 0 ? (((origPrice - price) / origPrice) * 100).round() : 0;
+    final String title = (prod['title'] ?? prod['name'] ?? 'Product').toString();
+    final String? img = prod['image']?.toString();
 
-    return Container(
-      width: Responsive.w(140),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(Responsive.w(16)),
-        border: Border.all(color: AppColors.outliner, width: 1.2),
-      ),
-      padding: EdgeInsets.all(Responsive.w(10)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Heart icon + Image
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              if (index == 1)
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: Responsive.w(4), vertical: Responsive.h(2)),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
-                    borderRadius: BorderRadius.circular(Responsive.w(4)),
-                  ),
-                  child: const Text('Only 3 left', style: TextStyle(color: Colors.green, fontSize: 7, fontWeight: FontWeight.bold)),
-                )
-              else
-                const Spacer(),
-              CommonWishlistButton(
-                product: prod,
-                size: 16,
-              ),
-            ],
-          ),
-          SizedBox(height: Responsive.h(4)),
-          Center(
-            child: _buildProductHeroImage(
-              prod['image'],
-              widget.storeType,
-              height: Responsive.h(60),
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).pushNamed(
+          RouteConstants.productDetails,
+          arguments: {
+            'product': prod,
+            'storeType': widget.storeType,
+          },
+        );
+      },
+      child: Container(
+        width: Responsive.w(140),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(Responsive.w(16)),
+          border: Border.all(color: AppColors.outliner, width: 1.2),
+        ),
+        padding: EdgeInsets.all(Responsive.w(10)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Heart icon + Image
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (index == 1)
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: Responsive.w(4), vertical: Responsive.h(2)),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(Responsive.w(4)),
+                    ),
+                    child: const Text('Fast Delivery', style: TextStyle(color: Colors.green, fontSize: 7, fontWeight: FontWeight.bold)),
+                  )
+                else
+                  const Spacer(),
+                CommonWishlistButton(
+                  product: prod,
+                  size: 16,
+                ),
+              ],
             ),
-          ),
-          const Spacer(),
-          CustomText.title(prod['title'], fontSize: 11, maxLines: 1),
-          SizedBox(height: Responsive.h(2)),
-          Row(
-            children: [
-              const Icon(Icons.arrow_downward, color: Colors.green, size: 8),
-              const Text('68% ', style: TextStyle(color: Colors.green, fontSize: 9, fontWeight: FontWeight.bold)),
-              Text('₹307 ', style: TextStyle(color: Colors.grey.shade400, fontSize: 8, decoration: TextDecoration.lineThrough)),
-              const Text('₹99', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          SizedBox(height: Responsive.h(6)),
-
-          // Qty selector
-          if (qty > 0)
-            Container(
-              height: Responsive.h(28),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(Responsive.w(14)),
+            SizedBox(height: Responsive.h(4)),
+            Center(
+              child: _buildProductHeroImage(
+                img,
+                widget.storeType,
+                height: Responsive.h(60),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.remove, color: Colors.white, size: 12),
-                    onPressed: () {
-                      CartManager.instance.updateQuantity(prod, qty - 1);
-                    },
-                  ),
-                  Text(qty.toString().padLeft(2, '0'), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.add, color: Colors.white, size: 12),
-                    onPressed: () {
-                      CartManager.instance.updateQuantity(prod, qty + 1);
-                    },
-                  ),
+            ),
+            const Spacer(),
+            CustomText.title(title, fontSize: 11, maxLines: 1),
+            SizedBox(height: Responsive.h(2)),
+            Row(
+              children: [
+                if (discount > 0) ...[
+                  const Icon(Icons.arrow_downward, color: Colors.green, size: 8),
+                  Text('$discount% ', style: const TextStyle(color: Colors.green, fontSize: 9, fontWeight: FontWeight.bold)),
+                  Text('₹${origPrice.toStringAsFixed(0)} ', style: TextStyle(color: Colors.grey.shade400, fontSize: 8, decoration: TextDecoration.lineThrough)),
                 ],
-              ),
-            )
-          else
-            Align(
-              alignment: Alignment.centerRight,
-              child: GestureDetector(
-                onTap: () {
-                  CartManager.instance.updateQuantity(prod, 1);
-                },
-                child: Container(
-                  width: Responsive.w(24),
-                  height: Responsive.w(24),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.primary, width: 1.2),
+                Text('₹${price.toStringAsFixed(0)}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            SizedBox(height: Responsive.h(6)),
+
+            // Qty selector
+            if (qty > 0)
+              Container(
+                height: Responsive.h(28),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(Responsive.w(14)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: const Icon(Icons.remove, color: Colors.white, size: 12),
+                      onPressed: () {
+                        CartManager.instance.updateQuantity(prod, qty - 1);
+                      },
+                    ),
+                    Text(qty.toString().padLeft(2, '0'), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: const Icon(Icons.add, color: Colors.white, size: 12),
+                      onPressed: () {
+                        CartManager.instance.updateQuantity(prod, qty + 1);
+                      },
+                    ),
+                  ],
+                ),
+              )
+            else
+              Align(
+                alignment: Alignment.centerRight,
+                child: GestureDetector(
+                  onTap: () {
+                    CartManager.instance.updateQuantity(prod, 1);
+                  },
+                  child: Container(
+                    width: Responsive.w(24),
+                    height: Responsive.w(24),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.primary, width: 1.2),
+                    ),
+                    child: const Icon(Icons.add, color: AppColors.primary, size: 14),
                   ),
-                  child: const Icon(Icons.add, color: AppColors.primary, size: 14),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

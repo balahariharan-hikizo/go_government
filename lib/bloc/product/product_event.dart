@@ -10,10 +10,21 @@ abstract class ProductEvent extends Equatable {
 class LoadProducts extends ProductEvent {
   final String storeId;
   final String storeType; // 'medical' or 'vegstore'
-  const LoadProducts({required this.storeId, required this.storeType});
+  final String? category;
+  const LoadProducts({required this.storeId, required this.storeType, this.category});
 
   @override
-  List<Object?> get props => [storeId, storeType];
+  List<Object?> get props => [storeId, storeType, category];
+}
+
+class LoadMoreProducts extends ProductEvent {
+  final String storeId;
+  final String storeType;
+  final String? category;
+  const LoadMoreProducts({required this.storeId, required this.storeType, this.category});
+
+  @override
+  List<Object?> get props => [storeId, storeType, category];
 }
 
 class FilterProducts extends ProductEvent {

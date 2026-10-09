@@ -16,7 +16,7 @@ import '../../network/store_order_api_service.dart';
 import '../../network/auth_api_service.dart';
 import '../../services/notification_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import '../../service/socket_service.dart';
+import '../../services/socket_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/responsive_helper.dart';
 import '../../widget/common_background.dart';

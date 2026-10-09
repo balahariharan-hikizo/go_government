@@ -7,6 +7,11 @@ class LoadStoreProductsEvent extends ProductEvent {
   LoadStoreProductsEvent(this.storeId);
 }
 
+class LoadMoreStoreProductsEvent extends ProductEvent {
+  final String storeId;
+  LoadMoreStoreProductsEvent(this.storeId);
+}
+
 class AddProductEvent extends ProductEvent {
   final ProductModel product;
   AddProductEvent(this.product);
@@ -33,4 +38,3 @@ class AdjustProductStockEvent extends ProductEvent {
   final int delta;
   AdjustProductStockEvent({required this.productId, required this.delta});
 }
-

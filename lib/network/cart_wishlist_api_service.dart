@@ -46,10 +46,17 @@ class CartWishlistApiService {
   }) async {
     final uid = _getUserId(userId);
     final url = '${ApiClient.baseUrl}/cart/add';
+    final basePid = productId.contains(':')
+        ? productId.split(':').first
+        : (product['productId'] ?? product['id'] ?? productId).toString();
+    final vid = (product['variantId'] ?? (productId.contains(':') ? productId.split(':').last : '')).toString();
     final payload = jsonEncode({
       'userId': uid,
-      'productId': productId,
+      'productId': basePid,
+      'variantId': vid,
       'quantity': quantity,
+      if (product['unit'] != null) 'unit': product['unit'].toString(),
+      if (product['price'] != null) 'price': product['price'],
       'product': product,
     });
 
@@ -76,10 +83,17 @@ class CartWishlistApiService {
   }) async {
     final uid = _getUserId(userId);
     final url = '${ApiClient.baseUrl}/cart/update';
+    final basePid = productId.contains(':')
+        ? productId.split(':').first
+        : (product?['productId'] ?? product?['id'] ?? productId).toString();
+    final vid = (product?['variantId'] ?? (productId.contains(':') ? productId.split(':').last : '')).toString();
     final payload = jsonEncode({
       'userId': uid,
-      'productId': productId,
+      'productId': basePid,
+      'variantId': vid,
       'quantity': quantity,
+      if (product != null && product['unit'] != null) 'unit': product['unit'].toString(),
+      if (product != null && product['price'] != null) 'price': product['price'],
       'product': product ?? {},
     });
 
@@ -103,7 +117,10 @@ class CartWishlistApiService {
     String? userId,
   }) async {
     final uid = _getUserId(userId);
-    final url = '${ApiClient.baseUrl}/cart/$uid/item/$productId';
+    final basePid = productId.contains(':') ? productId.split(':').first : productId;
+    final vid = productId.contains(':') ? productId.split(':').last : '';
+    final query = vid.isNotEmpty ? '?variantId=$vid' : '';
+    final url = '${ApiClient.baseUrl}/cart/$uid/item/$basePid$query';
 
     try {
       ApiClient.logRequest('DELETE', url);
@@ -151,9 +168,14 @@ class CartWishlistApiService {
       final id = e.key;
       final qty = e.value;
       final details = productDetails[id] ?? {'id': id};
+      final basePid = id.contains(':') ? id.split(':').first : (details['productId'] ?? details['id'] ?? id).toString();
+      final vid = (details['variantId'] ?? (id.contains(':') ? id.split(':').last : '')).toString();
       return {
-        'productId': id,
+        'productId': basePid,
+        'variantId': vid,
         'quantity': qty,
+        if (details['unit'] != null) 'unit': details['unit'].toString(),
+        if (details['price'] != null) 'price': details['price'],
         'product': details,
       };
     }).toList();

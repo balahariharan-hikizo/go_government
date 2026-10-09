@@ -64,8 +64,24 @@ class CartManager {
     return 5;
   }
 
+  static String getCartKey(Map<String, dynamic> product) {
+    final pid = (product['productId'] ?? product['id'])?.toString() ?? '';
+    if (pid.contains(':')) return pid;
+    String vid = product['variantId']?.toString() ?? '';
+    if (vid.isEmpty && product['variants'] is List && (product['variants'] as List).isNotEmpty) {
+      final firstVar = (product['variants'] as List).first;
+      if (firstVar is Map && firstVar['variantId'] != null) {
+        vid = firstVar['variantId'].toString();
+      }
+    }
+    if (vid.isNotEmpty) {
+      return '$pid:$vid';
+    }
+    return pid;
+  }
+
   bool canIncrement(Map<String, dynamic> product, {int? currentQty}) {
-    final id = product['id']?.toString() ?? '';
+    final id = getCartKey(product);
     final qty = currentQty ?? getQuantity(id);
     return qty < getStock(product);
   }
@@ -77,7 +93,7 @@ class CartManager {
   }
 
   bool addToCart(Map<String, dynamic> product, {int qty = 1, String? productId, BuildContext? context}) {
-    final id = productId ?? product['id']?.toString() ?? product['productId']?.toString() ?? '';
+    final id = productId ?? getCartKey(product);
     if (id.isEmpty) return false;
 
     // Multi-Store check: Prevent mixing products from different stores in the same cart
@@ -161,11 +177,21 @@ class CartManager {
       return false;
     }
 
+    // Auto-clean any legacy un-suffixed key for this product to prevent duplicate cards
+    if (id.contains(':')) {
+      final baseId = id.split(':').first;
+      if (cartItems.value.containsKey(baseId) && baseId != id) {
+        cartItems.value.remove(baseId);
+        productDetails.remove(baseId);
+        CartBloc.instance.add(RemoveFromCartEvent(baseId));
+      }
+    }
+
     if (product.isNotEmpty) {
       final normalized = {
         ...product,
         'id': id,
-        'productId': id,
+        'productId': id.contains(':') ? id.split(':').first : id,
         if (product['name'] != null && product['title'] == null) 'title': product['name'],
         if (product['imageUrl'] != null && product['image'] == null) 'image': product['imageUrl'],
       };
@@ -178,7 +204,7 @@ class CartManager {
   }
 
   bool updateQuantity(Map<String, dynamic> product, int qty, {String? productId, BuildContext? context}) {
-    final id = productId ?? product['id']?.toString() ?? product['productId']?.toString() ?? '';
+    final id = productId ?? getCartKey(product);
     if (id.isEmpty) return false;
     final stock = getStock(product);
 
@@ -195,13 +221,30 @@ class CartManager {
       return false;
     }
 
+    // Auto-clean any legacy un-suffixed key for this product to prevent duplicate cards
+    if (id.contains(':')) {
+      final baseId = id.split(':').first;
+      if (cartItems.value.containsKey(baseId) && baseId != id) {
+        cartItems.value.remove(baseId);
+        productDetails.remove(baseId);
+        CartBloc.instance.add(RemoveFromCartEvent(baseId));
+      }
+    }
+
     if (product.isNotEmpty) {
-      productDetails[id] = {...productDetails[id] ?? {}, ...product, 'id': id};
+      final normalized = {
+        ...product,
+        'id': id,
+        'productId': id.contains(':') ? id.split(':').first : id,
+        if (product['name'] != null && product['title'] == null) 'title': product['name'],
+        if (product['imageUrl'] != null && product['image'] == null) 'image': product['imageUrl'],
+      };
+      productDetails[id] = {...productDetails[id] ?? {}, ...normalized};
     }
     CartBloc.instance.add(UpdateQuantityEvent(
       id,
       qty,
-      details: product.isNotEmpty ? product : productDetails[id],
+      details: product.isNotEmpty ? productDetails[id] : null,
     ));
     return true;
   }
@@ -232,8 +275,32 @@ class CartManager {
     CartBloc.instance.add(RemoveFromCartEvent(productId));
   }
 
-  int getQuantity(String productId) {
-    return CartBloc.instance.state.cartItems[productId] ?? 0;
+  int getQuantity(String keyOrProductId) {
+    if (cartItems.value.containsKey(keyOrProductId)) {
+      return cartItems.value[keyOrProductId] ?? 0;
+    }
+    // 1. If keyOrProductId is composite 'PROD_00001:VAR_01', check if legacy base 'PROD_00001' is in cart
+    if (keyOrProductId.contains(':')) {
+      final baseId = keyOrProductId.split(':').first;
+      final vid = keyOrProductId.split(':').last;
+      if (cartItems.value.containsKey(baseId)) {
+        final details = productDetails[baseId];
+        final dVid = details?['variantId']?.toString() ?? '';
+        final dUnit = details?['unit']?.toString().toLowerCase().trim() ?? '';
+        final targetUnit = productDetails[keyOrProductId]?['unit']?.toString().toLowerCase().trim() ?? '';
+        if (dVid == vid || (dUnit.isNotEmpty && targetUnit.isNotEmpty && dUnit == targetUnit) || dVid.isEmpty) {
+          return cartItems.value[baseId] ?? 0;
+        }
+      }
+    }
+    // 2. If a base productId is passed (without variant), check if any variant exists and sum
+    int sum = 0;
+    for (final entry in cartItems.value.entries) {
+      if (entry.key == keyOrProductId || entry.key.startsWith('$keyOrProductId:')) {
+        sum += entry.value;
+      }
+    }
+    return sum;
   }
 
   int get totalCartCount {

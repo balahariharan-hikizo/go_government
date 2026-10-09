@@ -52,6 +52,10 @@ const ProductSchema = new mongoose.Schema(
     // Government Subsidy Fields (for Ration / PDS / Essential stores)
     isSubsidized: { type: Boolean, default: false },
     subsidyLimit: { type: String, default: '', trim: true },
+
+    // Soft Delete Flag (Preserves past orders & invoice history)
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
   },
   {
     timestamps: true,

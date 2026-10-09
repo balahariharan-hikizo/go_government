@@ -8,7 +8,18 @@ class ProductLoading extends ProductState {}
 
 class ProductLoaded extends ProductState {
   final List<ProductModel> products;
-  ProductLoaded(this.products);
+  final bool hasMore;
+  final int page;
+  final int total;
+  final bool isLoadingMore;
+
+  ProductLoaded(
+    this.products, {
+    this.hasMore = false,
+    this.page = 1,
+    this.total = 0,
+    this.isLoadingMore = false,
+  });
 }
 
 class ProductSubmitting extends ProductState {}

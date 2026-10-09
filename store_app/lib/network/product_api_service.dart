@@ -6,25 +6,75 @@ import 'api_client.dart';
 class ProductApiService {
   ProductApiService._();
 
-  static Future<List<ProductModel>> getProductsByStore(String storeId) async {
-    final url = '${ApiClient.baseUrl}/products/store/$storeId';
+  /// 1. Fetch products for a specific store (Delegates to getProductsByStorePaginated, returns pure List)
+  static Future<List<ProductModel>> getProductsByStore(
+    String storeId, {
+    int? page,
+    int? limit,
+    String? category,
+    String? search,
+  }) async {
+    final res = await getProductsByStorePaginated(
+      storeId,
+      page: page ?? 1,
+      limit: limit ?? 20,
+      category: category,
+      search: search,
+    );
+    final rawList = res['products'];
+    if (rawList is List<ProductModel>) {
+      return rawList;
+    }
+    return [];
+  }
+
+  static Future<Map<String, dynamic>> getProductsByStorePaginated(
+    String storeId, {
+    int page = 1,
+    int limit = 20,
+    String? category,
+    String? search,
+  }) async {
+    final queryParams = <String, String>{
+      'page': page.toString(),
+      'limit': limit.toString(),
+    };
+    if (category != null && category.isNotEmpty && category != 'all') {
+      queryParams['category'] = category;
+    }
+    if (search != null && search.trim().isNotEmpty) {
+      queryParams['search'] = search.trim();
+    }
+
+    final uri = Uri.parse('${ApiClient.baseUrl}/products/store/$storeId').replace(
+      queryParameters: queryParams,
+    );
+    final url = uri.toString();
 
     try {
       ApiClient.logRequest('GET', url);
       final response = await http
-          .get(Uri.parse(url), headers: ApiClient.defaultHeaders)
+          .get(uri, headers: ApiClient.defaultHeaders)
           .timeout(const Duration(seconds: 10));
 
       ApiClient.logResponse('GET', url, response.statusCode, response.body);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final list = data['products'] as List<dynamic>? ?? [];
-        return list.map((e) => ProductModel.fromJson(e as Map<String, dynamic>)).toList();
+        final list = (data['products'] as List<dynamic>? ?? [])
+            .map((e) => ProductModel.fromJson(e as Map<String, dynamic>))
+            .toList();
+        return {
+          'products': list,
+          'hasMore': data['hasMore'] == true,
+          'total': data['total'] ?? list.length,
+          'page': data['page'] ?? page,
+          'totalPages': data['totalPages'] ?? 1,
+        };
       }
     } catch (e) {
       ApiClient.logError('GET', url, e);
     }
-    return [];
+    return {'products': <ProductModel>[], 'hasMore': false, 'total': 0, 'page': page, 'totalPages': 1};
   }
 
   static Future<Map<String, dynamic>?> addProduct(ProductModel product) async {

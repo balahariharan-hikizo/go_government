@@ -237,7 +237,10 @@ exports.syncCart = async (req, res) => {
 
     const formattedItems = items.map((it) => ({
       productId: (it.productId || it.id).toString(),
-      quantity: Number(it.quantity || 1),
+      variantId: it.variantId || (it.product && it.product.variantId) || '',
+      unit: it.unit || (it.product && it.product.unit) || '1 Units',
+      price: it.price !== undefined ? Number(it.price) : (it.product && it.product.price ? Number(it.product.price) : 0),
+      quantity: Math.max(1, Number(it.quantity || 1)),
       product: it.product || {},
     }));
 

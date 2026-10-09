@@ -78,45 +78,7 @@ exports.toggleWishlist = async (req, res) => {
   }
 };
 
-// 3. REMOVE Item from Wishlist
-exports.removeItem = async (req, res) => {
-  try {
-    const { userId, productId } = req.params;
-    if (!userId || !productId) {
-      return res.status(400).json({ success: false, message: 'userId and productId are required' });
-    }
-
-    const wishlist = await Wishlist.findOne({ userId });
-    if (!wishlist) {
-      return res.status(200).json({
-        success: true,
-        message: 'Wishlist is already empty',
-        data: { userId, items: [], favoriteIds: [], totalCount: 0 },
-      });
-    }
-
-    wishlist.items = wishlist.items.filter((item) => item.productId !== productId.toString());
-    await wishlist.save();
-
-    const favoriteIds = wishlist.items.map((item) => item.productId);
-
-    return res.status(200).json({
-      success: true,
-      message: 'Item removed from wishlist',
-      data: {
-        userId: wishlist.userId,
-        items: wishlist.items,
-        favoriteIds,
-        totalCount: wishlist.items.length,
-      },
-    });
-  } catch (error) {
-    console.error('Error removing from wishlist:', error);
-    return res.status(500).json({ success: false, message: 'Failed to remove from wishlist', error: error.message });
-  }
-};
-
-// 4. SYNC Full Wishlist (Bulk)
+// 3. SYNC Full Wishlist (Bulk)
 exports.syncWishlist = async (req, res) => {
   try {
     const { userId } = req.params;

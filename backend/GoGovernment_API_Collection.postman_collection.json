@@ -703,7 +703,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/products/store/{{storeId}}",
+              "raw": "{{baseUrl}}/products/store/{{storeId}}?page=1&limit=20",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -711,9 +711,33 @@
                 "products",
                 "store",
                 "{{storeId}}"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number for infinite scroll"
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Items per page (default: 20)"
+                },
+                {
+                  "key": "category",
+                  "value": "ration",
+                  "description": "Filter by category (optional)",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "rice",
+                  "description": "Server-side search query (optional)",
+                  "disabled": true
+                }
               ]
             },
-            "description": "• Route: `GET /api/products/store/:storeId`\n• Citizen App: `store_details_screen.dart`\n• Store App: Products Inventory"
+            "description": "• Route: `GET /api/products/store/:storeId`\n• Citizen App: `store_details_screen.dart`\n• Store App: Products Inventory\n• Supports Pagination: `?page=1&limit=20` with `hasMore: true/false`"
           }
         },
         {

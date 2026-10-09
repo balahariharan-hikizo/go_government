@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const Store = require('../models/Store');
 const { getNextSequence } = require('../utils/sequenceGenerator');
@@ -40,9 +41,12 @@ exports.createProduct = async (req, res) => {
       subsidyLimit,
     } = req.body;
 
-    if (!storeId || !title || price === undefined) {
+    const targetTitle = (req.body.title || req.body.name || '').toString().trim();
+    const targetStock = req.body.stock !== undefined ? Number(req.body.stock) : (req.body.stockQuantity !== undefined ? Number(req.body.stockQuantity) : 0);
+
+    if (!storeId || !targetTitle || price === undefined) {
       return res.status(400).json({
-        error: 'Missing required fields: storeId, title, and price are mandatory',
+        error: 'Missing required fields: storeId, title (or name), and price are mandatory',
       });
     }
 
@@ -75,13 +79,15 @@ exports.createProduct = async (req, res) => {
       formattedVariants = variants.map((v, idx) => {
         const vPrice = Number(v.price || numericPrice);
         const vOrig = v.originalPrice !== undefined ? Number(v.originalPrice) : 0;
+        const vUnit = v.unit || v.weight || '1 Units';
+        const vStock = v.stock !== undefined ? Number(v.stock) : (v.stockQuantity !== undefined ? Number(v.stockQuantity) : targetStock);
         return {
           variantId: `${productId}_V${idx + 1}`,
-          unit: v.unit || '1 Units',
+          unit: vUnit,
           price: vPrice,
           originalPrice: vOrig,
           discountPercentage: calculateDiscount(vPrice, vOrig),
-          stock: v.stock !== undefined ? Number(v.stock) : (stock !== undefined ? Number(stock) : 10),
+          stock: vStock,
           isAvailable: v.isAvailable !== undefined ? Boolean(v.isAvailable) : true,
           image: v.image || '',
         };
@@ -91,13 +97,13 @@ exports.createProduct = async (req, res) => {
     const newProduct = new Product({
       productId,
       storeId,
-      title,
+      title: targetTitle,
       category: category || store.category || 'general',
       unit: unit || (formattedVariants.length > 0 ? formattedVariants[0].unit : '1 Units'),
       price: numericPrice,
       originalPrice: numericOrig,
       discountPercentage: discountStr,
-      stock: stock !== undefined ? Number(stock) : 10,
+      stock: targetStock,
       isAvailable: isAvailable !== undefined ? Boolean(isAvailable) : true,
       image: primaryImage,
       images: imagesList,
@@ -129,15 +135,48 @@ exports.createProduct = async (req, res) => {
   }
 };
 
-// 2. GET ALL PRODUCTS FOR A STORE
+// 2. GET ALL PRODUCTS FOR A STORE (Supports Pagination, hasMore, Category, Search)
 exports.getProductsByStore = async (req, res) => {
   try {
     const { storeId } = req.params;
-    const products = await Product.find({ storeId }).sort({ createdAt: -1 });
+    const { category, search } = req.query;
+
+    const query = { storeId, isDeleted: { $ne: true } };
+    if (category && category !== 'all') {
+      query.category = new RegExp(`^${category}$`, 'i');
+    }
+    if (search && search.trim()) {
+      query.$or = [
+        { title: { $regex: search.trim(), $options: 'i' } },
+        { brand: { $regex: search.trim(), $options: 'i' } },
+      ];
+    }
+
+    const total = await Product.countDocuments(query);
+
+    let queryBuilder = Product.find(query).sort({ createdAt: -1 });
+
+    const hasPagination = req.query.page !== undefined || req.query.limit !== undefined;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = req.query.limit !== undefined ? Math.max(1, parseInt(req.query.limit, 10)) : 0;
+
+    if (hasPagination && limit > 0) {
+      const skip = (page - 1) * limit;
+      queryBuilder = queryBuilder.skip(skip).limit(limit);
+    }
+
+    const products = await queryBuilder;
+    const effectiveLimit = limit > 0 ? limit : (total || 1);
+    const totalPages = limit > 0 ? Math.ceil(total / limit) : 1;
+    const hasMore = limit > 0 ? page * limit < total : false;
 
     res.status(200).json({
       success: true,
-      count: products.length,
+      productCount: products.length,
+      totalProducts: total,
+      page: hasPagination ? page : 1,
+      totalPages: hasPagination ? totalPages : 1,
+      hasMore: hasPagination ? hasMore : false,
       products,
     });
   } catch (error) {
@@ -150,7 +189,12 @@ exports.getProductsByStore = async (req, res) => {
 exports.getProductById = async (req, res) => {
   try {
     const { productId } = req.params;
-    const product = await Product.findOne({ productId });
+    const product = await Product.findOne({
+      $or: [
+        { productId },
+        { _id: productId.match(/^[0-9a-fA-F]{24}$/) ? productId : null },
+      ],
+    });
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
@@ -165,11 +209,21 @@ exports.getProductById = async (req, res) => {
 exports.updateProduct = async (req, res) => {
   try {
     const { productId } = req.params;
-    const updateData = { ...req.body };
+    const isObjectId = mongoose.Types.ObjectId.isValid(productId);
+    const query = isObjectId ? { $or: [{ productId }, { _id: productId }] } : { productId };
 
-    const existing = await Product.findOne({ productId });
+    const existing = await Product.findOne(query);
     if (!existing) {
       return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const updateData = { ...req.body };
+
+    if (updateData.name && !updateData.title) {
+      updateData.title = updateData.name;
+    }
+    if (updateData.stockQuantity !== undefined && updateData.stock === undefined) {
+      updateData.stock = Number(updateData.stockQuantity);
     }
 
     // Discount re-calculation if price changed
@@ -195,15 +249,17 @@ exports.updateProduct = async (req, res) => {
       updateData.variants = updateData.variants.map((v, idx) => {
         const vPrice = Number(v.price || updateData.price || existing.price);
         const vOrig = v.originalPrice !== undefined ? Number(v.originalPrice) : 0;
+        const vUnit = v.unit || v.weight || '1 Units';
+        const vStock = v.stock !== undefined ? Number(v.stock) : (v.stockQuantity !== undefined ? Number(v.stockQuantity) : 10);
         return {
-          variantId: (v.variantId && v.variantId.startsWith(`${productId}_V`))
+          variantId: (v.variantId && v.variantId.startsWith(`${existing.productId}_V`))
             ? v.variantId
-            : `${productId}_V${idx + 1}`,
-          unit: v.unit || '1 Units',
+            : `${existing.productId}_V${idx + 1}`,
+          unit: vUnit,
           price: vPrice,
           originalPrice: vOrig,
           discountPercentage: calculateDiscount(vPrice, vOrig),
-          stock: v.stock !== undefined ? Number(v.stock) : 10,
+          stock: vStock,
           isAvailable: v.isAvailable !== undefined ? Boolean(v.isAvailable) : true,
           image: v.image || '',
         };
@@ -211,7 +267,7 @@ exports.updateProduct = async (req, res) => {
     }
 
     const updated = await Product.findOneAndUpdate(
-      { productId },
+      query,
       { $set: updateData },
       { new: true, runValidators: true }
     );
@@ -232,7 +288,14 @@ exports.updateProduct = async (req, res) => {
 exports.deleteProduct = async (req, res) => {
   try {
     const { productId } = req.params;
-    const deleted = await Product.findOneAndDelete({ productId });
+    const isObjectId = mongoose.Types.ObjectId.isValid(productId);
+    const query = isObjectId ? { $or: [{ productId }, { _id: productId }] } : { productId };
+
+    const deleted = await Product.findOneAndUpdate(
+      query,
+      { $set: { isDeleted: true, isAvailable: false, deletedAt: new Date() } },
+      { new: true }
+    );
     if (!deleted) {
       return res.status(404).json({ error: 'Product not found' });
     }
@@ -240,6 +303,7 @@ exports.deleteProduct = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Product removed from store catalog',
+      productId: deleted.productId,
     });
   } catch (error) {
     console.error('Error deleting product:', error);
