@@ -61,6 +61,13 @@ class _RiderProfileScreenState extends State<RiderProfileScreen> {
               RouteConstants.dashboard,
               (route) => false,
             );
+          } else if (state is RiderAuthFailureState) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.error),
+                backgroundColor: AppColors.error,
+              ),
+            );
           }
         },
         builder: (context, state) {

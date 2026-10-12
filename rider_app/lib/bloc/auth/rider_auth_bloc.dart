@@ -120,12 +120,17 @@ class RiderAuthBloc extends Bloc<RiderAuthEvent, RiderAuthState> {
       final userId = HiveService.userId;
 
       // 1. Update backend with Name, Vehicle Type, and Vehicle Number
-      await RiderApiService.updateProfile(
+      final success = await RiderApiService.updateProfile(
         userId: userId,
         userName: event.name,
         vehicleType: event.vehicleType,
         vehicleNumber: event.vehicleNumber,
       );
+
+      if (!success) {
+        emit(const RiderAuthFailureState('Failed to save profile. Please try again.'));
+        return;
+      }
 
       // 2. Save locally and mark logged in only after profile is completed
       await HiveService.setUserName(event.name);
