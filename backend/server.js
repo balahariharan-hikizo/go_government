@@ -341,7 +341,7 @@ app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Health Check Endpoint
-app.get('/api/health', (req, res) => {
+app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'online',
     message: 'GoGovernment Node.js Backend is running smoothly 🚀',
@@ -350,7 +350,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Debug Endpoint for Rider Registry & Dispatches
-app.get('/api/debug/riders', (req, res) => {
+app.get('/debug/riders', (req, res) => {
   const riders = [];
   for (const [id, info] of riderRegistry.entries()) {
     riders.push({
@@ -371,19 +371,19 @@ app.get('/api/debug/riders', (req, res) => {
   });
 });
 
-// API Routes
-app.use('/api/complaints', complaintRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/addresses', addressRoutes);
-app.use('/api/stores', storeRoutes);
-app.use('/api/feedback', feedbackRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/cart', cartRoutes);
-app.use('/api/wishlist', wishlistRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/wallet', walletRoutes);
-app.use('/api/riders', riderRoutes);
+// API Routes (Clean direct mounts without /api)
+app.use('/complaints', complaintRoutes);
+app.use('/upload', uploadRoutes);
+app.use('/auth', authRoutes);
+app.use('/addresses', addressRoutes);
+app.use('/stores', storeRoutes);
+app.use('/feedback', feedbackRoutes);
+app.use('/products', productRoutes);
+app.use('/cart', cartRoutes);
+app.use('/wishlist', wishlistRoutes);
+app.use('/orders', orderRoutes);
+app.use('/wallet', walletRoutes);
+app.use('/riders', riderRoutes);
 
 // Connect to MongoDB & Start Server
 const MONGO_URI = process.env.MONGO_URI;
@@ -402,14 +402,14 @@ mongoose
 
     server.listen(PORT, '0.0.0.0', () => {
       console.log(` Server is running!`);
-      console.log(` Laptop URL: http://localhost:${PORT}/api/health`);
+      console.log(` Laptop URL: http://localhost:${PORT}/health`);
       
       // Auto-detect local Wi-Fi IP
       const nets = os.networkInterfaces();
       for (const name of Object.keys(nets)) {
         for (const net of nets[name]) {
           if (net.family === 'IPv4' && !net.internal) {
-            console.log(` Mobile URL (${name}): http://${net.address}:${PORT}/api/health`);
+            console.log(` Mobile URL (${name}): http://${net.address}:${PORT}/health`);
           }
         }
       }

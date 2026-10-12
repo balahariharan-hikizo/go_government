@@ -8,7 +8,7 @@ router.get('/all', complaintController.getAllComplaints);
 router.get('/:complaintId', complaintController.getComplaintById);
 router.get('/user/:userId', complaintController.getUserComplaints);
 
-// 2. Submit & Interactions
+// 2. Submit & Interactions 
 router.post('/create', complaintController.createComplaint);
 router.post('/:complaintId/like', complaintController.toggleLike);
 router.post('/:complaintId/comment', complaintController.addComment);
