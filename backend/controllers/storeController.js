@@ -525,3 +525,40 @@ exports.updateFcmToken = async (req, res) => {
     res.status(status).json({ error: 'Failed to update store FCM token', details: error.message });
   }
 };
+
+// 13. STORE LOGOUT (Clear FCM Token & Set Store Offline)
+exports.logout = async (req, res) => {
+  try {
+    const { storeId, phone } = req.body;
+
+    if (!storeId && !phone) {
+      return res.status(400).json({ error: 'storeId or phone is required' });
+    }
+
+    const query = {};
+    if (storeId && phone) query.$or = [{ storeId }, { phone: phone.toString().trim().replace(/[^0-9]/g, '').slice(-10) }];
+    else if (storeId) query.storeId = storeId;
+    else if (phone) query.phone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
+
+    const store = await Store.findOneAndUpdate(
+      query,
+      { $set: { fcmToken: '', isOnline: false } },
+      { new: true }
+    );
+
+    if (!store) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+
+    console.log(`🏪 [Store Logged Out] ${store.name} (${store.storeId}) set offline & FCM token cleared`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Store logged out successfully. Push notifications paused.',
+    });
+  } catch (error) {
+    console.error('Error logging out store:', error);
+    res.status(500).json({ error: 'Failed to logout store', details: error.message });
+  }
+};
+

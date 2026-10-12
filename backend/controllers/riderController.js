@@ -127,6 +127,17 @@ exports.getProfile = async (req, res) => {
 };
 
 // 4. UPDATE RIDER PROFILE (Vehicle, License, Name)
+const normalizeVehicleType = (type) => {
+  if (!type) return undefined;
+  const lower = type.toString().trim().toLowerCase();
+  if (lower.includes('motorcycle') || lower.includes('bike')) return 'bike';
+  if (lower.includes('scooter')) return 'scooter';
+  if (lower.includes('ev') || lower.includes('electric')) return 'ev';
+  if (lower.includes('cycle') || lower.includes('bicycle')) return 'cycle';
+  if (['bike', 'scooter', 'ev', 'cycle', 'other'].includes(lower)) return lower;
+  return 'other';
+};
+
 exports.updateProfile = async (req, res) => {
   try {
     const targetRiderId = req.body.riderId || req.body.userId;
@@ -144,6 +155,8 @@ exports.updateProfile = async (req, res) => {
       return res.status(400).json({ error: 'riderId or userId is required' });
     }
 
+    const cleanVehicleType = normalizeVehicleType(vehicleType);
+
     const updatedRider = await Rider.findOneAndUpdate(
       { riderId: targetRiderId },
       {
@@ -151,7 +164,7 @@ exports.updateProfile = async (req, res) => {
           ...(targetName && { name: targetName.trim() }),
           ...(email && { email: email.trim().toLowerCase() }),
           ...(profileImage && { profileImage }),
-          ...(vehicleType && { vehicleType }),
+          ...(cleanVehicleType && { vehicleType: cleanVehicleType }),
           ...(vehicleNumber && { vehicleNumber: vehicleNumber.trim() }),
           ...(drivingLicenseNumber && { drivingLicenseNumber: drivingLicenseNumber.trim() }),
           ...(drivingLicenseDoc && { drivingLicenseDoc }),
@@ -268,12 +281,26 @@ exports.logout = async (req, res) => {
   try {
     const targetId = req.body.riderId || req.body.userId;
     const { phone } = req.body;
-    const query = {};
-    if (targetId && phone) query.$or = [{ riderId: targetId }, { phone }];
-    else if (targetId) query.riderId = targetId;
-    else if (phone) query.phone = phone;
 
-    await Rider.updateOne(query, { $set: { fcmToken: '', isOnline: false } });
+    if (!targetId && !phone) {
+      return res.status(400).json({ error: 'riderId or phone is required' });
+    }
+
+    const query = {};
+    if (targetId && phone) query.$or = [{ riderId: targetId }, { phone: phone.toString().trim().replace(/[^0-9]/g, '').slice(-10) }];
+    else if (targetId) query.riderId = targetId;
+    else if (phone) query.phone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
+
+    const rider = await Rider.findOneAndUpdate(
+      query,
+      { $set: { fcmToken: '', isOnline: false } },
+      { new: true }
+    );
+
+    if (!rider) {
+      return res.status(404).json({ error: 'Rider not found' });
+    }
+
     res.status(200).json({ success: true, message: 'Rider logged out successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to logout', details: error.message });

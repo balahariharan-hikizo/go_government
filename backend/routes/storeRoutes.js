@@ -21,5 +21,6 @@ router.patch('/:storeId/online', storeController.toggleOnline);
 router.patch('/:storeId/status', storeController.reviewStore);
 router.put('/:storeId/update-profile', storeController.updateProfile);
 router.post('/update-fcm-token', storeController.updateFcmToken);
+router.post('/logout', storeController.logout);
 
 module.exports = router;

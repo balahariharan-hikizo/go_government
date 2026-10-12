@@ -85,6 +85,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       emit(AuthLoading());
 
       final currentUserId = HiveService.userId;
+      final currentStoreId = HiveService.storeId;
       final currentPhone = HiveService.userPhone;
 
       // 1. Disconnect and dispose store socket
@@ -94,10 +95,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         debugPrint('⚠️ [StoreAuthBloc] Socket dispose error: $e');
       }
 
-      // 2. Call backend /api/auth/logout to wipe FCM token & registry
+      // 2. Call backend /stores/logout to wipe FCM token & set store offline
       try {
-        if (currentUserId.isNotEmpty || currentPhone.isNotEmpty) {
-          await AuthApiService.logout(userId: currentUserId, phone: currentPhone);
+        if (currentStoreId.isNotEmpty || currentUserId.isNotEmpty || currentPhone.isNotEmpty) {
+          await AuthApiService.logout(
+            storeId: currentStoreId,
+            userId: currentUserId,
+            phone: currentPhone,
+          );
         }
       } catch (e) {
         debugPrint('⚠️ [StoreAuthBloc] Backend logout error: $e');

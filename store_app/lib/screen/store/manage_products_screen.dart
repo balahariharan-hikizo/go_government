@@ -229,7 +229,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                       } else if (_selectedFilter == 'Subsidized') {
                         return p.isSubsidized;
                       } else if (_selectedFilter == 'Out of Stock') {
-                        return p.stock <= 0 || !p.isAvailable;
+                        return p.stock <= 0;
                       }
                       return true;
                     }).toList();
@@ -318,7 +318,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
           : '${ApiClient.baseUrl.replaceAll('/api', '')}${item.image}';
     }
 
-    final isOutOfStock = !item.isAvailable || item.stock <= 0;
+    final isOutOfStock = item.stock <= 0;
 
     return Container(
       padding: EdgeInsets.all(Responsive.w(12)),

@@ -672,7 +672,7 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
                     BlocBuilder<ProductBloc, ProductState>(
                       builder: (context, pState) {
                         if (pState is ProductLoaded) {
-                          final lowStock = pState.products.where((p) => p.stock <= 3 || !p.isAvailable).length;
+                          final lowStock = pState.products.where((p) => p.stock <= 3).length;
                           if (lowStock > 0) {
                             return Container(
                               margin: EdgeInsets.only(bottom: Responsive.h(14)),

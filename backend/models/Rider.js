@@ -37,7 +37,7 @@ const RiderSchema = new mongoose.Schema(
     // Vehicle & License Information
     vehicleType: { 
       type: String, 
-      enum: ['bike', 'scooter', 'ev', 'cycle', 'other'],
+      enum: ['bike', 'scooter', 'ev', 'cycle', 'other', 'motorcycle', 'Motorcycle', 'Electric Vehicle (EV)', 'Bicycle'],
       default: 'bike' 
     },
     vehicleNumber: { 

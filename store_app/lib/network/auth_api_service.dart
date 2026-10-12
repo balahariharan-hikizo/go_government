@@ -74,12 +74,14 @@ class AuthApiService {
   }
 
   static Future<bool> logout({
-    required String userId,
+    String? storeId,
+    String? userId,
     required String phone,
   }) async {
-    final url = '${ApiClient.baseUrl}/auth/logout';
+    final url = '${ApiClient.baseUrl}/stores/logout';
+    final targetStoreId = (storeId != null && storeId.isNotEmpty) ? storeId : (userId ?? '');
     final body = jsonEncode({
-      'userId': userId,
+      'storeId': targetStoreId,
       'phone': phone,
     });
 

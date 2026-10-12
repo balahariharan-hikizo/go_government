@@ -8,7 +8,7 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://192.168.1.12:5000/api",
+      "value": "http://192.168.1.24:5000",
       "type": "string"
     },
     {
@@ -29,6 +29,11 @@
     {
       "key": "userId",
       "value": "USER_00003",
+      "type": "string"
+    },
+    {
+      "key": "riderId",
+      "value": "RDR_00003",
       "type": "string"
     },
     {
@@ -371,7 +376,7 @@
       ]
     },
     {
-      "name": "03. storeRoutes (Stores & Merchants - 12 APIs)",
+      "name": "03. storeRoutes (Stores & Merchants - 13 APIs)",
       "item": [
         {
           "name": "3.1 Send OTP (Store Owner)",
@@ -663,7 +668,34 @@
                 "update-fcm-token"
               ]
             },
-            "description": "• Route: `POST /api/stores/update-fcm-token`\n• Store App: FCM Push Notification Sync"
+            "description": "• Route: `POST /stores/update-fcm-token`\n• Store App: FCM Push Notification Sync"
+          }
+        },
+        {
+          "name": "3.13 Store Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"storeId\": \"{{storeId}}\",\n  \"phone\": \"{{storePhone}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stores/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "stores",
+                "logout"
+              ]
+            },
+            "description": "• Route: `POST /stores/logout`\n• Store App: Store Logout, Wipe FCM Token & Set Offline\n• Controller: `storeController.logout`"
           }
         }
       ]
