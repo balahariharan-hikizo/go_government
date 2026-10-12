@@ -1,3 +1,4 @@
 node_modules
 .env
 uploads/
+*.postman_collection.json
