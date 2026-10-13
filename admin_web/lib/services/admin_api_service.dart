@@ -93,7 +93,10 @@ class AdminApiService {
           : '';
       final res = await http.get(Uri.parse('$_baseUrl/complaints/all$query'));
       if (res.statusCode == 200) {
-        final list = jsonDecode(res.body);
+        final dynamic decoded = jsonDecode(res.body);
+        final List<dynamic> list = decoded is List
+            ? decoded
+            : (decoded is Map ? (decoded['complaints'] as List<dynamic>? ?? []) : []);
         return {'success': true, 'complaints': List<Map<String, dynamic>>.from(list)};
       }
       return {'success': false, 'error': 'Server error: ${res.statusCode}'};

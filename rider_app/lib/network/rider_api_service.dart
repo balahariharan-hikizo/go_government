@@ -289,7 +289,10 @@ class RiderApiService {
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         if (decoded is Map) {
-          return Map<String, dynamic>.from(decoded);
+          final profileMap = (decoded['rider'] is Map)
+              ? Map<String, dynamic>.from(decoded['rider'])
+              : Map<String, dynamic>.from(decoded);
+          return profileMap;
         }
       }
       return null;

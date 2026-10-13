@@ -8,7 +8,7 @@ import 'api_client.dart';
 
 class ComplaintApiService {
   // 1. Upload Complaint Image (Multipart)
-  static Future<String?> uploadComplaintImage(String localPath, String complaintId) async {
+  static Future<String?> uploadComplaintImage(String localPath, [String? complaintId]) async {
     final file = File(localPath);
     if (!file.existsSync()) {
       ApiClient.logError('UPLOAD', localPath, 'Local image file does not exist');
@@ -38,12 +38,17 @@ class ComplaintApiService {
   }
 
   // 2. Submit Complaint to MongoDB
-  static Future<void> submitComplaint(Map<String, dynamic> complaint) async {
+  static Future<Map<String, dynamic>?> submitComplaint(Map<String, dynamic> complaint) async {
     final dataToSend = Map<String, dynamic>.from(complaint);
     dataToSend['userId'] = HiveService.citizenId;
-    dataToSend['complaintId'] = complaint['complaintId'] ??
-        complaint['id'] ??
-        ('CMP${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}');
+    
+    // Only send complaintId if it matches official sequence CMP_XXXXX, otherwise let backend generate clean sequence
+    final currentId = (dataToSend['complaintId'] ?? dataToSend['id'])?.toString();
+    if (currentId != null && RegExp(r'^CMP_\d{5}$').hasMatch(currentId)) {
+      dataToSend['complaintId'] = currentId;
+    } else {
+      dataToSend.remove('complaintId');
+    }
     dataToSend.remove('id');
     dataToSend.remove('citizenId');
 
@@ -60,9 +65,16 @@ class ComplaintApiService {
       );
 
       ApiClient.logResponse('POST', url, response.statusCode, response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final dynamic decoded = jsonDecode(response.body);
+        if (decoded is Map && decoded['complaint'] != null) {
+          return Map<String, dynamic>.from(decoded['complaint']);
+        }
+      }
     } catch (e) {
       ApiClient.logError('POST', url, e);
     }
+    return null;
   }
 
   // 3. Fetch All Complaints
@@ -75,7 +87,10 @@ class ComplaintApiService {
       ApiClient.logResponse('GET', url, response.statusCode, response.body);
 
       if (response.statusCode == 200) {
-        final List<dynamic> list = jsonDecode(response.body);
+        final dynamic decoded = jsonDecode(response.body);
+        final List<dynamic> list = decoded is List
+            ? decoded
+            : (decoded is Map ? (decoded['complaints'] as List<dynamic>? ?? []) : []);
         return list.map((item) => Map<String, dynamic>.from(item)).toList();
       }
     } catch (e) {
@@ -96,13 +111,40 @@ class ComplaintApiService {
       ApiClient.logResponse('GET', url, response.statusCode, response.body);
 
       if (response.statusCode == 200) {
-        final List<dynamic> list = jsonDecode(response.body);
+        final dynamic decoded = jsonDecode(response.body);
+        final List<dynamic> list = decoded is List
+            ? decoded
+            : (decoded is Map ? (decoded['complaints'] as List<dynamic>? ?? []) : []);
         return list.map((item) => Map<String, dynamic>.from(item)).toList();
       }
     } catch (e) {
       ApiClient.logError('GET', url, e);
     }
     return [];
+  }
+
+  // 4b. Fetch Single Complaint by ID (API 10.3)
+  static Future<Map<String, dynamic>?> fetchComplaintById(String complaintId) async {
+    final url = '${ApiClient.baseUrl}/complaints/$complaintId';
+
+    try {
+      ApiClient.logRequest('GET', url);
+
+      final response = await http.get(Uri.parse(url));
+      ApiClient.logResponse('GET', url, response.statusCode, response.body);
+
+      if (response.statusCode == 200) {
+        final dynamic decoded = jsonDecode(response.body);
+        if (decoded is Map && decoded['complaint'] != null) {
+          return Map<String, dynamic>.from(decoded['complaint']);
+        } else if (decoded is Map) {
+          return Map<String, dynamic>.from(decoded);
+        }
+      }
+    } catch (e) {
+      ApiClient.logError('GET', url, e);
+    }
+    return null;
   }
 
   // 5. Stream Complaints (Real-Time WebSocket Push via Socket.io - ZERO POLLING)

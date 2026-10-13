@@ -17,12 +17,16 @@ class SubmitComplaintEvent extends ComplaintEvent {
   final String category;
   final String? location;
   final String? imagePath;
+  final double? lat;
+  final double? lng;
 
   SubmitComplaintEvent({
     required this.description,
     required this.category,
     this.location,
     this.imagePath,
+    this.lat,
+    this.lng,
   });
 }
 

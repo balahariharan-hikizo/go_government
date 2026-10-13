@@ -1110,6 +1110,8 @@ class _AddComplaintScreenState extends State<AddComplaintScreen> {
                                     category: categoryToSubmit,
                                     location: _currentAddress,
                                     imagePath: imageFile?.path,
+                                    lat: _currentLatLng?.latitude,
+                                    lng: _currentLatLng?.longitude,
                                   ),
                                 );
                               }

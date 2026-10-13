@@ -44,7 +44,7 @@ exports.getStats = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching complaint stats:', error);
-    res.status(500).json({ error: 'Failed to fetch complaint stats' });
+    res.status(500).json({ success: false, error: 'Failed to fetch complaint stats' });
   }
 };
 
@@ -57,10 +57,15 @@ exports.getAllComplaints = async (req, res) => {
       filter.status = new RegExp('^' + status.replace(/_/g, ' ') + '$', 'i');
     }
     const complaints = await Complaint.find(filter).sort({ createdAt: -1 });
-    res.status(200).json(complaints.map((c) => formatComplaint(c, req)));
+    const formatted = complaints.map((c) => formatComplaint(c, req));
+    res.status(200).json({
+      success: true,
+      count: formatted.length,
+      complaints: formatted,
+    });
   } catch (error) {
     console.error('Error fetching complaints:', error);
-    res.status(500).json({ error: 'Failed to fetch complaints' });
+    res.status(500).json({ success: false, error: 'Failed to fetch complaints' });
   }
 };
 
@@ -69,12 +74,15 @@ exports.getComplaintById = async (req, res) => {
   try {
     const complaint = await Complaint.findOne({ complaintId: req.params.complaintId });
     if (!complaint) {
-      return res.status(404).json({ error: 'Complaint not found' });
+      return res.status(404).json({ success: false, error: 'Complaint not found' });
     }
-    res.status(200).json(formatComplaint(complaint, req));
+    res.status(200).json({
+      success: true,
+      complaint: formatComplaint(complaint, req),
+    });
   } catch (error) {
     console.error('Error fetching complaint:', error);
-    res.status(500).json({ error: 'Failed to fetch complaint' });
+    res.status(500).json({ success: false, error: 'Failed to fetch complaint' });
   }
 };
 
@@ -82,10 +90,15 @@ exports.getComplaintById = async (req, res) => {
 exports.getUserComplaints = async (req, res) => {
   try {
     const userComplaints = await Complaint.find({ userId: req.params.userId }).sort({ createdAt: -1 });
-    res.status(200).json(userComplaints.map((c) => formatComplaint(c, req)));
+    const formatted = userComplaints.map((c) => formatComplaint(c, req));
+    res.status(200).json({
+      success: true,
+      count: formatted.length,
+      complaints: formatted,
+    });
   } catch (error) {
     console.error('Error fetching user complaints:', error);
-    res.status(500).json({ error: 'Failed to fetch user complaints' });
+    res.status(500).json({ success: false, error: 'Failed to fetch user complaints' });
   }
 };
 
@@ -94,7 +107,8 @@ exports.createComplaint = async (req, res) => {
   try {
     const data = req.body;
 
-    if (!data.complaintId) {
+    const isOfficialSequence = typeof data.complaintId === 'string' && /^CMP_\d{5}$/.test(data.complaintId);
+    if (!isOfficialSequence) {
       data.complaintId = await getNextSequence('complaintId', 'CMP_', 5);
     }
     data.id = data.complaintId;
@@ -110,10 +124,31 @@ exports.createComplaint = async (req, res) => {
         now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
     }
 
+    // Normalize coordinates if provided
+    if (data.latitude != null && data.lat == null) data.lat = Number(data.latitude);
+    if (data.longitude != null && data.lng == null) data.lng = Number(data.longitude);
+    if (data.lat != null && !isNaN(Number(data.lat))) data.lat = Number(data.lat);
+    if (data.lng != null && !isNaN(Number(data.lng))) data.lng = Number(data.lng);
+
+    // Normalize status to valid enum or default to 'Under Review'
+    const statusMap = {
+      'under review': 'Under Review',
+      'in progress': 'In Progress',
+      'resolved': 'Resolved',
+      'rejected': 'Rejected',
+      'pending': 'Under Review',
+    };
+    if (data.status) {
+      data.status = statusMap[data.status.toLowerCase()] || data.status;
+    } else {
+      data.status = 'Under Review';
+    }
+    data.statusColor = STATUS_COLORS[data.status] || 0xffff5252;
+
     const complaint = await Complaint.findOneAndUpdate(
       { complaintId: data.complaintId },
       { $set: data },
-      { new: true, upsert: true }
+      { new: true, upsert: true, runValidators: true }
     );
 
     const formattedComplaint = formatComplaint(complaint, req);
@@ -127,7 +162,7 @@ exports.createComplaint = async (req, res) => {
     res.status(201).json({ success: true, complaint: formattedComplaint });
   } catch (error) {
     console.error('Error submitting complaint:', error);
-    res.status(500).json({ error: 'Failed to submit complaint', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to submit complaint', details: error.message });
   }
 };
 
@@ -139,25 +174,30 @@ exports.toggleLike = async (req, res) => {
     const { isCurrentlyLiked } = req.body;
 
     if (!userId) {
-      return res.status(400).json({ error: 'userId or citizenId is required' });
+      return res.status(400).json({ success: false, error: 'userId or citizenId is required' });
     }
 
     const complaint = await Complaint.findOne({ complaintId });
     if (!complaint) {
-      return res.status(404).json({ error: 'Complaint not found' });
+      return res.status(404).json({ success: false, error: 'Complaint not found' });
     }
 
-    if (!isCurrentlyLiked) {
+    // Auto-detect toggle or respect explicit boolean
+    const alreadyLiked = complaint.likedBy.includes(userId);
+    const shouldUnlike = typeof isCurrentlyLiked === 'boolean' ? isCurrentlyLiked : alreadyLiked;
+
+    if (shouldUnlike) {
+      complaint.likedBy = complaint.likedBy.filter((uid) => uid !== userId);
+    } else {
       if (!complaint.likedBy.includes(userId)) {
         complaint.likedBy.push(userId);
-        complaint.likesCount = complaint.likedBy.length;
       }
-    } else {
-      complaint.likedBy = complaint.likedBy.filter((uid) => uid !== userId);
-      complaint.likesCount = complaint.likedBy.length;
     }
+    complaint.likesCount = complaint.likedBy.length;
 
     await complaint.save();
+
+    const formattedComplaint = formatComplaint(complaint, req);
 
     const ioLike = req.app.get('io');
     if (ioLike) {
@@ -166,19 +206,21 @@ exports.toggleLike = async (req, res) => {
         likesCount: complaint.likesCount,
         likedBy: complaint.likedBy,
       });
+      ioLike.emit('complaints_changed', { action: 'like', complaintId: complaint.complaintId });
     }
 
     res.status(200).json({
       success: true,
-      message: isCurrentlyLiked ? 'Unliked successfully' : 'Liked successfully 👍',
+      message: shouldUnlike ? 'Unliked successfully' : 'Liked successfully 👍',
+      isLiked: !shouldUnlike,
       complaintId: complaint.complaintId,
       likesCount: complaint.likesCount,
       likedBy: complaint.likedBy,
-      complaint: complaint,
+      complaint: formattedComplaint,
     });
   } catch (error) {
     console.error('Error toggling like:', error);
-    res.status(500).json({ error: 'Failed to toggle like' });
+    res.status(500).json({ success: false, error: 'Failed to toggle like' });
   }
 };
 
@@ -187,10 +229,11 @@ exports.addComment = async (req, res) => {
   try {
     const { complaintId } = req.params;
     const userId = req.body.userId || req.body.citizenId;
-    const { userName, comment } = req.body;
+    const { userName } = req.body;
+    const commentText = req.body.comment || req.body.text;
 
-    if (!comment || !userId) {
-      return res.status(400).json({ error: 'comment and userId/citizenId are required' });
+    if (!commentText || !userId) {
+      return res.status(400).json({ success: false, error: 'comment/text and userId/citizenId are required' });
     }
 
     const now = new Date();
@@ -201,7 +244,7 @@ exports.addComment = async (req, res) => {
 
     const newComment = {
       userName: userName || 'Citizen',
-      comment,
+      comment: commentText,
       userId,
       date: formattedDate,
       timestamp: Date.now(),
@@ -214,7 +257,7 @@ exports.addComment = async (req, res) => {
     );
 
     if (!updated) {
-      return res.status(404).json({ error: 'Complaint not found' });
+      return res.status(404).json({ success: false, error: 'Complaint not found' });
     }
 
     const ioComment = req.app.get('io');
@@ -235,7 +278,7 @@ exports.addComment = async (req, res) => {
     });
   } catch (error) {
     console.error('Error adding comment:', error);
-    res.status(500).json({ error: 'Failed to add comment' });
+    res.status(500).json({ success: false, error: 'Failed to add comment' });
   }
 };
 
@@ -246,10 +289,17 @@ exports.updateStatus = async (req, res) => {
     const { status, adminNotes, updatedBy } = req.body;
 
     if (!status) {
-      return res.status(400).json({ error: 'Status is required' });
+      return res.status(400).json({ success: false, error: 'Status is required' });
     }
 
-    const color = STATUS_COLORS[status] || 0xffff9100;
+    const statusMap = {
+      'under review': 'Under Review',
+      'in progress': 'In Progress',
+      'resolved': 'Resolved',
+      'rejected': 'Rejected',
+    };
+    const normalizedStatus = statusMap[status.toLowerCase()] || status;
+    const color = STATUS_COLORS[normalizedStatus] || STATUS_COLORS[status] || 0xffff9100;
 
     const now = new Date();
     const formattedDate =
@@ -260,8 +310,8 @@ exports.updateStatus = async (req, res) => {
     const adminComment = {
       userName: updatedBy || 'Municipal Administration',
       comment: adminNotes
-        ? `Status updated to '${status}': ${adminNotes}`
-        : `Official complaint status updated to '${status}'`,
+        ? `Status updated to '${normalizedStatus}': ${adminNotes}`
+        : `Official complaint status updated to '${normalizedStatus}'`,
       userId: 'ADMIN',
       date: formattedDate,
       timestamp: Date.now(),
@@ -271,7 +321,7 @@ exports.updateStatus = async (req, res) => {
       { complaintId },
       {
         $set: {
-          status,
+          status: normalizedStatus,
           statusColor: color,
         },
         $push: { comments: adminComment },
@@ -280,7 +330,7 @@ exports.updateStatus = async (req, res) => {
     );
 
     if (!updated) {
-      return res.status(404).json({ error: 'Complaint not found' });
+      return res.status(404).json({ success: false, error: 'Complaint not found' });
     }
 
     const formattedComplaint = formatComplaint(updated, req);
@@ -307,6 +357,6 @@ exports.updateStatus = async (req, res) => {
   } catch (error) {
     console.error('Error updating complaint status:', error);
     const status = error.name === 'ValidationError' ? 400 : 500;
-    res.status(status).json({ error: error.message || 'Failed to update complaint status', details: error.message });
+    res.status(status).json({ success: false, error: error.message || 'Failed to update complaint status', details: error.message });
   }
 };

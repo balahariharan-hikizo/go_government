@@ -12,6 +12,7 @@ import '../../bloc/report/report_state.dart';
 import '../../hive/hive_service.dart';
 import '../../widget/complaint_image_widget.dart';
 import '../../widget/image_preview_dialog.dart';
+import 'package:latlong2/latlong.dart';
 import '../../widget/motion/tilt_3d_card.dart';
 
 class ComplaintDetailsScreen extends StatefulWidget {
@@ -46,6 +47,18 @@ class ComplaintDetailsScreen extends StatefulWidget {
 
 class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
   final TextEditingController _commentController = TextEditingController();
+  bool _showAllComments = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final targetId = widget.id.isNotEmpty
+        ? widget.id
+        : (widget.report?['complaintId']?.toString() ?? widget.report?['id']?.toString() ?? '');
+    if (targetId.isNotEmpty) {
+      context.read<ReportBloc>().add(LoadSingleComplaintEvent(targetId));
+    }
+  }
 
   @override
   void dispose() {
@@ -65,6 +78,9 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
             userName: name,
           ),
         );
+    setState(() {
+      _showAllComments = true;
+    });
     _commentController.clear();
     FocusScope.of(context).unfocus();
   }
@@ -126,7 +142,9 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
         builder: (context, state) {
           final allReports = [...state.myReports, ...state.otherReports];
           final liveReport = allReports.firstWhere(
-            (r) => r['id'] == effectiveId,
+            (r) =>
+                (r['id'] != null && r['id'] == effectiveId) ||
+                (r['complaintId'] != null && r['complaintId'] == effectiveId),
             orElse: () => widget.report ?? {},
           );
 
@@ -146,12 +164,26 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
           final int likesCount = (liveReport['likesCount'] as num?)?.toInt() ?? 0;
           final List<dynamic> comments = List.from(liveReport['comments'] ?? []);
 
+          final rawLat = liveReport['lat'] ?? liveReport['latitude'];
+          final rawLng = liveReport['lng'] ?? liveReport['longitude'];
+          final double? complaintLat = rawLat is num ? rawLat.toDouble() : double.tryParse(rawLat?.toString() ?? '');
+          final double? complaintLng = rawLng is num ? rawLng.toDouble() : double.tryParse(rawLng?.toString() ?? '');
+          final LatLng? destCoords = (complaintLat != null && complaintLng != null) ? LatLng(complaintLat, complaintLng) : null;
+
           return CommonBackground(
             child: SafeArea(
               bottom: false,
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Padding(
+              child: RefreshIndicator(
+                color: AppColors.primary,
+                onRefresh: () async {
+                  if (effectiveId.isNotEmpty) {
+                    context.read<ReportBloc>().add(LoadSingleComplaintEvent(effectiveId));
+                    await Future.delayed(const Duration(milliseconds: 600));
+                  }
+                },
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                  child: Padding(
                   padding: EdgeInsets.symmetric(
                     horizontal: Responsive.w(20),
                     vertical: Responsive.h(16),
@@ -420,9 +452,10 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                                 ),
                               ),
                               clipBehavior: Clip.antiAlias,
-                              child: const CommonMap(
+                              child: CommonMap(
                                 interactive: false,
                                 showUserLocation: false,
+                                center: destCoords,
                               ),
                             ),
                             SizedBox(height: Responsive.h(16)),
@@ -431,6 +464,7 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                             CommonDirectionsButton(
                               title: '$category Location',
                               address: userAddress,
+                              destinationCoords: destCoords,
                               style: DirectionsButtonStyle.wide,
                             ),
                             SizedBox(height: Responsive.h(16)),
@@ -504,10 +538,46 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                       // 3. Comments heading
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: Responsive.w(4)),
-                        child: CustomText.header(
-                          'Comments (${comments.length})',
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            CustomText.header(
+                              'Comments (${comments.length})',
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            if (comments.length > 1)
+                              GestureDetector(
+                                onTap: () => setState(() => _showAllComments = !_showAllComments),
+                                child: Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: Responsive.w(10),
+                                    vertical: Responsive.h(4),
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(Responsive.w(12)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      CustomText.body(
+                                        _showAllComments ? 'Show Less' : 'View All (${comments.length})',
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                      SizedBox(width: Responsive.w(4)),
+                                      Icon(
+                                        _showAllComments ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                                        size: 16,
+                                        color: AppColors.primary,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                       SizedBox(height: Responsive.h(12)),
@@ -533,8 +603,8 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                             ),
                           ),
                         )
-                      else
-                        ...comments.map((c) {
+                      else ...[
+                        ...(_showAllComments ? comments : comments.take(1)).map((c) {
                           final item = c is Map ? c : {};
                           final String author = item['userName']?.toString() ?? 'Official';
                           final String time = item['date']?.toString() ?? 'Recent';
@@ -573,20 +643,22 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                                       ),
                                     ),
                                     SizedBox(width: Responsive.w(10)),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        CustomText.title(
-                                          author,
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        CustomText.subtitle(
-                                          time,
-                                          fontSize: 10,
-                                          color: AppColors.grayFont,
-                                        ),
-                                      ],
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          CustomText.title(
+                                            author,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          CustomText.subtitle(
+                                            time,
+                                            fontSize: 10,
+                                            color: AppColors.grayFont,
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -601,8 +673,10 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                             ),
                           );
                         }),
+                        
+                      ],
 
-                      SizedBox(height: Responsive.h(12)),
+                      SizedBox(height: Responsive.h(8)),
 
                       // 5. Add Comment Input Row
                       Container(
@@ -656,9 +730,10 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                 ),
               ),
             ),
-          );
-        },
-      ),
-    );
-  }
+          ),
+        );
+      },
+    ),
+  );
+}
 }

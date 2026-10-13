@@ -187,6 +187,19 @@ class TransactionBloc extends Bloc<TransactionEvent, TransactionState> {
       final newCoins = state.coinsBalance + event.coins;
       await HiveService.setCoinsBalance(newCoins);
       emit(state.copyWith(coinsBalance: newCoins));
+
+      // Persist to MongoDB backend
+      try {
+        final res = await WalletApiService.addCoins(
+          coins: event.coins,
+          reason: event.reason,
+        );
+        if (res['success'] == true) {
+          final serverCoins = (res['coinsBalance'] as num?)?.toInt() ?? newCoins;
+          await HiveService.setCoinsBalance(serverCoins);
+          emit(state.copyWith(coinsBalance: serverCoins));
+        }
+      } catch (_) {}
     });
 
     on<RedeemCoinsEvent>((event, emit) async {

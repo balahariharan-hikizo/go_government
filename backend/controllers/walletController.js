@@ -33,11 +33,21 @@ exports.getWalletDetails = async (req, res) => {
 
     const accountId = account?.userId || account?.riderId || account?.storeId || userId;
 
-    const transactions = await WalletTransaction.find({
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+
+    const filter = {
       $or: [{ userId }, { userId: accountId }],
-    })
-      .sort({ createdAt: -1 })
-      .limit(50);
+    };
+
+    const [totalTransactions, transactions] = await Promise.all([
+      WalletTransaction.countDocuments(filter),
+      WalletTransaction.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+    ]);
 
     res.status(200).json({
       success: true,
@@ -45,6 +55,7 @@ exports.getWalletDetails = async (req, res) => {
       role,
       walletBalance: balance,
       coinsBalance: coins,
+      totalTransactions,
       transactions,
     });
   } catch (error) {
@@ -307,3 +318,59 @@ exports.redeemCoins = async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to redeem coins' });
   }
 };
+
+// 6. ADD REWARD COINS (Filing complaints, civic tasks, feedback survey)
+exports.addCoins = async (req, res) => {
+  try {
+    const { userId, coins, reason } = req.body;
+    const numCoins = Number(coins);
+
+    if (!userId || isNaN(numCoins) || numCoins <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid userId and positive coins amount are required',
+      });
+    }
+
+    const updatedUser = await User.findOneAndUpdate(
+      { $or: [{ userId }, { phone: userId }] },
+      { $inc: { coinsBalance: numCoins } },
+      { new: true, upsert: true }
+    );
+
+    const txId = await getNextSequence('walletTxId', 'TXN_COIN_ADD_', 5);
+    const now = new Date();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateStr = `${months[now.getMonth()]} ${now.getDate()} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    const transaction = new WalletTransaction({
+      transactionId: txId,
+      userId: updatedUser.userId,
+      amount: 0,
+      type: 'credit',
+      category: 'civic_reward',
+      paymentMethod: 'Reward Coins',
+      title: reason || 'Civic Activity Reward',
+      subtitle: `Earned +${numCoins} coins · ${dateStr}`,
+      balanceAfter: updatedUser.walletBalance,
+      status: 'success',
+      metadata: { coinsAdded: numCoins, totalCoins: updatedUser.coinsBalance },
+    });
+
+    await transaction.save();
+
+    console.log(`🪙 [Coins Added] ${updatedUser.userId} credited +${numCoins} coins for "${reason || 'Civic Activity'}"`);
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully credited ${numCoins} reward coins`,
+      coinsBalance: updatedUser.coinsBalance,
+      walletBalance: updatedUser.walletBalance,
+      transaction,
+    });
+  } catch (error) {
+    console.error('Error adding reward coins:', error);
+    res.status(500).json({ success: false, error: 'Failed to add reward coins', details: error.message });
+  }
+};
+

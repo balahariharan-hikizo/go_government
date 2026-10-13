@@ -7,7 +7,7 @@ exports.sendOtp = async (req, res) => {
     const { phone } = req.body;
 
     if (!phone) {
-      return res.status(400).json({ error: 'Phone number is required' });
+      return res.status(400).json({ success: false, error: 'Phone number is required' });
     }
 
     const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
@@ -52,7 +52,7 @@ exports.sendOtp = async (req, res) => {
     });
   } catch (error) {
     console.error('Error sending Rider OTP:', error);
-    res.status(500).json({ error: 'Failed to send OTP', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to send OTP', details: error.message });
   }
 };
 
@@ -62,22 +62,22 @@ exports.verifyOtp = async (req, res) => {
     const { phone, otp } = req.body;
 
     if (!phone || !otp) {
-      return res.status(400).json({ error: 'Phone and OTP are required' });
+      return res.status(400).json({ success: false, error: 'Phone and OTP are required' });
     }
 
     const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
     const rider = await Rider.findOne({ phone: cleanPhone });
 
     if (!rider) {
-      return res.status(404).json({ error: 'Rider not found. Please request OTP first.' });
+      return res.status(404).json({ success: false, error: 'Rider not found. Please request OTP first.' });
     }
 
     if (rider.otpExpires && new Date() > rider.otpExpires) {
-      return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
+      return res.status(400).json({ success: false, error: 'OTP has expired. Please request a new one.' });
     }
 
     if (rider.otp !== otp.toString().trim()) {
-      return res.status(400).json({ error: 'Invalid OTP code. Please enter the correct OTP.' });
+      return res.status(400).json({ success: false, error: 'Invalid OTP code. Please enter the correct OTP.' });
     }
 
     // Clear OTP
@@ -108,7 +108,7 @@ exports.verifyOtp = async (req, res) => {
     });
   } catch (error) {
     console.error('Error verifying Rider OTP:', error);
-    res.status(500).json({ error: 'Failed to verify OTP', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to verify OTP', details: error.message });
   }
 };
 
@@ -118,11 +118,16 @@ exports.getProfile = async (req, res) => {
     const id = req.params.riderId;
     const rider = await Rider.findOne({ $or: [{ riderId: id }, { phone: id }] });
     if (!rider) {
-      return res.status(404).json({ error: 'Rider not found' });
+      return res.status(404).json({ success: false, error: 'Rider not found' });
     }
-    res.status(200).json(rider);
+    const riderData = rider.toObject ? rider.toObject() : rider;
+    res.status(200).json({
+      success: true,
+      rider: riderData,
+      ...riderData,
+    });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch Rider profile', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch Rider profile', details: error.message });
   }
 };
 
@@ -152,7 +157,7 @@ exports.updateProfile = async (req, res) => {
     } = req.body;
 
     if (!targetRiderId) {
-      return res.status(400).json({ error: 'riderId or userId is required' });
+      return res.status(400).json({ success: false, error: 'riderId or userId is required' });
     }
 
     const cleanVehicleType = normalizeVehicleType(vehicleType);
@@ -174,7 +179,7 @@ exports.updateProfile = async (req, res) => {
     );
 
     if (!updatedRider) {
-      return res.status(404).json({ error: 'Rider not found' });
+      return res.status(404).json({ success: false, error: 'Rider not found' });
     }
 
     res.status(200).json({
@@ -184,7 +189,7 @@ exports.updateProfile = async (req, res) => {
     });
   } catch (error) {
     const status = error.name === 'ValidationError' ? 400 : 500;
-    res.status(status).json({ error: 'Failed to update Rider profile', details: error.message });
+    res.status(status).json({ success: false, error: 'Failed to update Rider profile', details: error.message });
   }
 };
 
@@ -194,7 +199,7 @@ exports.toggleOnline = async (req, res) => {
     const { riderId, isOnline } = req.body;
 
     if (!riderId || isOnline === undefined) {
-      return res.status(400).json({ error: 'riderId and isOnline (boolean) are required' });
+      return res.status(400).json({ success: false, error: 'riderId and isOnline (boolean) are required' });
     }
 
     const rider = await Rider.findOneAndUpdate(
@@ -204,7 +209,7 @@ exports.toggleOnline = async (req, res) => {
     );
 
     if (!rider) {
-      return res.status(404).json({ error: 'Rider not found' });
+      return res.status(404).json({ success: false, error: 'Rider not found' });
     }
 
     res.status(200).json({
@@ -214,7 +219,7 @@ exports.toggleOnline = async (req, res) => {
     });
   } catch (error) {
     const status = error.name === 'ValidationError' ? 400 : 500;
-    res.status(status).json({ error: 'Failed to update status', details: error.message });
+    res.status(status).json({ success: false, error: 'Failed to update status', details: error.message });
   }
 };
 
@@ -224,7 +229,7 @@ exports.updateLocation = async (req, res) => {
     const { riderId, lat, lng } = req.body;
 
     if (!riderId || lat === undefined || lng === undefined) {
-      return res.status(400).json({ error: 'riderId, lat, and lng are required' });
+      return res.status(400).json({ success: false, error: 'riderId, lat, and lng are required' });
     }
 
     await Rider.findOneAndUpdate(
@@ -241,7 +246,7 @@ exports.updateLocation = async (req, res) => {
     res.status(200).json({ success: true, message: 'Location updated' });
   } catch (error) {
     const status = error.name === 'ValidationError' ? 400 : 500;
-    res.status(status).json({ error: 'Failed to update location', details: error.message });
+    res.status(status).json({ success: false, error: 'Failed to update location', details: error.message });
   }
 };
 
@@ -252,10 +257,10 @@ exports.updateFcmToken = async (req, res) => {
     const { fcmToken, phone } = req.body;
 
     if (!targetId && !phone) {
-      return res.status(400).json({ error: 'riderId or phone is required' });
+      return res.status(400).json({ success: false, error: 'riderId or phone is required' });
     }
     if (!fcmToken) {
-      return res.status(400).json({ error: 'fcmToken is required' });
+      return res.status(400).json({ success: false, error: 'fcmToken is required' });
     }
 
     const query = {};
@@ -272,7 +277,7 @@ exports.updateFcmToken = async (req, res) => {
     res.status(200).json({ success: true, message: 'Rider FCM token updated' });
   } catch (error) {
     const status = error.name === 'ValidationError' ? 400 : 500;
-    res.status(status).json({ error: 'Failed to update FCM token', details: error.message });
+    res.status(status).json({ success: false, error: 'Failed to update FCM token', details: error.message });
   }
 };
 
@@ -283,7 +288,7 @@ exports.logout = async (req, res) => {
     const { phone } = req.body;
 
     if (!targetId && !phone) {
-      return res.status(400).json({ error: 'riderId or phone is required' });
+      return res.status(400).json({ success: false, error: 'riderId or phone is required' });
     }
 
     const query = {};
@@ -298,11 +303,11 @@ exports.logout = async (req, res) => {
     );
 
     if (!rider) {
-      return res.status(404).json({ error: 'Rider not found' });
+      return res.status(404).json({ success: false, error: 'Rider not found' });
     }
 
     res.status(200).json({ success: true, message: 'Rider logged out successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to logout', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to logout', details: error.message });
   }
 };

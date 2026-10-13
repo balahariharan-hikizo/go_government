@@ -21,20 +21,16 @@ class ComplaintBloc extends Bloc<ComplaintEvent, ComplaintState> {
       final timeStr =
           "${now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour)}:${now.minute.toString().padLeft(2, '0')} ${now.hour >= 12 ? 'PM' : 'AM'}";
 
-      final complaintId = 'CMP${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
       final rawPath = event.imagePath ?? state.imageFile?.path;
-
       String? remoteImagePath = rawPath;
       if (rawPath != null && rawPath.isNotEmpty && !rawPath.startsWith('assets/')) {
-        final uploaded = await ApiService.uploadComplaintImage(rawPath, complaintId);
+        final uploaded = await ApiService.uploadComplaintImage(rawPath);
         if (uploaded != null && uploaded.isNotEmpty) {
           remoteImagePath = uploaded;
         }
       }
 
       final newComplaint = {
-        'id': complaintId,
-        'complaintId': complaintId,
         'userId': HiveService.citizenId,
         'userName': HiveService.userName.isNotEmpty ? HiveService.userName : 'Citizen',
         'userAddress': (event.location != null && event.location!.isNotEmpty)
@@ -45,17 +41,29 @@ class ComplaintBloc extends Bloc<ComplaintEvent, ComplaintState> {
         'status': 'Under Review',
         'statusColor': 0xFFFF5252,
         'imagePath': remoteImagePath,
+        'lat': event.lat,
+        'lng': event.lng,
+        'latitude': event.lat,
+        'longitude': event.lng,
         'date': 'Today, $timeStr',
         'likesCount': 0,
         'isLiked': false,
         'comments': <Map<String, dynamic>>[],
       };
       
-      // Save locally (fallback)
-      await HiveService.saveComplaint(newComplaint);
+      // Upload to Node.js & MongoDB (Backend generates official CMP_XXXXX sequence atomically)
+      final created = await ApiService.submitComplaint(newComplaint);
       
-      // Upload to Node.js & MongoDB
-      await ApiService.submitComplaint(newComplaint);
+      // Save locally to Hive with official backend data
+      if (created != null) {
+        await HiveService.saveComplaint(created);
+      } else {
+        // Fallback for offline mode
+        final offlineFallback = Map<String, dynamic>.from(newComplaint);
+        offlineFallback['complaintId'] = 'PENDING_${DateTime.now().millisecondsSinceEpoch}';
+        offlineFallback['id'] = offlineFallback['complaintId'];
+        await HiveService.saveComplaint(offlineFallback);
+      }
 
       emit(state.copyWith(isSubmitting: false, isSubmitted: true));
     });

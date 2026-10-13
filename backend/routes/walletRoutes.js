@@ -10,5 +10,6 @@ router.post('/topup', walletController.topupWallet);
 router.post('/deduct', walletController.deductWallet);
 router.post('/refund', walletController.refundWallet);
 router.post('/redeem-coins', walletController.redeemCoins);
+router.post('/add-coins', walletController.addCoins);
 
 module.exports = router;

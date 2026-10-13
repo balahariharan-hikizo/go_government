@@ -7,7 +7,7 @@ exports.getAddresses = async (req, res) => {
   try {
     const { userId } = req.params;
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+      return res.status(400).json({ success: false, error: 'userId is required' });
     }
 
     const addresses = await Address.find({
@@ -22,7 +22,7 @@ exports.getAddresses = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching addresses:', error);
-    res.status(500).json({ error: 'Failed to fetch addresses', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch addresses', details: error.message });
   }
 };
 
@@ -44,8 +44,7 @@ exports.createAddress = async (req, res) => {
     } = req.body;
 
     if (!userId || !phone) {
-      return res.status(400).json({
-        error: 'userId and phone are required fields.',
+      return res.status(400).json({ success: false, error: 'userId and phone are required fields.',
       });
     }
 
@@ -83,7 +82,7 @@ exports.createAddress = async (req, res) => {
     });
   } catch (error) {
     console.error('Error adding address:', error);
-    res.status(500).json({ error: 'Failed to add address', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to add address', details: error.message });
   }
 };
 
@@ -101,7 +100,7 @@ exports.updateAddress = async (req, res) => {
     const existing = await Address.findOne(query);
 
     if (!existing) {
-      return res.status(404).json({ error: 'Address not found' });
+      return res.status(404).json({ success: false, error: 'Address not found' });
     }
 
     if (updateData.isDefault === true) {
@@ -127,7 +126,7 @@ exports.updateAddress = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating address:', error);
-    res.status(500).json({ error: 'Failed to update address', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to update address', details: error.message });
   }
 };
 
@@ -144,7 +143,7 @@ exports.deleteAddress = async (req, res) => {
     const existing = await Address.findOne(query);
 
     if (!existing) {
-      return res.status(404).json({ error: 'Address not found or already removed' });
+      return res.status(404).json({ success: false, error: 'Address not found or already removed' });
     }
 
     const wasDefault = existing.isDefault;
@@ -174,6 +173,6 @@ exports.deleteAddress = async (req, res) => {
     });
   } catch (error) {
     console.error('Error deleting address:', error);
-    res.status(500).json({ error: 'Failed to delete address', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to delete address', details: error.message });
   }
 };

@@ -29,3 +29,8 @@ class AddCommentToReportEvent extends ReportEvent {
   final String userName;
   AddCommentToReportEvent(this.reportId, this.comment, {this.userName = 'You'});
 }
+
+class LoadSingleComplaintEvent extends ReportEvent {
+  final String complaintId;
+  LoadSingleComplaintEvent(this.complaintId);
+}

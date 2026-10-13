@@ -149,6 +149,41 @@ class WalletApiService {
     }
   }
 
+  /// Credits reward coins to citizen account (e.g. from grievances, feedback surveys)
+  static Future<Map<String, dynamic>> addCoins({
+    required int coins,
+    String? reason,
+    String? userId,
+  }) async {
+    final resolvedUser = userId ?? _userId;
+    try {
+      final url = Uri.parse('${ApiClient.baseUrl}/wallet/add-coins');
+      final body = jsonEncode({
+        'userId': resolvedUser,
+        'coins': coins,
+        'reason': reason ?? 'Civic Activity Reward',
+      });
+
+      final res = await http.post(url, headers: ApiClient.defaultHeaders, body: body).timeout(const Duration(seconds: 8));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        return {
+          'success': true,
+          'walletBalance': (data['walletBalance'] as num?)?.toDouble() ?? 0.0,
+          'coinsBalance': (data['coinsBalance'] as num?)?.toInt() ?? 0,
+          'message': data['message'],
+        };
+      } else {
+        final data = jsonDecode(res.body);
+        return {'success': false, 'error': data['error'] ?? 'Failed to add coins'};
+      }
+    } catch (e) {
+      debugPrint('[WalletApiService] addCoins error: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
   /// Fetches full order history from MongoDB and maps to transaction format
   static Future<List<Map<String, dynamic>>> getOrderHistory([String? userId]) async {
     final resolvedUser = userId ?? _userId;

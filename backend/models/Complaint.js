@@ -17,14 +17,24 @@ const ComplaintSchema = new mongoose.Schema(
     userAddress: { type: String, default: 'Location not specified' },
     category: { type: String, required: true },
     description: { type: String, default: '' },
-    status: { type: String, default: 'Under Review' },
+    status: {
+      type: String,
+      enum: {
+        values: ['Under Review', 'In Progress', 'Resolved', 'Rejected'],
+        message: '{VALUE} is not a valid complaint status',
+      },
+      default: 'Under Review',
+    },
     statusColor: { type: Number, default: 0xffff5252 },
     imagePath: { type: String, default: null },
+    lat: { type: Number, default: null },
+    lng: { type: Number, default: null },
     date: { type: String, default: '' },
     likesCount: { type: Number, default: 0 },
     likedBy: [{ type: String }],
     comments: [CommentSchema],
   },
+  
   {
     timestamps: true,
   }

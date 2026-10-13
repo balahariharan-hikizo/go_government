@@ -75,10 +75,10 @@ class ApiService {
       AuthApiService.uploadProfileImage(localPath);
 
   // Complaints
-  static Future<String?> uploadComplaintImage(String localPath, String complaintId) =>
+  static Future<String?> uploadComplaintImage(String localPath, [String? complaintId]) =>
       ComplaintApiService.uploadComplaintImage(localPath, complaintId);
 
-  static Future<void> submitComplaint(Map<String, dynamic> complaint) =>
+  static Future<Map<String, dynamic>?> submitComplaint(Map<String, dynamic> complaint) =>
       ComplaintApiService.submitComplaint(complaint);
 
   static Future<List<Map<String, dynamic>>> fetchComplaints() =>
@@ -86,6 +86,9 @@ class ApiService {
 
   static Future<List<Map<String, dynamic>>> fetchMyComplaints([String? userId]) =>
       ComplaintApiService.fetchMyComplaints(userId);
+
+  static Future<Map<String, dynamic>?> fetchComplaintById(String complaintId) =>
+      ComplaintApiService.fetchComplaintById(complaintId);
 
   static Stream<List<Map<String, dynamic>>> streamAllComplaints() =>
       ComplaintApiService.streamAllComplaints();

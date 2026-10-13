@@ -10,7 +10,7 @@ exports.sendOtp = async (req, res) => {
     const { phone } = req.body;
 
     if (!phone) {
-      return res.status(400).json({ error: 'Phone number is required' });
+      return res.status(400).json({ success: false, error: 'Phone number is required' });
     }
 
     const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
@@ -51,7 +51,7 @@ exports.sendOtp = async (req, res) => {
     });
   } catch (error) {
     console.error('Error sending Store OTP:', error);
-    res.status(500).json({ error: 'Failed to send OTP', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to send OTP', details: error.message });
   }
 };
 
@@ -61,7 +61,7 @@ exports.verifyOtp = async (req, res) => {
     const { phone, otp } = req.body;
 
     if (!phone || !otp) {
-      return res.status(400).json({ error: 'Phone and OTP are required' });
+      return res.status(400).json({ success: false, error: 'Phone and OTP are required' });
     }
 
     const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
@@ -71,16 +71,16 @@ exports.verifyOtp = async (req, res) => {
       // Check pending registration OTP map
       const pendingRecord = pendingRegistrationOtps.get(cleanPhone);
       if (!pendingRecord) {
-        return res.status(404).json({ error: 'No verification request found for this phone. Please request OTP first.' });
+        return res.status(404).json({ success: false, error: 'No verification request found for this phone. Please request OTP first.' });
       }
 
       if (pendingRecord.otpExpires && new Date() > pendingRecord.otpExpires) {
         pendingRegistrationOtps.delete(cleanPhone);
-        return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
+        return res.status(400).json({ success: false, error: 'OTP has expired. Please request a new one.' });
       }
 
       if (pendingRecord.otp !== otp.toString().trim()) {
-        return res.status(400).json({ error: 'Invalid OTP code. Please enter the correct OTP.' });
+        return res.status(400).json({ success: false, error: 'Invalid OTP code. Please enter the correct OTP.' });
       }
 
       // OTP verified successfully! Clear from pending map
@@ -101,11 +101,11 @@ exports.verifyOtp = async (req, res) => {
     }
 
     if (store.otpExpires && new Date() > store.otpExpires) {
-      return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
+      return res.status(400).json({ success: false, error: 'OTP has expired. Please request a new one.' });
     }
 
     if (store.otp !== otp.toString().trim()) {
-      return res.status(400).json({ error: 'Invalid OTP code. Please enter the correct OTP.' });
+      return res.status(400).json({ success: false, error: 'Invalid OTP code. Please enter the correct OTP.' });
     }
 
     // Clear OTP
@@ -131,7 +131,7 @@ exports.verifyOtp = async (req, res) => {
     });
   } catch (error) {
     console.error('Error verifying Store OTP:', error);
-    res.status(500).json({ error: 'Failed to verify OTP', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to verify OTP', details: error.message });
   }
 };
 
@@ -156,14 +156,12 @@ exports.registerStore = async (req, res) => {
     } = req.body;
 
     if (!name || !ownerName || !phone || !address) {
-      return res.status(400).json({
-        error: 'Missing required fields: name, ownerName, phone, address are mandatory',
+      return res.status(400).json({ success: false, error: 'Missing required fields: name, ownerName, phone, address are mandatory',
       });
     }
 
     if (!bankDetails || !bankDetails.bankName || !bankDetails.accountNumber || !bankDetails.ifscCode) {
-      return res.status(400).json({
-        error: 'Bank details required: bankName, accountNumber, and ifscCode are mandatory',
+      return res.status(400).json({ success: false, error: 'Bank details required: bankName, accountNumber, and ifscCode are mandatory',
       });
     }
 
@@ -197,8 +195,7 @@ exports.registerStore = async (req, res) => {
         });
       }
 
-      return res.status(409).json({
-        error: `A store with this phone number already exists (${existingStore.status})`,
+      return res.status(409).json({ success: false, error: `A store with this phone number already exists (${existingStore.status})`,
         storeId: existingStore.storeId,
         status: existingStore.status,
       });
@@ -244,7 +241,7 @@ exports.registerStore = async (req, res) => {
     });
   } catch (error) {
     console.error('Error registering store:', error);
-    res.status(500).json({ error: 'Failed to register store', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to register store', details: error.message });
   }
 };
 
@@ -264,7 +261,7 @@ exports.getMyStore = async (req, res) => {
     res.status(200).json({ success: true, store });
   } catch (error) {
     console.error('Error fetching store by identifier:', error);
-    res.status(500).json({ error: 'Failed to fetch store details' });
+    res.status(500).json({ success: false, error: 'Failed to fetch store details' });
   }
 };
 
@@ -292,7 +289,7 @@ exports.getApprovedStores = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching approved stores:', error);
-    res.status(500).json({ error: 'Failed to fetch approved stores' });
+    res.status(500).json({ success: false, error: 'Failed to fetch approved stores' });
   }
 };
 
@@ -307,7 +304,7 @@ exports.getPendingStores = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching pending stores:', error);
-    res.status(500).json({ error: 'Failed to fetch pending stores' });
+    res.status(500).json({ success: false, error: 'Failed to fetch pending stores' });
   }
 };
 
@@ -335,7 +332,7 @@ exports.getAllStores = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching stores:', error);
-    res.status(500).json({ error: 'Failed to fetch stores' });
+    res.status(500).json({ success: false, error: 'Failed to fetch stores' });
   }
 };
 
@@ -352,7 +349,7 @@ exports.getStoreById = async (req, res) => {
     res.status(200).json({ success: true, store });
   } catch (error) {
     console.error('Error fetching store by ID:', error);
-    res.status(500).json({ error: 'Failed to fetch store details' });
+    res.status(500).json({ success: false, error: 'Failed to fetch store details' });
   }
 };
 
@@ -367,14 +364,14 @@ exports.toggleOnline = async (req, res) => {
       { new: true, runValidators: true }
     );
     if (!updatedStore) {
-      return res.status(404).json({ error: 'Store not found' });
+      return res.status(404).json({ success: false, error: 'Store not found' });
     }
     console.log(`🏪 [Store Online Toggle] ${updatedStore.name} is now ${updatedStore.isOnline ? 'ONLINE' : 'OFFLINE'}`);
     res.status(200).json({ success: true, store: updatedStore });
   } catch (error) {
     console.error('Error toggling online status:', error);
     const status = error.name === 'ValidationError' ? 400 : 500;
-    res.status(status).json({ error: 'Failed to update store online status', details: error.message });
+    res.status(status).json({ success: false, error: 'Failed to update store online status', details: error.message });
   }
 };
 
@@ -390,19 +387,17 @@ exports.reviewStore = async (req, res) => {
         { $set: { isOnline: Boolean(isOnline) } },
         { new: true, runValidators: true }
       );
-      if (!updatedStore) return res.status(404).json({ error: 'Store not found' });
+      if (!updatedStore) return res.status(404).json({ success: false, error: 'Store not found' });
       return res.status(200).json({ success: true, store: updatedStore });
     }
 
     if (!['approved', 'rejected', 'pending'].includes(status)) {
-      return res.status(400).json({
-        error: "Invalid status. Must be 'approved', 'rejected', or 'pending'",
+      return res.status(400).json({ success: false, error: "Invalid status. Must be 'approved', 'rejected', or 'pending'",
       });
     }
 
     if (status === 'rejected' && !rejectionReason) {
-      return res.status(400).json({
-        error: 'Please provide a rejectionReason when rejecting a store application',
+      return res.status(400).json({ success: false, error: 'Please provide a rejectionReason when rejecting a store application',
       });
     }
 
@@ -420,7 +415,7 @@ exports.reviewStore = async (req, res) => {
     );
 
     if (!updatedStore) {
-      return res.status(404).json({ error: 'Store not found' });
+      return res.status(404).json({ success: false, error: 'Store not found' });
     }
 
     console.log(
@@ -435,7 +430,7 @@ exports.reviewStore = async (req, res) => {
   } catch (error) {
     console.error('Error updating store status:', error);
     const status = error.name === 'ValidationError' ? 400 : 500;
-    res.status(status).json({ error: 'Failed to update store status', details: error.message });
+    res.status(status).json({ success: false, error: 'Failed to update store status', details: error.message });
   }
 };
 
@@ -508,13 +503,13 @@ exports.updateFcmToken = async (req, res) => {
     const { storeId, phone, fcmToken } = req.body;
 
     if (!fcmToken) {
-      return res.status(400).json({ error: 'fcmToken is required' });
+      return res.status(400).json({ success: false, error: 'fcmToken is required' });
     }
 
     const query = {};
     if (storeId) query.storeId = storeId;
     else if (phone) query.phone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
-    else return res.status(400).json({ error: 'storeId or phone is required' });
+    else return res.status(400).json({ success: false, error: 'storeId or phone is required' });
 
     await Store.findOneAndUpdate(query, { $set: { fcmToken: fcmToken.trim() } }, { new: true, runValidators: true });
 
@@ -522,7 +517,7 @@ exports.updateFcmToken = async (req, res) => {
   } catch (error) {
     console.error('Error updating store FCM token:', error);
     const status = error.name === 'ValidationError' ? 400 : 500;
-    res.status(status).json({ error: 'Failed to update store FCM token', details: error.message });
+    res.status(status).json({ success: false, error: 'Failed to update store FCM token', details: error.message });
   }
 };
 
@@ -532,7 +527,7 @@ exports.logout = async (req, res) => {
     const { storeId, phone } = req.body;
 
     if (!storeId && !phone) {
-      return res.status(400).json({ error: 'storeId or phone is required' });
+      return res.status(400).json({ success: false, error: 'storeId or phone is required' });
     }
 
     const query = {};
@@ -547,7 +542,7 @@ exports.logout = async (req, res) => {
     );
 
     if (!store) {
-      return res.status(404).json({ error: 'Store not found' });
+      return res.status(404).json({ success: false, error: 'Store not found' });
     }
 
     console.log(`🏪 [Store Logged Out] ${store.name} (${store.storeId}) set offline & FCM token cleared`);
@@ -558,7 +553,7 @@ exports.logout = async (req, res) => {
     });
   } catch (error) {
     console.error('Error logging out store:', error);
-    res.status(500).json({ error: 'Failed to logout store', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to logout store', details: error.message });
   }
 };
 

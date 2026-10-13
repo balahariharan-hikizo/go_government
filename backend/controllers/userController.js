@@ -7,7 +7,7 @@ exports.sendOtp = async (req, res) => {
     const { phone } = req.body;
 
     if (!phone) {
-      return res.status(400).json({ error: 'Phone number is required' });
+      return res.status(400).json({ success: false, error: 'Phone number is required' });
     }
 
     const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
@@ -54,7 +54,7 @@ exports.sendOtp = async (req, res) => {
     });
   } catch (error) {
     console.error('Error sending OTP:', error);
-    res.status(500).json({ error: 'Failed to send OTP', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to send OTP', details: error.message });
   }
 };
 
@@ -64,24 +64,24 @@ exports.verifyOtp = async (req, res) => {
     const { phone, otp, } = req.body;
 
     if (!phone || !otp) {
-      return res.status(400).json({ error: 'Phone and OTP are required' });
+      return res.status(400).json({ success: false, error: 'Phone and OTP are required' });
     }
 
     const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
     const user = await User.findOne({ phone: cleanPhone });
 
     if (!user) {
-      return res.status(404).json({ error: 'User not found. Please request OTP first.' });
+      return res.status(404).json({ success: false, error: 'User not found. Please request OTP first.' });
     }
 
     // Check expiration
     if (user.otpExpires && new Date() > user.otpExpires) {
-      return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
+      return res.status(400).json({ success: false, error: 'OTP has expired. Please request a new one.' });
     }
 
     // Verify OTP code
     if (user.otp !== otp.toString().trim()) {
-      return res.status(400).json({ error: 'Invalid OTP code. Please enter the correct OTP.' });
+      return res.status(400).json({ success: false, error: 'Invalid OTP code. Please enter the correct OTP.' });
     }
 
     // Clear OTP after successful verification
@@ -101,7 +101,7 @@ exports.verifyOtp = async (req, res) => {
     });
   } catch (error) {
     console.error('Error verifying OTP:', error);
-    res.status(500).json({ error: 'Failed to verify OTP', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to verify OTP', details: error.message });
   }
 };
 
@@ -110,7 +110,7 @@ exports.getProfile = async (req, res) => {
   try {
     const user = await User.findOne({ userId: req.params.userId });
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ success: false, error: 'User not found' });
     }
     res.status(200).json({
       success: true,
@@ -118,7 +118,7 @@ exports.getProfile = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching profile:', error);
-    res.status(500).json({ error: 'Failed to fetch profile', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch profile', details: error.message });
   }
 };
 
@@ -128,7 +128,7 @@ exports.updateProfile = async (req, res) => {
     const { userId, userName, email, profileImage } = req.body;
 
     if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+      return res.status(400).json({ success: false, error: 'userId is required' });
     }
 
     const updatedUser = await User.findOneAndUpdate(
@@ -144,7 +144,7 @@ exports.updateProfile = async (req, res) => {
     );
 
     if (!updatedUser) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ success: false, error: 'User not found' });
     }
 
     res.status(200).json({
@@ -154,7 +154,7 @@ exports.updateProfile = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating profile:', error);
-    res.status(500).json({ error: 'Failed to update profile', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to update profile', details: error.message });
   }
 };
 
@@ -164,7 +164,7 @@ exports.sendPhoneUpdateOtp = async (req, res) => {
     const { userId, newPhone, currentPhone } = req.body;
 
     if (!newPhone) {
-      return res.status(400).json({ error: 'newPhone is required' });
+      return res.status(400).json({ success: false, error: 'newPhone is required' });
     }
 
     const cleanNewPhone = newPhone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
@@ -176,18 +176,18 @@ exports.sendPhoneUpdateOtp = async (req, res) => {
     if (userId) {
       user = await User.findOne({ userId });
       if (!user) {
-        return res.status(404).json({ error: 'User account not found for this userId' });
+        return res.status(404).json({ success: false, error: 'User account not found for this userId' });
       }
       if (cleanCurrentPhone && user.phone !== cleanCurrentPhone) {
-        return res.status(400).json({ error: 'Current phone number does not match this user account' });
+        return res.status(400).json({ success: false, error: 'Current phone number does not match this user account' });
       }
     } else if (cleanCurrentPhone) {
       user = await User.findOne({ phone: cleanCurrentPhone });
       if (!user) {
-        return res.status(404).json({ error: 'User account not found for this phone number' });
+        return res.status(404).json({ success: false, error: 'User account not found for this phone number' });
       }
     } else {
-      return res.status(400).json({ error: 'userId or currentPhone is required to identify the user' });
+      return res.status(400).json({ success: false, error: 'userId or currentPhone is required to identify the user' });
     }
 
     const existing = await User.findOne({
@@ -196,8 +196,7 @@ exports.sendPhoneUpdateOtp = async (req, res) => {
     });
 
     if (existing) {
-      return res.status(400).json({
-        error: 'This phone number is already registered with another account.',
+      return res.status(400).json({ success: false, error: 'This phone number is already registered with another account.',
       });
     }
 
@@ -218,7 +217,7 @@ exports.sendPhoneUpdateOtp = async (req, res) => {
     });
   } catch (error) {
     console.error('Error sending phone update OTP:', error);
-    res.status(500).json({ error: 'Failed to send OTP', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to send OTP', details: error.message });
   }
 };
 
@@ -228,7 +227,7 @@ exports.verifyPhoneUpdateOtp = async (req, res) => {
     const { userId, newPhone, currentPhone, otp } = req.body;
 
     if (!newPhone || !otp) {
-      return res.status(400).json({ error: 'newPhone and otp are required' });
+      return res.status(400).json({ success: false, error: 'newPhone and otp are required' });
     }
 
     const cleanNewPhone = newPhone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
@@ -240,30 +239,30 @@ exports.verifyPhoneUpdateOtp = async (req, res) => {
     if (userId) {
       user = await User.findOne({ userId });
       if (!user) {
-        return res.status(404).json({ error: 'User account not found for this userId' });
+        return res.status(404).json({ success: false, error: 'User account not found for this userId' });
       }
       if (cleanCurrentPhone && user.phone !== cleanCurrentPhone) {
-        return res.status(400).json({ error: 'Current phone number does not match this user account' });
+        return res.status(400).json({ success: false, error: 'Current phone number does not match this user account' });
       }
     } else if (cleanCurrentPhone) {
       user = await User.findOne({ phone: cleanCurrentPhone });
       if (!user) {
-        return res.status(404).json({ error: 'User account not found for this phone number' });
+        return res.status(404).json({ success: false, error: 'User account not found for this phone number' });
       }
     } else {
-      return res.status(400).json({ error: 'userId or currentPhone is required to identify the user' });
+      return res.status(400).json({ success: false, error: 'userId or currentPhone is required to identify the user' });
     }
 
     if (user.pendingPhone !== cleanNewPhone) {
-      return res.status(400).json({ error: 'Phone number mismatch. Please request OTP again.' });
+      return res.status(400).json({ success: false, error: 'Phone number mismatch. Please request OTP again.' });
     }
 
     if (user.pendingPhoneOtpExpires && new Date() > user.pendingPhoneOtpExpires) {
-      return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
+      return res.status(400).json({ success: false, error: 'OTP has expired. Please request a new one.' });
     }
 
     if (user.pendingPhoneOtp !== otp.toString().trim()) {
-      return res.status(400).json({ error: 'Invalid OTP code. Please enter the correct OTP.' });
+      return res.status(400).json({ success: false, error: 'Invalid OTP code. Please enter the correct OTP.' });
     }
 
     user.phone = cleanNewPhone;
@@ -282,7 +281,7 @@ exports.verifyPhoneUpdateOtp = async (req, res) => {
     });
   } catch (error) {
     console.error('Error verifying phone update OTP:', error);
-    res.status(500).json({ error: 'Failed to update phone number', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to update phone number', details: error.message });
   }
 };
 
@@ -292,13 +291,13 @@ exports.updateFcmToken = async (req, res) => {
     const { userId, phone, fcmToken } = req.body;
 
     if (!fcmToken) {
-      return res.status(400).json({ error: 'fcmToken is required' });
+      return res.status(400).json({ success: false, error: 'fcmToken is required' });
     }
 
     const query = {};
     if (userId) query.userId = userId;
     else if (phone) query.phone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
-    else return res.status(400).json({ error: 'userId or phone is required' });
+    else return res.status(400).json({ success: false, error: 'userId or phone is required' });
 
     const user = await User.findOneAndUpdate(
       query,
@@ -312,7 +311,7 @@ exports.updateFcmToken = async (req, res) => {
       fcmToken,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update FCM token', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to update FCM token', details: error.message });
   }
 };
 
@@ -321,7 +320,7 @@ exports.logout = async (req, res) => {
   try {
     const { userId, phone } = req.body;
     if (!userId && !phone) {
-      return res.status(400).json({ error: 'userId or phone is required' });
+      return res.status(400).json({ success: false, error: 'userId or phone is required' });
     }
 
     const query = {};
@@ -333,6 +332,6 @@ exports.logout = async (req, res) => {
 
     res.status(200).json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to logout', details: error.message });
+    res.status(500).json({ success: false, error: 'Failed to logout', details: error.message });
   }
 };
