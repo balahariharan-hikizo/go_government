@@ -260,6 +260,8 @@ exports.addComment = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Complaint not found' });
     }
 
+    const formatted = formatComplaint(updated, req);
+
     const ioComment = req.app.get('io');
     if (ioComment) {
       ioComment.emit('complaint_comment_added', {
@@ -267,6 +269,7 @@ exports.addComment = async (req, res) => {
         comment: newComment,
         comments: updated.comments,
       });
+      ioComment.emit('complaints_changed', { action: 'comment', complaintId: updated.complaintId });
     }
 
     res.status(200).json({
@@ -274,7 +277,7 @@ exports.addComment = async (req, res) => {
       message: 'Comment added successfully 💬',
       complaintId: updated.complaintId,
       comments: updated.comments,
-      complaint: updated,
+      complaint: formatted,
     });
   } catch (error) {
     console.error('Error adding comment:', error);

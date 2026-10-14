@@ -29,6 +29,7 @@ const walletRoutes = require('./routes/walletRoutes');
 const riderRoutes = require('./routes/riderRoutes');
 const fcmService = require('./services/fcmService');
 const User = require('./models/User');
+const Rider = require('./models/Rider');
 
 const app = express();
 const server = http.createServer(app);
@@ -128,11 +129,12 @@ function dispatchOrder(io, orderPayload, storeLat, storeLng, round = 1, prevDisp
         io.to(`rider:${target.riderId}`).emit('order:dispatch', targetPayload);
 
         // Send FCM Wake-up Push (wakes sleeping/closed Rider App)
-        User.findOne({ $or: [{ userId: target.riderId }, { phone: target.riderId }] })
+        Rider.findOne({ $or: [{ riderId: target.riderId }, { phone: target.riderId }] })
           .select('fcmToken')
-          .then((riderUser) => {
-            if (riderUser && riderUser.fcmToken) {
-              fcmService.sendToRiderOrderAlert(riderUser.fcmToken, targetPayload);
+          .then(async (riderDoc) => {
+            const token = riderDoc?.fcmToken || (await User.findOne({ $or: [{ userId: target.riderId }, { phone: target.riderId }] }).select('fcmToken'))?.fcmToken;
+            if (token) {
+              fcmService.sendToRiderOrderAlert(token, targetPayload);
             }
           })
           .catch((err) => console.error('Error fetching rider FCM token:', err.message));
@@ -172,7 +174,7 @@ function dispatchOrder(io, orderPayload, storeLat, storeLng, round = 1, prevDisp
     console.log(`📡 [Dispatch R3] Order ${orderId} → broadcast to all online riders`);
 
     // Broadcast FCM alert to all registered riders
-    User.find({ role: 'rider', fcmToken: { $ne: '' } })
+    Rider.find({ fcmToken: { $ne: '' } })
       .select('fcmToken')
       .then((riders) => {
         for (const r of riders) {

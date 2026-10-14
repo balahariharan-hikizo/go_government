@@ -273,6 +273,40 @@ class RiderApiService {
   }
 
   // --------------------------------------------------------------------------
+  // 8B. Update Rider Live GPS Location
+  // --------------------------------------------------------------------------
+  static Future<bool> updateLocation({
+    required String riderId,
+    required double lat,
+    required double lng,
+  }) async {
+    if (riderId.isEmpty) return false;
+    final url = '${ApiClient.baseUrl}/riders/location';
+    final body = {
+      'riderId': riderId,
+      'lat': lat,
+      'lng': lng,
+    };
+    ApiClient.logRequest('POST', url, body: body);
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: ApiClient.defaultHeaders,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      ApiClient.logResponse('POST', url, response.statusCode, response.body);
+      return response.statusCode == 200;
+    } catch (e) {
+      ApiClient.logError('POST', url, e);
+      return false;
+    }
+  }
+
+  // --------------------------------------------------------------------------
   // 9. Fetch Real Rider Profile Details from Backend
   // --------------------------------------------------------------------------
   static Future<Map<String, dynamic>?> fetchRiderProfile(String userId) async {

@@ -212,6 +212,27 @@ exports.toggleOnline = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Rider not found' });
     }
 
+    // Sync in-memory riderRegistry for live monitoring & dispatching
+    const riderRegistry = req.app.get('riderRegistry');
+    if (riderRegistry) {
+      const existing = riderRegistry.get(riderId) || {};
+      riderRegistry.set(riderId, {
+        ...existing,
+        isOnline: Boolean(isOnline),
+        lastSeen: Date.now(),
+      });
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('rider_status_changed', {
+        riderId: rider.riderId,
+        isOnline: rider.isOnline,
+        currentLocation: rider.currentLocation,
+      });
+      io.emit('riders_changed', { riderId: rider.riderId, isOnline: rider.isOnline });
+    }
+
     res.status(200).json({
       success: true,
       message: `Rider is now ${rider.isOnline ? 'ONLINE' : 'OFFLINE'}`,
@@ -226,24 +247,58 @@ exports.toggleOnline = async (req, res) => {
 // 6. UPDATE LIVE GPS LOCATION
 exports.updateLocation = async (req, res) => {
   try {
-    const { riderId, lat, lng } = req.body;
+    const { riderId, lat, lng, isOnline } = req.body;
 
     if (!riderId || lat === undefined || lng === undefined) {
       return res.status(400).json({ success: false, error: 'riderId, lat, and lng are required' });
     }
 
-    await Rider.findOneAndUpdate(
+    const updateFields = {
+      'currentLocation.lat': Number(lat),
+      'currentLocation.lng': Number(lng),
+    };
+    if (isOnline !== undefined) {
+      updateFields.isOnline = Boolean(isOnline);
+    }
+
+    const updatedRider = await Rider.findOneAndUpdate(
       { riderId },
-      { 
-        $set: { 
-          'currentLocation.lat': Number(lat), 
-          'currentLocation.lng': Number(lng) 
-        } 
-      },
-      { runValidators: true }
+      { $set: updateFields },
+      { returnDocument: 'after', runValidators: true }
     );
 
-    res.status(200).json({ success: true, message: 'Location updated' });
+    if (!updatedRider) {
+      return res.status(404).json({ success: false, error: 'Rider not found' });
+    }
+
+    // Sync in-memory riderRegistry for nearest rider dispatching
+    const riderRegistry = req.app.get('riderRegistry');
+    if (riderRegistry) {
+      const existing = riderRegistry.get(riderId) || {};
+      riderRegistry.set(riderId, {
+        ...existing,
+        lat: Number(lat),
+        lng: Number(lng),
+        ...(isOnline !== undefined && { isOnline: Boolean(isOnline) }),
+        lastSeen: Date.now(),
+      });
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('rider_location_updated', {
+        riderId,
+        lat: Number(lat),
+        lng: Number(lng),
+        isOnline: updatedRider.isOnline,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Location updated',
+      currentLocation: updatedRider.currentLocation,
+    });
   } catch (error) {
     const status = error.name === 'ValidationError' ? 400 : 500;
     res.status(status).json({ success: false, error: 'Failed to update location', details: error.message });
@@ -263,18 +318,25 @@ exports.updateFcmToken = async (req, res) => {
       return res.status(400).json({ success: false, error: 'fcmToken is required' });
     }
 
+    const cleanToken = fcmToken.trim();
+
     const query = {};
     if (targetId && phone) query.$or = [{ riderId: targetId }, { phone }];
     else if (targetId) query.riderId = targetId;
     else query.phone = phone;
 
-    await Rider.findOneAndUpdate(
+    const rider = await Rider.findOneAndUpdate(
       query,
-      { $set: { fcmToken: fcmToken.trim() } },
-      { runValidators: true }
+      { $set: { fcmToken: cleanToken } },
+      { returnDocument: 'after', runValidators: true }
     );
 
-    res.status(200).json({ success: true, message: 'Rider FCM token updated' });
+    res.status(200).json({
+      success: true,
+      message: 'Rider FCM token updated',
+      riderId: rider?.riderId || targetId,
+      fcmToken: cleanToken,
+    });
   } catch (error) {
     const status = error.name === 'ValidationError' ? 400 : 500;
     res.status(status).json({ success: false, error: 'Failed to update FCM token', details: error.message });
@@ -291,16 +353,39 @@ exports.logout = async (req, res) => {
       return res.status(400).json({ success: false, error: 'riderId or phone is required' });
     }
 
+    const cleanPhone = phone ? phone.toString().trim().replace(/[^0-9]/g, '').slice(-10) : undefined;
+
     const query = {};
-    if (targetId && phone) query.$or = [{ riderId: targetId }, { phone: phone.toString().trim().replace(/[^0-9]/g, '').slice(-10) }];
+    if (targetId && cleanPhone) query.$or = [{ riderId: targetId }, { phone: cleanPhone }];
     else if (targetId) query.riderId = targetId;
-    else if (phone) query.phone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
+    else if (cleanPhone) query.phone = cleanPhone;
 
     const rider = await Rider.findOneAndUpdate(
       query,
       { $set: { fcmToken: '', isOnline: false } },
       { new: true }
     );
+
+    // Clear registry if rider was registered
+    const riderId = rider?.riderId || targetId;
+    const riderRegistry = req.app.get('riderRegistry');
+    if (riderRegistry && riderId && riderRegistry.has(riderId)) {
+      const existing = riderRegistry.get(riderId);
+      if (existing.disconnectTimer) clearTimeout(existing.disconnectTimer);
+      riderRegistry.set(riderId, {
+        ...existing,
+        lat: 0,
+        lng: 0,
+        isOnline: false,
+        lastSeen: Date.now(),
+      });
+    }
+
+    const io = req.app.get('io');
+    if (io && riderId) {
+      io.emit('rider_status_changed', { riderId, isOnline: false });
+      io.emit('riders_changed', { riderId, isOnline: false });
+    }
 
     if (!rider) {
       return res.status(404).json({ success: false, error: 'Rider not found' });
