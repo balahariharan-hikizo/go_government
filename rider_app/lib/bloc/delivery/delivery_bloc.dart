@@ -80,6 +80,13 @@ class DeliveryBloc extends Bloc<DeliveryEvent, DeliveryState> {
     Emitter<DeliveryState> emit,
   ) async {
     await HiveService.setIsOnline(event.isOnline);
+    final riderId = HiveService.userId;
+    if (riderId.isNotEmpty) {
+      RiderApiService.toggleOnlineStatus(
+        riderId: riderId,
+        isOnline: event.isOnline,
+      );
+    }
     if (state is DeliveryLoaded) {
       emit((state as DeliveryLoaded).copyWith(isOnline: event.isOnline));
     } else {

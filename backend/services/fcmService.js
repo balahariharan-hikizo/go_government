@@ -6,10 +6,15 @@ const fs = require('fs');
 let fcmMessaging = null;
 
 try {
-  const serviceAccountPath = path.join(
-    __dirname,
-    '../config/gogovernment-firebase-adminsdk-fbsvc-22a22fa445.json'
-  );
+  const configDir = path.join(__dirname, '../config');
+  let serviceAccountPath = path.join(configDir, 'gogovernment-firebase-adminsdk-fbsvc-3ae59d0f4b.json');
+
+  if (!fs.existsSync(serviceAccountPath) && fs.existsSync(configDir)) {
+    const foundFile = fs.readdirSync(configDir).find(f => f.includes('firebase-adminsdk') && f.endsWith('.json'));
+    if (foundFile) {
+      serviceAccountPath = path.join(configDir, foundFile);
+    }
+  }
 
   if (fs.existsSync(serviceAccountPath)) {
     const serviceAccount = require(serviceAccountPath);
@@ -17,9 +22,9 @@ try {
       credential: cert(serviceAccount),
     });
     fcmMessaging = getMessaging(app);
-    console.log('🔥 [FCM] Firebase Admin SDK successfully initialized');
+    console.log(`🔥 [FCM] Firebase Admin SDK successfully initialized (${path.basename(serviceAccountPath)})`);
   } else {
-    console.warn(`⚠️ [FCM] Service account file not found at: ${serviceAccountPath}`);
+    console.warn(`⚠️ [FCM] Service account file not found in: ${configDir}`);
   }
 } catch (error) {
   console.error('❌ [FCM] Error initializing Firebase Admin SDK:', error.message);
@@ -28,7 +33,7 @@ try {
 /**
  * Send a notification or data push to a specific FCM device token.
  */
-async function sendToToken(fcmToken, { title, body, data = {}, sound = 'default', channelId = 'default', priority = 'high' }) {
+async function sendToToken(fcmToken, { title, body, data = {}, sound = 'default', channelId = 'default', priority = 'high', isDataOnly = false }) {
   if (!fcmMessaging) {
     console.warn('⚠️ [FCM] Skipping push notification — Firebase Admin not initialized');
     return null;
@@ -44,27 +49,31 @@ async function sendToToken(fcmToken, { title, body, data = {}, sound = 'default'
     for (const [key, value] of Object.entries(data)) {
       stringifiedData[key] = value !== undefined && value !== null ? String(value) : '';
     }
+    if (title) stringifiedData.title = String(title);
+    if (body) stringifiedData.body = String(body);
 
     const message = {
       token: fcmToken.trim(),
       data: stringifiedData,
       android: {
         priority: priority === 'high' ? 'high' : 'normal',
-        notification: {
-          channelId: channelId,
-          sound: sound,
-          priority: 'max',
-          defaultVibrateTimings: true,
-          defaultSound: sound === 'default',
-        },
       },
     };
 
-    if (title || body) {
-      message.notification = {
-        title: title || '',
-        body: body || '',
+    if (!isDataOnly) {
+      message.android.notification = {
+        channelId: channelId,
+        sound: sound,
+        priority: 'max',
+        defaultVibrateTimings: true,
+        defaultSound: sound === 'default',
       };
+      if (title || body) {
+        message.notification = {
+          title: title || '',
+          body: body || '',
+        };
+      }
     }
 
     const response = await fcmMessaging.send(message);
@@ -135,9 +144,11 @@ async function sendToStoreNewOrder(fcmToken, order) {
     channelId: 'store_order_alerts',
     sound: 'default',
     priority: 'high',
+    isDataOnly: true,
     data: {
       type: 'new_order',
       orderId: order.orderId || '',
+      grandTotal: String(order.grandTotal || ''),
       click_action: 'FLUTTER_NOTIFICATION_CLICK',
     },
   });

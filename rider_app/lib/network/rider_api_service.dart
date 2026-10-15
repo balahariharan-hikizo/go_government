@@ -273,6 +273,38 @@ class RiderApiService {
   }
 
   // --------------------------------------------------------------------------
+  // 8A. Toggle Online / Offline Duty Status (API 8.5)
+  // --------------------------------------------------------------------------
+  static Future<bool> toggleOnlineStatus({
+    required String riderId,
+    required bool isOnline,
+  }) async {
+    if (riderId.isEmpty) return false;
+    final url = '${ApiClient.baseUrl}/riders/status';
+    final body = {
+      'riderId': riderId,
+      'isOnline': isOnline,
+    };
+    ApiClient.logRequest('PATCH', url, body: body);
+
+    try {
+      final response = await http
+          .patch(
+            Uri.parse(url),
+            headers: ApiClient.defaultHeaders,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 8));
+
+      ApiClient.logResponse('PATCH', url, response.statusCode, response.body);
+      return response.statusCode == 200;
+    } catch (e) {
+      ApiClient.logError('PATCH', url, e);
+      return false;
+    }
+  }
+
+  // --------------------------------------------------------------------------
   // 8B. Update Rider Live GPS Location
   // --------------------------------------------------------------------------
   static Future<bool> updateLocation({

@@ -79,8 +79,8 @@ exports.createOrder = async (req, res) => {
         phone: storeDoc.phone || resolvedStoreDetails.phone || '',
       };
     } else {
-      resolvedStoreDetails.latitude = resolvedStoreDetails.latitude || 12.9716;
-      resolvedStoreDetails.longitude = resolvedStoreDetails.longitude || 77.5946;
+      resolvedStoreDetails.latitude = resolvedStoreDetails.latitude || 0.0;
+      resolvedStoreDetails.longitude = resolvedStoreDetails.longitude || 0.0;
     }
 
     const isWallet = paymentMethod && paymentMethod.toLowerCase().includes('wallet');
@@ -149,15 +149,23 @@ exports.createOrder = async (req, res) => {
 
     await newOrder.save();
 
-    // Decrement stock atomically
+    // Decrement stock atomically (both base product and variant)
     for (const item of items) {
       const pId = item.productId || item.id;
+      const vId = item.variantId;
       const qty = Number(item.quantity || item.qty || 1);
       if (pId && qty > 0) {
-        await Product.updateOne(
-          { productId: pId },
-          { $inc: { stock: -qty } }
-        ).catch((err) => console.warn(`⚠️ [Inventory] Could not decrement stock for product ${pId}:`, err.message));
+        if (vId) {
+          await Product.updateOne(
+            { productId: pId, 'variants.variantId': vId },
+            { $inc: { 'variants.$.stock': -qty, stock: -qty } }
+          ).catch((err) => console.warn(`⚠️ [Inventory] Could not decrement variant stock for ${pId}:${vId}:`, err.message));
+        } else {
+          await Product.updateOne(
+            { productId: pId },
+            { $inc: { stock: -qty } }
+          ).catch((err) => console.warn(`⚠️ [Inventory] Could not decrement stock for product ${pId}:`, err.message));
+        }
       }
     }
 
@@ -192,10 +200,9 @@ exports.createOrder = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       const orderPayload = newOrder.toObject ? newOrder.toObject() : newOrder;
-      io.emit('order:new', orderPayload);
+      io.to(`store:${storeId}`).emit(`store:${storeId}:new_order`, orderPayload);
       io.emit(`store:${storeId}:new_order`, orderPayload);
-      io.to(`store:${storeId}`).emit('order:new', orderPayload);
-      console.log(`📡 [Socket.io] Emitted order:new for order ${orderId}`);
+      console.log(`📡 [Socket.io] Emitted single targeted new_order for store: ${storeId} (Order: ${orderId})`);
     }
 
     // Send FCM Push to Store
@@ -229,7 +236,8 @@ exports.createOrder = async (req, res) => {
 exports.getAllOrders = async (req, res) => {
   try {
     const orders = await Order.find({}).sort({ createdAt: -1 });
-    return res.status(200).json({ success: true, data: orders });
+    return res.status(200).json({ success: true,
+      totalOrders: orders.length, data: orders });
   } catch (error) {
     console.error('Error fetching all orders:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch all orders', error: error.message });
@@ -329,7 +337,7 @@ exports.getUserOrders = async (req, res) => {
     }
     const orders = await Order.find({ userId: { $in: queryUsers } }).sort({ createdAt: -1 });
 
-    return res.status(200).json({ success: true, data: orders });
+    return res.status(200).json({ success: true,totalOrders: orders.length,data: orders });
   } catch (error) {
     console.error('Error fetching user orders:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch user orders', error: error.message });
@@ -815,47 +823,3 @@ exports.updateOrderStatus = async (req, res) => {
   }
 };
 
-// 11. DELETE ORDER
-exports.deleteOrder = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const deleted = await Order.findOneAndDelete({ orderId });
-    if (!deleted) {
-      return res.status(404).json({ success: false, message: 'Order not found' });
-    }
-
-    // Free rider if assigned
-    const riderId = deleted.deliveryAgent?.riderId;
-    if (riderId) {
-      const riderRegistry = req.app.get('riderRegistry');
-      if (riderRegistry && riderRegistry.has(riderId)) {
-        riderRegistry.get(riderId).isBusy = false;
-      }
-      await Rider.updateOne({ riderId }, { $set: { isBusy: false } }).catch(() => {});
-    }
-
-    // Clear dispatch timer
-    const dispatchTimers = req.app.get('dispatchTimers');
-    if (dispatchTimers && dispatchTimers.has(orderId)) {
-      clearTimeout(dispatchTimers.get(orderId).timer);
-      dispatchTimers.delete(orderId);
-    }
-
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('order:deleted', { orderId });
-      io.emit(`order:${orderId}:deleted`, { orderId });
-      io.to(`store:${deleted.storeId}`).emit('order:deleted', { orderId });
-      io.to('riders').emit('order:dispatch_cancelled', { orderId });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: `Order #${orderId} deleted successfully`,
-      data: deleted,
-    });
-  } catch (error) {
-    console.error('Error deleting order:', error);
-    return res.status(500).json({ success: false, message: 'Failed to delete order', error: error.message });
-  }
-};

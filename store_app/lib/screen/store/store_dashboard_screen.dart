@@ -142,6 +142,11 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         debugPrint('📩 [FCM Foreground Store]: ${message.data}');
+        // If Socket.io is active and handling live orders in foreground, skip duplicate FCM notification
+        if (StoreSocketService().isConnected) {
+          debugPrint('⚡ [FCM Foreground Store] Socket.io is actively connected. Skipping redundant FCM alert.');
+          return;
+        }
         if (message.data['type'] == 'new_order' && mounted) {
           final orderId = message.data['orderId']?.toString() ?? '';
           _handleIncomingNewOrder(

@@ -17,6 +17,5 @@ router.get('/rider/:riderId', orderController.getRiderDeliveries);
 router.get('/:orderId', orderController.getOrderDetails);
 router.post('/:orderId/accept-rider', orderController.acceptOrder);
 router.patch('/:orderId/status', orderController.updateOrderStatus);
-router.delete('/:orderId', orderController.deleteOrder);
 
 module.exports = router;

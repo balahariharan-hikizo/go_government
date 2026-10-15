@@ -123,6 +123,8 @@ class NotificationService {
     }
   }
 
+  static final Map<String, int> _lastOrderNotifiedMap = {};
+
   /// Show incoming new order notification with sound
   static Future<void> showNewOrderNotification({
     required String orderId,
@@ -130,6 +132,16 @@ class NotificationService {
     String body = 'A new customer order has been placed. Tap to view orders.',
   }) async {
     try {
+      if (orderId.isNotEmpty) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final lastTime = _lastOrderNotifiedMap[orderId] ?? 0;
+        if (now - lastTime < 15000) {
+          debugPrint('[NotificationService] Suppressing duplicate notification for order #$orderId');
+          return;
+        }
+        _lastOrderNotifiedMap[orderId] = now;
+      }
+
       if (!_isInitialized) {
         await initialize();
       }
@@ -155,7 +167,9 @@ class NotificationService {
         ),
       );
 
-      final int id = DateTime.now().millisecondsSinceEpoch.remainder(100000);
+      final int id = orderId.isNotEmpty
+          ? orderId.hashCode.abs().remainder(100000)
+          : DateTime.now().millisecondsSinceEpoch.remainder(100000);
 
       await _notificationsPlugin.show(
         id: id,

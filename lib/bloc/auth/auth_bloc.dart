@@ -83,6 +83,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
     on<LogoutEvent>((event, emit) async {
       emit(AuthLoading());
+      final uid = HiveService.citizenId;
+      final phone = HiveService.userPhone;
+      if (uid.isNotEmpty || phone.isNotEmpty) {
+        AuthApiService.logout(userId: uid, phone: phone);
+      }
       await HiveService.clearAllHiveData();
       CartBloc.instance.add(ResetCartAndWishlistEvent());
       ProfileBloc.instance.add(ReloadProfileEvent());

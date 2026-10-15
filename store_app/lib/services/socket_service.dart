@@ -12,6 +12,8 @@ class StoreSocketService {
   bool _isConnected = false;
   bool get isConnected => _isConnected;
   String? _currentStoreId;
+  String? _lastBroadcastOrderId;
+  int _lastBroadcastTime = 0;
 
   final StreamController<Map<String, dynamic>> _newOrderController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -20,6 +22,20 @@ class StoreSocketService {
 
   Stream<Map<String, dynamic>> get onNewOrder => _newOrderController.stream;
   Stream<Map<String, dynamic>> get onOrderUpdate => _orderUpdateController.stream;
+
+  void _dispatchNewOrder(Map<String, dynamic> map) {
+    final orderId = map['orderId']?.toString() ?? '';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (orderId.isNotEmpty && _lastBroadcastOrderId == orderId && (now - _lastBroadcastTime < 10000)) {
+      debugPrint('⚡ [StoreSocketService] Suppressing duplicate socket event for order: $orderId');
+      return;
+    }
+    if (orderId.isNotEmpty) {
+      _lastBroadcastOrderId = orderId;
+      _lastBroadcastTime = now;
+    }
+    _newOrderController.add(map);
+  }
 
   void init() {
     if (_socket != null) {
@@ -81,7 +97,7 @@ class StoreSocketService {
           final map = Map<String, dynamic>.from(data);
           final sid = map['storeId']?.toString() ?? map['storeDetails']?['storeId']?.toString();
           if (_currentStoreId == null || sid == null || sid.toLowerCase() == _currentStoreId!.toLowerCase()) {
-            _newOrderController.add(map);
+            _dispatchNewOrder(map);
           }
         }
       });
@@ -108,7 +124,7 @@ class StoreSocketService {
     _socket?.on('store:$storeId:new_order', (data) {
       debugPrint('📦 [StoreSocketService] Store-specific new order received for $storeId: $data');
       if (data is Map) {
-        _newOrderController.add(Map<String, dynamic>.from(data));
+        _dispatchNewOrder(Map<String, dynamic>.from(data));
       }
     });
 

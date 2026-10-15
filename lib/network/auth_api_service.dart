@@ -270,4 +270,30 @@ class AuthApiService {
       return false;
     }
   }
+
+  /// 7. Citizen Logout (API 1.8)
+  static Future<bool> logout({String? userId, String? phone}) async {
+    final url = '${ApiClient.baseUrl}/auth/logout';
+    final payload = jsonEncode({
+      if (userId != null && userId.isNotEmpty) 'userId': userId,
+      if (phone != null && phone.isNotEmpty) 'phone': phone,
+    });
+
+    try {
+      ApiClient.logRequest('POST', url, body: payload);
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: ApiClient.defaultHeaders,
+            body: payload,
+          )
+          .timeout(const Duration(seconds: 6));
+
+      ApiClient.logResponse('POST', url, response.statusCode, response.body);
+      return response.statusCode == 200;
+    } catch (e) {
+      ApiClient.logError('POST', url, e);
+      return false;
+    }
+  }
 }

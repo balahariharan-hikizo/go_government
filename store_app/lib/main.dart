@@ -25,10 +25,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Only trigger local notification for data-only push to prevent duplicates.
   if (message.notification == null && message.data['type'] == 'new_order') {
     final orderId = message.data['orderId']?.toString() ?? '';
+    final title = message.data['title']?.toString() ?? '🔔 New Order Received!';
+    final body = message.data['body']?.toString() ?? 'Order #$orderId has been placed. Tap to prepare items.';
     await NotificationService.showNewOrderNotification(
       orderId: orderId,
-      title: '🔔 New Order Received!',
-      body: 'Order #$orderId has been placed. Tap to prepare items.',
+      title: title,
+      body: body,
     );
   }
 }

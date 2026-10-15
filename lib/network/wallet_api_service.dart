@@ -267,4 +267,37 @@ class WalletApiService {
     }
     return [];
   }
+
+  /// Refunds an amount back to user's wallet (e.g. order cancellation) (API 9.4)
+  static Future<Map<String, dynamic>> refundWallet({
+    required double amount,
+    required String orderId,
+    String? reason,
+    String? userId,
+  }) async {
+    final resolvedUser = userId ?? _userId;
+    try {
+      final url = Uri.parse('${ApiClient.baseUrl}/wallet/refund');
+      final body = jsonEncode({
+        'userId': resolvedUser,
+        'amount': amount,
+        'orderId': orderId,
+        'reason': reason ?? 'Order Cancellation Refund',
+      });
+
+      final res = await http.post(url, headers: ApiClient.defaultHeaders, body: body).timeout(const Duration(seconds: 8));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        return {
+          'success': true,
+          'walletBalance': (data['walletBalance'] as num?)?.toDouble() ?? 0.0,
+          'transaction': data['transaction'],
+          'message': data['message'] ?? 'Refund processed successfully',
+        };
+      }
+    } catch (e) {
+      debugPrint('[WalletApiService] refundWallet error: $e');
+    }
+    return {'success': false, 'error': 'Refund failed'};
+  }
 }
