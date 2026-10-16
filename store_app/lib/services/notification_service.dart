@@ -41,7 +41,11 @@ class NotificationService {
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       if (androidPlugin != null) {
-        await androidPlugin.requestNotificationsPermission();
+        try {
+          await androidPlugin.requestNotificationsPermission();
+        } catch (e) {
+          debugPrint('[NotificationService] Skipping runtime permission dialog in background isolate: $e');
+        }
 
         // 1. High-priority store order alerts channel
         const AndroidNotificationChannel storeOrderChannel =

@@ -225,6 +225,17 @@ exports.toggleOnline = async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
+      const existing = riderRegistry ? riderRegistry.get(riderId) : null;
+      if (existing?.socketId) {
+        const s = io.sockets.sockets.get(existing.socketId);
+        if (s) {
+          if (Boolean(isOnline)) {
+            s.join('online_riders');
+          } else {
+            s.leave('online_riders');
+          }
+        }
+      }
       io.emit('rider_status_changed', {
         riderId: rider.riderId,
         isOnline: rider.isOnline,

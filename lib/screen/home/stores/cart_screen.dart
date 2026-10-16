@@ -248,6 +248,7 @@ class _CartScreenState extends State<CartScreen> {
     // Create order in MongoDB backend
     final serverOrder = await OrderApiService.createOrder(
       storeId: resolvedStoreId,
+      storeName: storeTitle,
       items: backendItems,
       itemTotal: itemDiscountedTotal.toDouble(),
       deliveryCharge: deliveryCharge.toDouble(),

@@ -13,6 +13,7 @@ exports.createOrder = async (req, res) => {
     const {
       userId,
       storeId,
+      storeName,
       items,
       itemTotal,
       deliveryCharge = 0,
@@ -129,10 +130,15 @@ exports.createOrder = async (req, res) => {
       await walletTx.save();
     }
 
+    const finalStoreName = (storeName && storeName.trim().length > 0)
+      ? storeName.trim()
+      : (resolvedStoreDetails.name || (storeDoc && storeDoc.name) || 'Store');
+
     const newOrder = new Order({
       orderId,
       userId,
       storeId,
+      storeName: finalStoreName,
       items,
       itemTotal: finalItemTotal,
       deliveryCharge: numDeliveryCharge,
@@ -384,6 +390,7 @@ exports.getStoreOrders = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      totalOrders: orders.length,
       data: orders,
       summary: {
         totalOrders: orders.length,
@@ -411,7 +418,7 @@ exports.getAvailableDeliveries = async (req, res) => {
       ],
     }).sort({ createdAt: -1 });
 
-    return res.status(200).json({ success: true, data: orders });
+    return res.status(200).json({ success: true, count: orders.length, data: orders });
   } catch (error) {
     console.error('Error fetching available orders:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch available deliveries', error: error.message });

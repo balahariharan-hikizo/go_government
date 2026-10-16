@@ -14,6 +14,7 @@ class OrderApiService {
   /// 1. Create a new order in backend
   static Future<Map<String, dynamic>?> createOrder({
     required String storeId,
+    String? storeName,
     required List<Map<String, dynamic>> items,
     required double itemTotal,
     double deliveryCharge = 0,
@@ -32,6 +33,7 @@ class OrderApiService {
     final payload = jsonEncode({
       'userId': uid,
       'storeId': storeId,
+      'storeName': storeName ?? storeDetails?['name'] ?? '',
       'items': items,
       'itemTotal': itemTotal,
       'deliveryCharge': deliveryCharge,

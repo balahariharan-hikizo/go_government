@@ -162,19 +162,18 @@ function dispatchOrder(io, orderPayload, storeLat, storeLng, round = 1, prevDisp
 
     dispatchTimers.set(orderId, { timer, round, dispatchedIds });
   } else {
-    // Round 3 (or no riders nearby within 2km/6km) — broadcast to all online riders
+    // Round 3 (or no riders nearby within 2km/6km) — broadcast ONLY to online riders
     const payload = {
       ...orderPayload,
       dispatchRound: 3,
       dispatchDistKm: null,
       countdownSecs: 30,
     };
-    io.emit('order:dispatch', payload);
-    io.to('riders').emit('order:dispatch', payload);
-    console.log(`📡 [Dispatch R3] Order ${orderId} → broadcast to all online riders`);
+    io.to('online_riders').emit('order:dispatch', payload);
+    console.log(`📡 [Dispatch R3] Order ${orderId} → broadcast to online riders only`);
 
-    // Broadcast FCM alert to all registered riders
-    Rider.find({ fcmToken: { $ne: '' } })
+    // Broadcast FCM alert ONLY to riders who are actively ON DUTY (isOnline: true)
+    Rider.find({ isOnline: true, fcmToken: { $ne: '' } })
       .select('fcmToken')
       .then((riders) => {
         for (const r of riders) {
@@ -206,14 +205,34 @@ io.on('connection', (socket) => {
   });
 
   // Rider joins general riders dispatch room + registers in GPS registry
-  socket.on('join:rider', (riderId) => {
+  socket.on('join:rider', async (riderId) => {
     socket.join('riders');
     if (riderId) socket.join(`rider:${riderId}`);
     socket.data.riderId = riderId;
-    // Register rider in GPS registry (online, position unknown until first ping)
+
+    // Check rider's actual duty status from DB
+    let isDutyOnline = false;
+    let storedLat = 0;
+    let storedLng = 0;
+    if (riderId) {
+      try {
+        const rDoc = await Rider.findOne({ $or: [{ riderId }, { phone: riderId }] }).select('isOnline currentLocation');
+        isDutyOnline = Boolean(rDoc?.isOnline);
+        storedLat = rDoc?.currentLocation?.lat || 0;
+        storedLng = rDoc?.currentLocation?.lng || 0;
+      } catch (_) {}
+    }
+
+    if (isDutyOnline) {
+      socket.join('online_riders');
+    } else {
+      socket.leave('online_riders');
+    }
+
+    // Register rider in GPS registry
     if (riderId && !riderRegistry.has(riderId)) {
       riderRegistry.set(riderId, {
-        lat: 0, lng: 0, socketId: socket.id, isOnline: true, isBusy: false, lastSeen: Date.now(),
+        lat: storedLat, lng: storedLng, socketId: socket.id, isOnline: isDutyOnline, isBusy: false, lastSeen: Date.now(),
       });
     } else if (riderId) {
       const info = riderRegistry.get(riderId);
@@ -222,11 +241,10 @@ io.on('connection', (socket) => {
         info.disconnectTimer = null;
       }
       info.socketId = socket.id;
-      info.isOnline = true;
+      info.isOnline = isDutyOnline;
       info.lastSeen = Date.now();
-      // isBusy is preserved — rider reconnecting mid-delivery stays busy
     }
-    console.log(`🚴 [Socket.io] Socket ${socket.id} joined riders room (Rider: ${riderId})`);
+    console.log(`🚴 [Socket.io] Socket ${socket.id} joined riders room (Rider: ${riderId}, isOnline: ${isDutyOnline})`);
   });
 
   // Rider GPS ping — updates in-memory registry (every 20-30s while online)
@@ -242,6 +260,7 @@ io.on('connection', (socket) => {
 
     // Explicit offline ping
     if (isOnline === false) {
+      socket.leave('online_riders');
       riderRegistry.set(riderId, {
         ...existing,
         lat: 0,
@@ -253,6 +272,8 @@ io.on('connection', (socket) => {
       console.log(`🛑 [Socket.io] Rider ${riderId} pinged OFFLINE (cleared GPS)`);
       return;
     }
+
+    socket.join('online_riders');
 
     // Never overwrite valid existing coordinates with (0, 0)
     const hasZeroCoords = (lat === 0 || lat === null || lat === undefined) &&
