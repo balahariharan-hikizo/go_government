@@ -6,6 +6,7 @@ import '../../bloc/product/product_event.dart';
 import '../../bloc/product/product_state.dart';
 import '../../model/product_model.dart';
 import '../../network/store_api_service.dart';
+import '../../network/category_api_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/responsive_helper.dart';
 import '../../widget/common_background.dart';
@@ -72,20 +73,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
   late TextEditingController _descriptionController;
   late TextEditingController _subsidyLimitController;
 
-  final List<String> _categoryOptions = [
-    'Rice & Grains',
-    'Dals & Pulses',
-    'Atta & Flours',
-    'Oils & Ghee',
-    'Spices & Masala',
-    'Vegetables & Fruits',
-    'Dairy & Eggs',
-    'Medicines & Healthcare',
-    'Snacks & Beverages',
-    'General Staples',
-  ];
-  String _selectedCategory = 'Rice & Grains';
+  List<String> _categoryOptions = [];
+  String _selectedCategory = '';
   bool _isSubsidized = false;
+  bool _isLoadingCategories = false;
 
   // Multiple Images Management
   List<String> _productImages = [];
@@ -100,11 +91,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
   @override
   void initState() {
     super.initState();
+    _loadStoreCategories();
     final p = widget.initialProduct;
     if (p != null) {
-      _selectedCategory = p.category.isNotEmpty
-          ? p.category
-          : _categoryOptions.first;
+      _selectedCategory = p.category;
       _titleController = TextEditingController(text: p.title);
       _priceController = TextEditingController(text: p.price.toStringAsFixed(0));
       _origPriceController =
@@ -141,7 +131,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
         }
       }
     } else {
-      _selectedCategory = _categoryOptions.first;
+      _selectedCategory = '';
       _titleController = TextEditingController();
       _priceController = TextEditingController();
       _origPriceController = TextEditingController();
@@ -178,6 +168,132 @@ class _AddProductScreenState extends State<AddProductScreen> {
       vc.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _loadStoreCategories() async {
+    setState(() => _isLoadingCategories = true);
+    final cats = await CategoryApiService.getCategoriesByStore(widget.storeId, activeOnly: true);
+    if (mounted) {
+      setState(() {
+        _categoryOptions = cats.where((c) => c.isActive).map((c) => c.name).toList();
+        if (_selectedCategory.isNotEmpty && !_categoryOptions.contains(_selectedCategory)) {
+          _categoryOptions.insert(0, _selectedCategory);
+        } else if (_selectedCategory.isEmpty && _categoryOptions.isNotEmpty) {
+          _selectedCategory = _categoryOptions.first;
+        }
+        _isLoadingCategories = false;
+      });
+    }
+  }
+
+  void _showQuickAddCategoryModal() {
+    final nameCtrl = TextEditingController();
+    bool isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) => Container(
+          padding: EdgeInsets.only(
+            left: Responsive.w(20),
+            right: Responsive.w(20),
+            top: Responsive.h(20),
+            bottom: MediaQuery.of(context).viewInsets.bottom + Responsive.h(20),
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: Responsive.w(44),
+                  height: Responsive.h(4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              SizedBox(height: Responsive.h(16)),
+              CustomText.title('Add New Category', fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.black),
+              SizedBox(height: Responsive.h(12)),
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'e.g. Organic Pulses, Frozen Foods',
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                  ),
+                ),
+              ),
+              SizedBox(height: Responsive.h(16)),
+              SizedBox(
+                width: double.infinity,
+                height: Responsive.h(46),
+                child: ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final name = nameCtrl.text.trim();
+                          if (name.isEmpty) return;
+
+                          setSheetState(() => isSaving = true);
+                          final res = await CategoryApiService.createCategory(
+                            storeId: widget.storeId,
+                            name: name,
+                          );
+
+                          if (!mounted) return;
+                          setSheetState(() => isSaving = false);
+                          Navigator.pop(ctx);
+
+                          if (res['success'] == true) {
+                            setState(() {
+                              if (!_categoryOptions.contains(name)) {
+                                _categoryOptions.add(name);
+                              }
+                              _selectedCategory = name;
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Category "$name" created & selected!'),
+                                backgroundColor: Colors.green.shade700,
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(res['error'] ?? 'Failed to add category'),
+                                backgroundColor: Colors.red.shade700,
+                              ),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: isSaving
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Add & Select', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _addVariantRow({String unit = '', String price = '', String origPrice = '', String stock = '10'}) {
@@ -259,7 +375,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       'isSubsidized': false,
       'subsidyLimit': '',
       'description': 'Sweet, juicy farm-harvested watermelon with high hydration and rich antioxidant content.',
-      'image': 'assets/images/product1.png',
+      'image': '',
       'variants': [
         {'unit': 'Small (1-2 kg)', 'price': '55', 'originalPrice': '70', 'stock': '10'},
         {'unit': 'Medium (2-3 kg)', 'price': '83', 'originalPrice': '106', 'stock': '15'},
@@ -329,7 +445,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       'isSubsidized': true,
       'subsidyLimit': '3 Strips per citizen',
       'description': 'Affordable generic fever and mild pain relief tablets with quality certification.',
-      'image': 'assets/images/product1.png',
+      'image': '',
     },
     {
       'presetName': '🥛 Pasteurized Milk',
@@ -446,6 +562,17 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_selectedCategory.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select or create a category for this product'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     final fallbackPrice = double.tryParse(_priceController.text.trim()) ?? 0.0;
     final fallbackOrigPrice = double.tryParse(_origPriceController.text.trim()) ?? 0.0;
@@ -1136,11 +1263,37 @@ class _AddProductScreenState extends State<AddProductScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CustomText.title(
-          'Product Category / Shelf',
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          color: AppColors.black,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+             CustomText.title(
+              'Product Category / Shelf *',
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.black,
+            ),
+            GestureDetector(
+              onTap: _showQuickAddCategoryModal,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: Responsive.h(2)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.add_circle_outline_rounded, size: 15, color: AppColors.primary),
+                    SizedBox(width: Responsive.w(4)),
+                    const Text(
+                      'New Category',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
         SizedBox(height: Responsive.h(6)),
         Container(
@@ -1150,26 +1303,56 @@ class _AddProductScreenState extends State<AddProductScreen> {
             borderRadius: BorderRadius.circular(Responsive.w(12)),
             border: Border.all(color: Colors.grey.shade300, width: 1),
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: _categoryOptions.contains(_selectedCategory)
-                  ? _selectedCategory
-                  : _categoryOptions.first,
-              isExpanded: true,
-              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.primary),
-              items: _categoryOptions.map((cat) {
-                return DropdownMenuItem<String>(
-                  value: cat,
-                  child: CustomText.body(cat, fontSize: 14, color: AppColors.black),
-                );
-              }).toList(),
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() => _selectedCategory = val);
-                }
-              },
-            ),
-          ),
+          child: _isLoadingCategories
+              ? SizedBox(
+                  height: Responsive.h(48),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                    ),
+                  ),
+                )
+              : _categoryOptions.isEmpty
+                  ? InkWell(
+                      onTap: _showQuickAddCategoryModal,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: Responsive.h(12)),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.add_circle_outline_rounded, color: AppColors.primary, size: 18),
+                            SizedBox(width: Responsive.w(8)),
+                            const Expanded(
+                              child: Text(
+                                'No categories yet. Tap to create one.',
+                                style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _categoryOptions.contains(_selectedCategory)
+                            ? _selectedCategory
+                            : (_categoryOptions.isNotEmpty ? _categoryOptions.first : null),
+                        isExpanded: true,
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.primary),
+                        items: _categoryOptions.map((cat) {
+                          return DropdownMenuItem<String>(
+                            value: cat,
+                            child: CustomText.body(cat, fontSize: 14, color: AppColors.black),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _selectedCategory = val);
+                          }
+                        },
+                      ),
+                    ),
         ),
       ],
     );

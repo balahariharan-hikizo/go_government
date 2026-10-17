@@ -11,8 +11,10 @@ import '../screen/store/application_status_screen.dart';
 import '../screen/store/store_dashboard_screen.dart';
 import '../screen/store/store_details_screen.dart';
 import '../screen/store/manage_products_screen.dart';
+import '../screen/store/manage_categories_screen.dart';
 import '../screen/store/add_product_screen.dart';
 import '../screen/store/store_orders_queue_screen.dart';
+import '../screen/store/store_wallet_screen.dart';
 import '../screen/location/pick_store_location_screen.dart';
 
 class AppRouter {
@@ -98,6 +100,13 @@ class AppRouter {
           builder: (_) => ManageProductsScreen(store: store),
         );
 
+      case RouteConstants.manageCategories:
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
+        final store = args['store'] as StoreModel? ?? StoreModel();
+        return MaterialPageRoute(
+          builder: (_) => ManageCategoriesScreen(store: store),
+        );
+
       case RouteConstants.addProduct:
         final args = settings.arguments as Map<String, dynamic>? ?? {};
         final storeId = args['storeId']?.toString() ?? '';
@@ -116,6 +125,13 @@ class AppRouter {
         final store = args['store'] as StoreModel? ?? StoreModel();
         return MaterialPageRoute(
           builder: (_) => StoreOrdersQueueScreen(store: store),
+        );
+
+      case RouteConstants.storeWallet:
+        final args = settings.arguments as Map<String, dynamic>? ?? {};
+        final store = args['store'] as StoreModel? ?? StoreModel();
+        return MaterialPageRoute(
+          builder: (_) => StoreWalletScreen(store: store),
         );
 
       default:

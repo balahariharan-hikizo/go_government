@@ -119,6 +119,17 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.category_outlined, color: AppColors.primary),
+            tooltip: 'Manage Categories',
+            onPressed: () {
+              Navigator.pushNamed(
+                context,
+                RouteConstants.manageCategories,
+                arguments: {'store': widget.store},
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh_rounded, color: AppColors.black),
             onPressed: () {
               context.read<ProductBloc>().add(LoadStoreProductsEvent(widget.store.storeId));
@@ -263,25 +274,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
                                   textAlign: TextAlign.center,
                                 ),
                                 SizedBox(height: Responsive.h(20)),
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primary,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ),
-                                  icon: const Icon(Icons.add, size: 18),
-                                  label: const Text('Add Your First Product'),
-                                  onPressed: () {
-                                    Navigator.pushNamed(
-                                      context,
-                                      RouteConstants.addProduct,
-                                      arguments: {
-                                        'storeId': widget.store.storeId,
-                                        'storeCategory': widget.store.category,
-                                      },
-                                    );
-                                  },
-                                ),
+                                
                               ],
                             ),
                           ),

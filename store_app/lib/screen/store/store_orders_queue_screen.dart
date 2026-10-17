@@ -28,7 +28,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 8, vsync: this);
+    _tabController = TabController(length: 9, vsync: this);
     _fetchOrders();
 
     // Subscribe to real-time Socket.io events for this store
@@ -124,6 +124,13 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
     final acceptedOrders = _orders.where((o) => o['status'] == 'accepted').toList();
     final dispatchedOrders = _orders.where((o) => o['status'] == 'out_for_delivery').toList();
     final completedOrders = _orders.where((o) => o['status'] == 'delivered').toList();
+    final returnOrders = _orders.where((o) => [
+      'returning_to_store',
+      'returned_to_store',
+      'return_requested',
+      'returned',
+      'return_rejected',
+    ].contains(o['status'])).toList();
     final cancelledOrders = _orders.where((o) => o['status'] == 'cancelled').toList();
 
     return Scaffold(
@@ -156,6 +163,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
             Tab(text: 'Rider Coming (${acceptedOrders.length})'),
             Tab(text: 'Dispatched (${dispatchedOrders.length})'),
             Tab(text: 'Delivered (${completedOrders.length})'),
+            Tab(text: 'Returns (${returnOrders.length})'),
             Tab(text: 'Cancelled (${cancelledOrders.length})'),
           ],
         ),
@@ -174,6 +182,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
                     _buildOrdersList(acceptedOrders),
                     _buildOrdersList(dispatchedOrders),
                     _buildOrdersList(completedOrders),
+                    _buildOrdersList(returnOrders),
                     _buildOrdersList(cancelledOrders),
                   ],
                 ),
@@ -351,7 +360,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
                         Container(
                           padding: EdgeInsets.symmetric(horizontal: Responsive.w(6), vertical: Responsive.h(2)),
                           decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.12),
+                            color: AppColors.primary.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -384,7 +393,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
               decoration: BoxDecoration(
                 color: const Color(0xFFF0FDF4),
                 borderRadius: BorderRadius.circular(Responsive.w(10)),
-                border: Border.all(color: AppColors.success.withOpacity(0.4)),
+                border: Border.all(color: AppColors.success.withValues(alpha: 0.4)),
               ),
               child: Row(
                 children: [
@@ -409,6 +418,91 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
                       onPressed: () => _callPhone(agent['phone'].toString()),
                       tooltip: 'Call Rider',
                     ),
+                ],
+              ),
+            ),
+
+          // Return Details Banner (If in return lifecycle)
+          if (order['returnDetails'] != null ||
+              ['returning_to_store', 'returned_to_store', 'return_requested', 'returned', 'return_rejected'].contains(status))
+            Container(
+              margin: EdgeInsets.only(bottom: Responsive.h(12)),
+              padding: EdgeInsets.all(Responsive.w(10)),
+              decoration: BoxDecoration(
+                color: (status == 'returning_to_store' || status == 'return_requested')
+                    ? const Color(0xFFFFF3E0)
+                    : (status == 'returned_to_store' || status == 'returned'
+                        ? const Color(0xFFE8F5E9)
+                        : const Color(0xFFFFEBEE)),
+                borderRadius: BorderRadius.circular(Responsive.w(10)),
+                border: Border.all(
+                  color: (status == 'returning_to_store' || status == 'return_requested')
+                      ? const Color(0xFFFFB74D)
+                      : (status == 'returned_to_store' || status == 'returned'
+                          ? const Color(0xFF81C784)
+                          : const Color(0xFFEF9A9A)),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    status == 'return_rejected' ? Icons.error_outline_rounded : Icons.assignment_return_rounded,
+                    size: 20,
+                    color: (status == 'returning_to_store' || status == 'return_requested')
+                        ? const Color(0xFFE65100)
+                        : (status == 'returned_to_store' || status == 'returned'
+                            ? const Color(0xFF2E7D32)
+                            : const Color(0xFFC62828)),
+                  ),
+                  SizedBox(width: Responsive.w(8)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CustomText.title(
+                          status == 'returning_to_store'
+                              ? 'Rider Returning Package to Store'
+                              : (status == 'return_requested'
+                                  ? 'Citizen Requested Return'
+                                  : (status == 'returned_to_store' || status == 'returned'
+                                      ? 'Package Returned & Restocked'
+                                      : 'Return Request Declined')),
+                          fontSize: Responsive.sp(12.5),
+                          fontWeight: FontWeight.bold,
+                          color: (status == 'returning_to_store' || status == 'return_requested')
+                              ? const Color(0xFFE65100)
+                              : (status == 'returned_to_store' || status == 'returned'
+                                  ? const Color(0xFF2E7D32)
+                                  : const Color(0xFFC62828)),
+                        ),
+                        if (order['returnDetails']?['reason'] != null) ...[
+                          SizedBox(height: Responsive.h(2)),
+                          CustomText.caption(
+                            'Reason: ${order['returnDetails']['reason']}',
+                            fontSize: Responsive.sp(11),
+                            color: Colors.black87,
+                          ),
+                        ],
+                        if (order['returnDetails']?['notes'] != null &&
+                            order['returnDetails']['notes'].toString().isNotEmpty) ...[
+                          CustomText.caption(
+                            'Notes: ${order['returnDetails']['notes']}',
+                            fontSize: Responsive.sp(10.5),
+                            color: Colors.grey.shade700,
+                          ),
+                        ],
+                        if (order['returnDetails']?['rejectionReason'] != null &&
+                            order['returnDetails']['rejectionReason'].toString().isNotEmpty) ...[
+                          CustomText.caption(
+                            'Decline Note: ${order['returnDetails']['rejectionReason']}',
+                            fontSize: Responsive.sp(10.5),
+                            color: const Color(0xFFC62828),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -582,6 +676,83 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
           ],
         ),
       );
+    } else if (status == 'returning_to_store') {
+      return SizedBox(
+        width: double.infinity,
+        height: Responsive.h(46),
+        child: ElevatedButton.icon(
+          onPressed: () => _showConfirmReturnDialog(orderId),
+          icon: const Icon(Icons.assignment_turned_in_rounded, size: 18, color: Colors.white),
+          label: const Text(
+            'Confirm Return Received & Restock',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13.5),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFE65100),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      );
+    } else if (status == 'return_requested') {
+      return Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: Responsive.h(44),
+              child: OutlinedButton.icon(
+                onPressed: () => _showRejectReturnDialog(orderId),
+                icon: const Icon(Icons.close_rounded, size: 16, color: AppColors.error),
+                label: const Text('Reject Return', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.error)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppColors.error, width: 1.2),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: Responsive.w(10)),
+          Expanded(
+            child: SizedBox(
+              height: Responsive.h(44),
+              child: ElevatedButton.icon(
+                onPressed: () => _showApproveReturnDialog(orderId),
+                icon: const Icon(Icons.check_circle_outline, size: 18, color: Colors.white),
+                label: const Text('Approve & Refund', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (status == 'returned_to_store' || status == 'returned') {
+      return Container(
+        padding: EdgeInsets.symmetric(vertical: Responsive.h(8)),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.assignment_turned_in_rounded, color: AppColors.success, size: 18),
+            SizedBox(width: Responsive.w(8)),
+            CustomText.caption('Return Completed · Restocked & Refunded', fontWeight: FontWeight.bold, color: AppColors.success),
+          ],
+        ),
+      );
+    } else if (status == 'return_rejected') {
+      return Container(
+        padding: EdgeInsets.symmetric(vertical: Responsive.h(8)),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.assignment_late_outlined, color: AppColors.error, size: 18),
+            SizedBox(width: Responsive.w(8)),
+            CustomText.caption('Return Request Declined', fontWeight: FontWeight.bold, color: AppColors.error),
+          ],
+        ),
+      );
     } else {
       return Container(
         padding: EdgeInsets.symmetric(vertical: Responsive.h(8)),
@@ -598,6 +769,180 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
     }
   }
 
+  void _showConfirmReturnDialog(String orderId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Confirm Return Received?'),
+        content: const Text(
+          'Have you received the physical package back from the delivery rider? This will automatically restock the items into your store catalog and refund the customer wallet.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE65100),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final res = await StoreOrderApiService.confirmReturn(
+                orderId: orderId,
+                storeId: widget.store.storeId,
+              );
+              if (res['success'] == true) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Return confirmed! Items restocked & customer refunded.'),
+                    backgroundColor: AppColors.success,
+                  ),
+                );
+                _fetchOrders();
+              } else {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(res['message']?.toString() ?? 'Failed to confirm return'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            },
+            child: const Text('Confirm & Restock', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showApproveReturnDialog(String orderId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Approve Citizen Return?'),
+        content: const Text(
+          'Approving this return will restock the returned products into your inventory and automatically issue a wallet refund to the customer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.success,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final res = await StoreOrderApiService.reviewCitizenReturn(
+                orderId: orderId,
+                storeId: widget.store.storeId,
+                action: 'approve',
+              );
+              if (res['success'] == true) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Return approved! Items restocked & customer refunded.'),
+                    backgroundColor: AppColors.success,
+                  ),
+                );
+                _fetchOrders();
+              } else {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(res['message']?.toString() ?? 'Failed to approve return'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            },
+            child: const Text('Approve & Refund', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRejectReturnDialog(String orderId) {
+    final reasonController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Decline Return Request?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Please provide a reason for declining the return request:'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: InputDecoration(
+                hintText: 'e.g. Item opened / seal broken / criteria not met',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.all(12),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              final reason = reasonController.text.trim();
+              if (reason.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a rejection reason'), backgroundColor: AppColors.warning),
+                );
+                return;
+              }
+              Navigator.pop(ctx);
+              final res = await StoreOrderApiService.reviewCitizenReturn(
+                orderId: orderId,
+                storeId: widget.store.storeId,
+                action: 'reject',
+                rejectionReason: reason,
+              );
+              if (res['success'] == true) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Return request declined.'), backgroundColor: AppColors.warning),
+                );
+                _fetchOrders();
+              } else {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(res['message']?.toString() ?? 'Failed to reject return'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            },
+            child: const Text('Decline Return', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Color _statusColor(String status) {
     switch (status) {
       case 'placed':           return AppColors.primary;
@@ -607,19 +952,29 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
       case 'out_for_delivery': return AppColors.info;
       case 'delivered':        return AppColors.success;
       case 'cancelled':        return AppColors.error;
+      case 'returning_to_store': return const Color(0xFFE65100);
+      case 'returned_to_store': return const Color(0xFF2E7D32);
+      case 'return_requested': return const Color(0xFF7B1FA2);
+      case 'returned':         return const Color(0xFF2E7D32);
+      case 'return_rejected':  return const Color(0xFFC62828);
       default:                 return AppColors.grayFont;
     }
   }
 
   Color _statusBorderColor(String status) {
     switch (status) {
-      case 'placed':           return AppColors.primary.withOpacity(0.5);
-      case 'preparing':        return Colors.orange.withOpacity(0.5);
-      case 'ready_for_pickup': return AppColors.warning.withOpacity(0.5);
-      case 'accepted':         return AppColors.success.withOpacity(0.6);
-      case 'out_for_delivery': return AppColors.info.withOpacity(0.5);
+      case 'placed':           return AppColors.primary.withValues(alpha: 0.5);
+      case 'preparing':        return Colors.orange.withValues(alpha: 0.5);
+      case 'ready_for_pickup': return AppColors.warning.withValues(alpha: 0.5);
+      case 'accepted':         return AppColors.success.withValues(alpha: 0.6);
+      case 'out_for_delivery': return AppColors.info.withValues(alpha: 0.5);
       case 'delivered':        return AppColors.border;
-      case 'cancelled':        return AppColors.error.withOpacity(0.5);
+      case 'cancelled':        return AppColors.error.withValues(alpha: 0.5);
+      case 'returning_to_store': return const Color(0xFFFFB74D);
+      case 'returned_to_store': return const Color(0xFF81C784);
+      case 'return_requested': return const Color(0xFFBA68C8);
+      case 'returned':         return const Color(0xFF81C784);
+      case 'return_rejected':  return const Color(0xFFEF9A9A);
       default:                 return AppColors.border;
     }
   }
@@ -633,6 +988,11 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
       case 'out_for_delivery': return 'OUT FOR DELIVERY';
       case 'delivered':        return 'DELIVERED';
       case 'cancelled':        return 'CANCELLED';
+      case 'returning_to_store': return 'RETURNING TO STORE';
+      case 'returned_to_store': return 'RETURN RECEIVED & RESTOCKED';
+      case 'return_requested': return 'RETURN REQUESTED';
+      case 'returned':         return 'RETURN APPROVED & REFUNDED';
+      case 'return_rejected':  return 'RETURN REJECTED';
       default:                 return status.toUpperCase();
     }
   }

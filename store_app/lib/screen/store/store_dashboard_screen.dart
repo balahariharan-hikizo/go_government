@@ -183,6 +183,14 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
     );
   }
 
+  void _openManageCategories() {
+    Navigator.pushNamed(
+      context,
+      RouteConstants.manageCategories,
+      arguments: {'store': _store},
+    );
+  }
+
   void _openAddProduct() {
     Navigator.pushNamed(
       context,
@@ -202,201 +210,19 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
     );
   }
 
-  void _showSubsidyBreakdownModal() {
-    final totalDisbursed = _subsidyMetrics?['totalSubsidyDisbursed'] ?? 0;
-    final pendingPayout = _subsidyMetrics?['pendingSubsidyPayout'] ?? 0;
-    final totalOrders = _subsidyMetrics?['totalOrders'] ?? 0;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => Container(
-        padding: EdgeInsets.all(Responsive.w(20)),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: Responsive.w(40),
-                height: Responsive.h(4),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            SizedBox(height: Responsive.h(16)),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF16A34A), size: 24),
-                ),
-                SizedBox(width: Responsive.w(12)),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      CustomText.header('Government Subsidy Statement', fontSize: 16, color: AppColors.black),
-                      CustomText.body('Direct Benefit Transfer (DBT) Reimbursement', fontSize: 11, color: AppColors.grayFont),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: Responsive.h(14)),
-            Container(
-              padding: EdgeInsets.all(Responsive.w(12)),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade100),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.info_outline_rounded, color: Color(0xFF2563EB), size: 18),
-                  SizedBox(width: Responsive.w(8)),
-                  const Expanded(
-                    child: Text(
-                      'When citizens purchase subsidized welfare commodities, the government reimburses the price difference (Market MRP - Subsidized Rate) directly to your bank account.',
-                      style: TextStyle(fontSize: 11, color: Color(0xFF334155), height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: Responsive.h(14)),
-            _buildModalInfoRow('Total Subsidy Claimed', '₹$totalDisbursed.00'),
-            _buildModalInfoRow('Current Cycle Pending Settlement', '₹$pendingPayout.00', valueColor: const Color(0xFF16A34A)),
-            _buildModalInfoRow('Total Store Orders', '$totalOrders orders'),
-            _buildModalInfoRow('Reimbursement Method', 'Direct Benefit Transfer (DBT)'),
-            _buildModalInfoRow('Settlement Schedule', 'Weekly every Friday', valueColor: const Color(0xFF2563EB)),
-            _buildModalInfoRow('Linked Bank', '${_store.bankDetails.bankName.isNotEmpty ? _store.bankDetails.bankName : 'State Bank of India'} (•••• ${_store.bankDetails.accountNumber.length > 4 ? _store.bankDetails.accountNumber.substring(_store.bankDetails.accountNumber.length - 4) : '4821'})'),
-            SizedBox(height: Responsive.h(20)),
-            SizedBox(
-              width: double.infinity,
-              height: Responsive.h(44),
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                icon: const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 18),
-                label: const Text('View All Order Receipts', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _openOrderQueue();
-                },
-              ),
-            ),
-            SizedBox(height: Responsive.h(8)),
-          ],
-        ),
-      ),
-    );
+  void _openStoreWallet() {
+    Navigator.pushNamed(
+      context,
+      RouteConstants.storeWallet,
+      arguments: {'store': _store},
+    ).then((_) {
+      if (!mounted) return;
+      _fetchFinancialMetrics();
+      context.read<StoreBloc>().add(FetchMyStoreEvent(_store.storeId));
+    });
   }
 
-  void _showSettlementInfoModal() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: EdgeInsets.all(Responsive.w(20)),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: Responsive.w(40),
-                height: Responsive.h(4),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            SizedBox(height: Responsive.h(16)),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.account_balance_rounded, color: AppColors.primary, size: 24),
-                ),
-                SizedBox(width: Responsive.w(12)),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      CustomText.header('Settlement & Bank Details', fontSize: 16, color: AppColors.black),
-                      CustomText.body('Automated municipal DBT reimbursement', fontSize: 11, color: AppColors.grayFont),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: Responsive.h(18)),
-            const Divider(height: 1),
-            SizedBox(height: Responsive.h(14)),
-            _buildModalInfoRow('Bank Name', _store.bankDetails.bankName.isNotEmpty ? _store.bankDetails.bankName : 'State Bank of India'),
-            _buildModalInfoRow('Account Number', _store.bankDetails.accountNumber.isNotEmpty ? '•••• •••• ${_store.bankDetails.accountNumber.length > 4 ? _store.bankDetails.accountNumber.substring(_store.bankDetails.accountNumber.length - 4) : _store.bankDetails.accountNumber}' : '•••• 4821'),
-            _buildModalInfoRow('IFSC Code', _store.bankDetails.ifscCode.isNotEmpty ? _store.bankDetails.ifscCode : 'SBIN0001234'),
-            _buildModalInfoRow('Account Holder', _store.bankDetails.accountHolderName.isNotEmpty ? _store.bankDetails.accountHolderName : _store.ownerName),
-            _buildModalInfoRow('Payout Schedule', 'Weekly every Friday (Automated DBT)', valueColor: const Color(0xFF16A34A)),
-            SizedBox(height: Responsive.h(20)),
-            SizedBox(
-              width: double.infinity,
-              height: Responsive.h(44),
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _openStoreDetails();
-                },
-                child: const Text('Edit Store & Bank Profile', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-              ),
-            ),
-            SizedBox(height: Responsive.h(8)),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _buildModalInfoRow(String label, String value, {Color? valueColor}) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: Responsive.h(6)),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: AppColors.grayFont)),
-          Text(value, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: valueColor ?? AppColors.black)),
-        ],
-      ),
-    );
-  }
 
   void _logout() {
     showDialog(
@@ -557,14 +383,30 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
                   ),
                 ),
               ),
+              IconButton(
+                icon: const Icon(Icons.account_balance_wallet_outlined, color: AppColors.black, size: 22),
+                tooltip: 'Store Revenue & Wallet',
+                onPressed: _openStoreWallet,
+              ),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert_rounded, color: AppColors.black, size: 22),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 onSelected: (val) {
+                  if (val == 'wallet') _openStoreWallet();
                   if (val == 'profile') _openStoreDetails();
                   if (val == 'logout') _logout();
                 },
                 itemBuilder: (ctx) => [
+                  const PopupMenuItem(
+                    value: 'wallet',
+                    child: Row(
+                      children: [
+                        Icon(Icons.account_balance_wallet_outlined, size: 18, color: AppColors.primary),
+                        SizedBox(width: 8),
+                        Text('Revenue & Wallet'),
+                      ],
+                    ),
+                  ),
                   const PopupMenuItem(
                     value: 'profile',
                     child: Row(
@@ -748,6 +590,17 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
                       children: [
                         Expanded(
                           child: _buildOperationCard(
+                            title: 'Categories',
+                            subtitle: 'Organize store catalog',
+                            icon: Icons.category_rounded,
+                            iconColor: const Color(0xFF8B5CF6),
+                            badgeColor: const Color(0xFFF5F3FF),
+                            onTap: _openManageCategories,
+                          ),
+                        ),
+                        SizedBox(width: Responsive.w(12)),
+                        Expanded(
+                          child: _buildOperationCard(
                             title: 'Store Profile',
                             subtitle: 'Hours, phone & address',
                             icon: Icons.edit_note_rounded,
@@ -756,18 +609,16 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
                             onTap: _openStoreDetails,
                           ),
                         ),
-                        SizedBox(width: Responsive.w(12)),
-                        Expanded(
-                          child: _buildOperationCard(
-                            title: 'Bank & DBT Payout',
-                            subtitle: 'Settlement account details',
-                            icon: Icons.account_balance_rounded,
-                            iconColor: const Color(0xFFD97706),
-                            badgeColor: const Color(0xFFFFFBEB),
-                            onTap: _showSettlementInfoModal,
-                          ),
-                        ),
                       ],
+                    ),
+                    SizedBox(height: Responsive.h(12)),
+                    _buildOperationCard(
+                      title: 'Store Revenue & Wallet',
+                      subtitle: 'Live balance, sales ledger & express DBT payouts',
+                      icon: Icons.account_balance_wallet_rounded,
+                      iconColor: const Color(0xFFD97706),
+                      badgeColor: const Color(0xFFFFFBEB),
+                      onTap: _openStoreWallet,
                     ),
 
                     SizedBox(height: Responsive.h(18)),
@@ -832,9 +683,9 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
 
                     SizedBox(height: Responsive.h(16)),
 
-                    // 5. Subsidy Financial Settlement Card (Live DBT Tracking)
+                    // 5. Store Revenue & Live Wallet Settlement Card
                     GestureDetector(
-                      onTap: _showSubsidyBreakdownModal,
+                      onTap: _openStoreWallet,
                       child: Container(
                         padding: EdgeInsets.all(Responsive.w(16)),
                         decoration: BoxDecoration(
@@ -853,9 +704,9 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    const Icon(Icons.payments_outlined, size: 18, color: AppColors.primary),
-                                    SizedBox(width: Responsive.w(6)),
-                                    CustomText.title('Subsidy Financial Summary', fontSize: 13, color: AppColors.black),
+                                    const Icon(Icons.account_balance_wallet_rounded, size: 20, color: AppColors.primary),
+                                    SizedBox(width: Responsive.w(8)),
+                                    CustomText.title('Store Revenue & Wallet', fontSize: 13.5, color: AppColors.black),
                                   ],
                                 ),
                                 Container(
@@ -872,7 +723,7 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
                                         style: TextStyle(fontSize: 10, color: Color(0xFF16A34A), fontWeight: FontWeight.bold),
                                       ),
                                       SizedBox(width: 2),
-                                      Icon(Icons.info_outline_rounded, size: 11, color: Color(0xFF16A34A)),
+                                      Icon(Icons.arrow_forward_ios_rounded, size: 9, color: Color(0xFF16A34A)),
                                     ],
                                   ),
                                 ),
@@ -885,30 +736,51 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    CustomText.body('Subsidies Disbursed', fontSize: 10.5, color: AppColors.grayFont),
+                                    CustomText.body('Live Wallet Balance', fontSize: 10.5, color: AppColors.grayFont),
                                     SizedBox(height: Responsive.h(2)),
-                                    CustomText.header('₹${_subsidyMetrics?['totalSubsidyDisbursed'] ?? 0}.00', fontSize: 15, color: AppColors.black),
+                                    CustomText.header('₹${_store.walletBalance}.00', fontSize: 16, color: const Color(0xFF16A34A)),
                                   ],
                                 ),
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    CustomText.body('Pending Settlement', fontSize: 10.5, color: AppColors.grayFont),
+                                    CustomText.body('Gross Sales Total', fontSize: 10.5, color: AppColors.grayFont),
                                     SizedBox(height: Responsive.h(2)),
-                                    CustomText.header('₹${_subsidyMetrics?['pendingSubsidyPayout'] ?? 0}.00', fontSize: 15, color: const Color(0xFF16A34A)),
+                                    CustomText.header('₹${_subsidyMetrics?['totalGrossSales'] ?? 0}.00', fontSize: 15, color: AppColors.black),
                                   ],
                                 ),
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    CustomText.body('Next Payout', fontSize: 10.5, color: AppColors.grayFont),
+                                    CustomText.body('Settlement Day', fontSize: 10.5, color: AppColors.grayFont),
                                     SizedBox(height: Responsive.h(2)),
-                                    CustomText.title('Friday', fontSize: 13, color: const Color(0xFF2563EB)),
+                                    CustomText.title('Friday (DBT)', fontSize: 12.5, color: const Color(0xFF2563EB)),
                                   ],
                                 ),
                               ],
                             ),
-                            SizedBox(height: Responsive.h(8)),
+                            SizedBox(height: Responsive.h(10)),
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: Responsive.w(10), vertical: Responsive.h(6)),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.blue.shade100),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFF2563EB)),
+                                  SizedBox(width: Responsive.w(6)),
+                                  Expanded(
+                                    child: Text(
+                                      'Gross Sales includes delivery charges paid to riders. Your wallet balance represents 100% net product sales revenue.',
+                                      style: const TextStyle(fontSize: 10.5, color: Color(0xFF334155), height: 1.3),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(height: Responsive.h(10)),
                             const Divider(height: 1),
                             SizedBox(height: Responsive.h(8)),
                             Row(
@@ -923,7 +795,7 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                const Text('Statement >', style: TextStyle(fontSize: 10.5, color: AppColors.primary, fontWeight: FontWeight.bold)),
+                                const Text('View Ledger >', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.bold)),
                               ],
                             ),
                           ],

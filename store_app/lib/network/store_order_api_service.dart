@@ -78,4 +78,74 @@ class StoreOrderApiService {
       return null;
     }
   }
+
+  // 4. Confirm Return Received from Rider & Restock Products (POST /orders/:orderId/store-confirm-return)
+  static Future<Map<String, dynamic>> confirmReturn({
+    required String orderId,
+    required String storeId,
+    String? condition,
+    String? notes,
+  }) async {
+    final url = '${ApiClient.baseUrl}/orders/$orderId/store-confirm-return';
+    final body = {
+      'storeId': storeId,
+      'condition': condition ?? 'good',
+      'notes': notes ?? '',
+    };
+    ApiClient.logRequest('POST', url, body: body);
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: ApiClient.defaultHeaders,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      ApiClient.logResponse('POST', url, response.statusCode, response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'success': false, 'message': 'Failed to confirm return (${response.statusCode})'};
+    } catch (e) {
+      ApiClient.logError('POST', url, e);
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // 5. Review Citizen Return Request (Approve or Reject) (POST /orders/:orderId/store-review-return)
+  static Future<Map<String, dynamic>> reviewCitizenReturn({
+    required String orderId,
+    required String storeId,
+    required String action, // 'approve' | 'reject'
+    String? rejectionReason,
+  }) async {
+    final url = '${ApiClient.baseUrl}/orders/$orderId/store-review-return';
+    final body = {
+      'storeId': storeId,
+      'action': action,
+      'rejectionReason': rejectionReason ?? '',
+    };
+    ApiClient.logRequest('POST', url, body: body);
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: ApiClient.defaultHeaders,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      ApiClient.logResponse('POST', url, response.statusCode, response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'success': false, 'message': 'Failed to review return (${response.statusCode})'};
+    } catch (e) {
+      ApiClient.logError('POST', url, e);
+      return {'success': false, 'message': e.toString()};
+    }
+  }
 }

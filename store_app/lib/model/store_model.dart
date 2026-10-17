@@ -18,6 +18,7 @@ class StoreModel {
   final Map<String, String> timings;
   final bool isOnline;
   final double rating;
+  final double walletBalance;
 
   StoreModel({
     this.storeId = '',
@@ -37,6 +38,7 @@ class StoreModel {
     Map<String, String>? timings,
     this.isOnline = true,
     this.rating = 4.5,
+    this.walletBalance = 0.0,
   })  : bankDetails = bankDetails ?? BankDetailsModel(),
         timings = timings ?? {'open': '08:00 AM', 'close': '08:30 PM'};
 
@@ -80,6 +82,7 @@ class StoreModel {
       timings: timingsMap,
       isOnline: json['isOnline'] == true || json['isOnline'] == 'true',
       rating: parseDouble(json['rating'], 4.5),
+      walletBalance: parseDouble(json['walletBalance'], 0.0),
     );
   }
 
@@ -102,6 +105,7 @@ class StoreModel {
       'timings': timings,
       'isOnline': isOnline,
       'rating': rating,
+      'walletBalance': walletBalance,
     };
   }
 }
