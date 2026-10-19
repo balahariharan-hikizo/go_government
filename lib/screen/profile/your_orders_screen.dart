@@ -13,6 +13,7 @@ import '../../bloc/transaction/transaction_event.dart';
 import '../../bloc/transaction/transaction_state.dart';
 import '../../service/cart_manager.dart';
 import '../../utils/call_launcher.dart';
+import '../../hive/hive_service.dart';
 
 class YourOrdersScreen extends StatefulWidget {
   const YourOrdersScreen({super.key});
@@ -72,6 +73,10 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
         if (rawStatus == 'out_for_delivery') displayStatus = 'Out for Delivery';
         if (rawStatus == 'delivered') displayStatus = 'Delivered';
         if (rawStatus == 'cancelled') displayStatus = 'Cancelled';
+        if (rawStatus == 'returning_to_store') displayStatus = 'Returning to Store';
+        if (rawStatus == 'returned_to_store' || rawStatus == 'returned') displayStatus = 'Returned & Refunded';
+        if (rawStatus == 'return_requested') displayStatus = 'Return Requested';
+        if (rawStatus == 'return_rejected') displayStatus = 'Return Declined';
 
         final existingIdx = currentTxs.indexWhere((tx) => tx['id']?.toString() == orderId);
         if (existingIdx != -1) {
@@ -384,17 +389,30 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
         .toString();
 
     final String s = status.toLowerCase();
-    final bool isDelivered = s.contains('delivered') || s.contains('completed');
+    final bool isReturned = s.contains('return');
+    final bool isDelivered = (s.contains('delivered') || s.contains('completed')) && !isReturned;
     final bool isCancelled =
-        s.contains('cancel') || s.contains('refund') || s.contains('fail');
-    final bool isActive = !isDelivered && !isCancelled;
+        (s.contains('cancel') || s.contains('fail')) && !isReturned;
+    final bool isActive = !isDelivered && !isCancelled && !isReturned;
 
-    final Color statusColor = isDelivered
-        ? const Color(0xFF2E7D32)
-        : (isCancelled ? const Color(0xFFD32F2F) : const Color(0xFFE65100));
-    final Color statusBg = isDelivered
-        ? const Color(0xFFE8F5E9)
-        : (isCancelled ? const Color(0xFFFFEBEE) : const Color(0xFFFFF3E0));
+    final Color statusColor = isReturned
+        ? (s.contains('approved') || s.contains('refunded') || s.contains('received')
+            ? const Color(0xFF2E7D32)
+            : (s.contains('declined') || s.contains('rejected')
+                ? const Color(0xFFD32F2F)
+                : const Color(0xFFE65100)))
+        : (isDelivered
+            ? const Color(0xFF2E7D32)
+            : (isCancelled ? const Color(0xFFD32F2F) : const Color(0xFFE65100)));
+    final Color statusBg = isReturned
+        ? (s.contains('approved') || s.contains('refunded') || s.contains('received')
+            ? const Color(0xFFE8F5E9)
+            : (s.contains('declined') || s.contains('rejected')
+                ? const Color(0xFFFFEBEE)
+                : const Color(0xFFFFF3E0)))
+        : (isDelivered
+            ? const Color(0xFFE8F5E9)
+            : (isCancelled ? const Color(0xFFFFEBEE) : const Color(0xFFFFF3E0)));
 
     // Summary of items
     String itemsText = '';
@@ -647,6 +665,44 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
                         ),
                       ],
 
+                      // Return button for delivered orders
+                      if (isDelivered) ...[
+                        GestureDetector(
+                          onTap: () => _showCitizenReturnBottomSheet(context, order),
+                          child: Container(
+                            margin: EdgeInsets.only(right: Responsive.w(6)),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: Responsive.w(10),
+                              vertical: Responsive.h(6),
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF3E0),
+                              borderRadius: BorderRadius.circular(Responsive.w(16)),
+                              border: Border.all(
+                                color: const Color(0xFFFFB74D),
+                                width: 1.2,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.assignment_return_outlined,
+                                  color: Color(0xFFE65100),
+                                  size: 13,
+                                ),
+                                SizedBox(width: Responsive.w(4)),
+                                CustomText.title(
+                                  'Return',
+                                  color: const Color(0xFFE65100),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+
                       // Reorder button (shown on completed / non-active orders or when user wants to reorder)
                       if (!isActive) ...[
                         GestureDetector(
@@ -766,7 +822,7 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
             'title': it['title'] ?? it['name'] ?? 'Product',
             'price': it['price'] ?? 99,
             'originalPrice': it['originalPrice'] ?? it['price'] ?? 99,
-            'image': it['image'] ?? it['imageUrl'] ?? 'assets/images/product1.png',
+            'image': (it['image'] ?? it['imageUrl'] ?? '').toString(),
             'stock': 10,
           };
           final qty = ((it['qty'] ?? it['quantity'] ?? 1) as num).toInt();
@@ -781,7 +837,7 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
         'title': order['title'] ?? 'Store Item',
         'price': 99,
         'originalPrice': 150,
-        'image': 'assets/images/product1.png',
+        'image': '',
         'stock': 10,
       }, qty: 1);
     }
@@ -789,5 +845,199 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
     if (context.mounted) {
       Navigator.of(context).pushNamed(RouteConstants.cart);
     }
+  }
+
+  void _showCitizenReturnBottomSheet(BuildContext context, Map<String, dynamic> order) {
+    String selectedReason = 'Defective / Damaged Item';
+    final notesController = TextEditingController();
+    final orderId = (order['id'] ?? order['orderId'] ?? '').toString();
+    final reasons = [
+      'Defective / Damaged Item',
+      'Expired Product Delivered',
+      'Wrong Item / Missing Quantity',
+      'Poor Quality / Not as Described',
+      'Other',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Container(
+          padding: EdgeInsets.only(
+            left: Responsive.w(20),
+            right: Responsive.w(20),
+            top: Responsive.h(20),
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + Responsive.h(20),
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(Responsive.w(24))),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: Responsive.w(40),
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                SizedBox(height: Responsive.h(16)),
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(Responsive.w(8)),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFFF3E0),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.assignment_return_rounded, color: Color(0xFFE65100), size: 24),
+                    ),
+                    SizedBox(width: Responsive.w(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CustomText.title('Return Request', fontSize: 18, fontWeight: FontWeight.bold),
+                          CustomText.subtitle('Order #$orderId', color: AppColors.grayFont, fontSize: 12),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: Responsive.h(18)),
+                CustomText.subtitle('SELECT REASON FOR RETURN', fontWeight: FontWeight.bold, color: AppColors.grayFont, fontSize: 11),
+                SizedBox(height: Responsive.h(8)),
+                ...reasons.map((r) {
+                  final isSelected = selectedReason == r;
+                  return InkWell(
+                    onTap: () => setModalState(() => selectedReason = r),
+                    borderRadius: BorderRadius.circular(Responsive.w(12)),
+                    child: Container(
+                      margin: EdgeInsets.only(bottom: Responsive.h(8)),
+                      padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(10)),
+                      decoration: BoxDecoration(
+                        color: isSelected ? const Color(0xFFFFF3E0) : Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(Responsive.w(12)),
+                        border: Border.all(
+                          color: isSelected ? const Color(0xFFFF9800) : Colors.grey.shade200,
+                          width: isSelected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                            color: isSelected ? const Color(0xFFE65100) : Colors.grey.shade400,
+                            size: 20,
+                          ),
+                          SizedBox(width: Responsive.w(10)),
+                          Expanded(
+                            child: Text(
+                              r,
+                              style: TextStyle(
+                                fontSize: Responsive.sp(13.5),
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                color: isSelected ? const Color(0xFFE65100) : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                SizedBox(height: Responsive.h(10)),
+                TextField(
+                  controller: notesController,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    hintText: 'Additional details about the issue (optional)',
+                    hintStyle: TextStyle(fontSize: Responsive.sp(13), color: Colors.grey.shade500),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    contentPadding: EdgeInsets.all(Responsive.w(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Responsive.w(12)),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Responsive.w(12)),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                  ),
+                ),
+                SizedBox(height: Responsive.h(18)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: Responsive.h(14)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    SizedBox(width: Responsive.w(12)),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final userId = HiveService.citizenId;
+                          final messenger = ScaffoldMessenger.of(context);
+                          Navigator.pop(ctx);
+                          final res = await OrderApiService.requestReturn(
+                            orderId: orderId,
+                            userId: userId,
+                            reason: selectedReason,
+                            notes: notesController.text.trim(),
+                          );
+                          if (!mounted) return;
+                          if (res['success'] == true) {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Return request submitted! Store merchant will review it.'),
+                                backgroundColor: AppColors.success,
+                              ),
+                            );
+                            _fetchLiveOrders();
+                          } else {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(res['message']?.toString() ?? 'Failed to submit return request'),
+                                backgroundColor: AppColors.error,
+                              ),
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE65100),
+                          padding: EdgeInsets.symmetric(vertical: Responsive.h(14)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
+                        ),
+                        child: const Text(
+                          'Submit Return Request',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -12,6 +12,7 @@ import '../../utils/navigation_launcher.dart';
 import '../../utils/responsive_helper.dart';
 import '../../widget/common_background.dart';
 import '../../widget/custom_text.dart';
+import '../../hive/hive_service.dart';
 
 class ActiveDeliveryScreen extends StatefulWidget {
   final DeliveryOrder order;
@@ -63,10 +64,15 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
               if (Navigator.canPop(context)) {
                 Navigator.pop(context);
               }
+              final isReturned = state.completedOrders.any((o) =>
+                  o.orderId == _order.orderId &&
+                  (o.status == 'returned_to_store' || o.status == 'returned'));
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('🎉 Order #${_order.orderId} Delivered Successfully! +₹45 Payout added.'),
-                  backgroundColor: AppColors.success,
+                  content: Text(isReturned
+                      ? '📦 Order #${_order.orderId} return verified & received by Store!'
+                      : '🎉 Order #${_order.orderId} Delivered Successfully! '),
+                  backgroundColor: isReturned ? const Color(0xFFE65100) : AppColors.success,
                   duration: const Duration(seconds: 4),
                 ),
               );
@@ -90,25 +96,31 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
               margin: EdgeInsets.only(right: Responsive.w(16)),
               padding: EdgeInsets.symmetric(horizontal: Responsive.w(10), vertical: Responsive.h(4)),
               decoration: BoxDecoration(
-                color: _order.status == 'out_for_delivery'
-                    ? AppColors.info.withOpacity(0.15)
-                    : AppColors.warning.withOpacity(0.15),
+                color: _order.status == 'returning_to_store'
+                    ? const Color(0xFFFF9800).withValues(alpha: 0.18)
+                    : (_order.status == 'out_for_delivery'
+                        ? AppColors.info.withValues(alpha: 0.15)
+                        : AppColors.warning.withValues(alpha: 0.15)),
                 borderRadius: BorderRadius.circular(Responsive.w(12)),
               ),
               child: Center(
                 child: CustomText.caption(
-                  _order.status == 'out_for_delivery'
-                      ? 'ON THE WAY'
-                      : (_order.status == 'accepted'
-                          ? 'ACCEPTED ✔'
-                          : (_order.status == 'ready_for_pickup'
-                              ? 'READY FOR PICKUP'
-                              : (_order.status == 'preparing' ? 'STORE PACKING' : 'PENDING PACKING'))),
-                  color: _order.status == 'out_for_delivery'
-                      ? AppColors.info
-                      : (_order.status == 'accepted'
-                          ? AppColors.success
-                          : (_order.status == 'ready_for_pickup' ? AppColors.warning : AppColors.warning)),
+                  _order.status == 'returning_to_store'
+                      ? 'RETURNING TO STORE'
+                      : (_order.status == 'out_for_delivery'
+                          ? 'ON THE WAY'
+                          : (_order.status == 'accepted'
+                              ? 'ACCEPTED ✔'
+                              : (_order.status == 'ready_for_pickup'
+                                  ? 'READY FOR PICKUP'
+                                  : (_order.status == 'preparing' ? 'STORE PACKING' : 'PENDING PACKING')))),
+                  color: _order.status == 'returning_to_store'
+                      ? const Color(0xFFE65100)
+                      : (_order.status == 'out_for_delivery'
+                          ? AppColors.info
+                          : (_order.status == 'accepted'
+                              ? AppColors.success
+                              : (_order.status == 'ready_for_pickup' ? AppColors.warning : AppColors.warning))),
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -122,6 +134,43 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // RETURNING TO STORE ALERT BANNER
+                  if (_order.status == 'returning_to_store') ...[
+                    Container(
+                      margin: EdgeInsets.only(bottom: Responsive.h(16)),
+                      padding: EdgeInsets.all(Responsive.w(14)),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF3E0),
+                        borderRadius: BorderRadius.circular(Responsive.w(14)),
+                        border: Border.all(color: const Color(0xFFFFB74D), width: 1.2),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.assignment_return_rounded, color: Color(0xFFE65100), size: 28),
+                          SizedBox(width: Responsive.w(12)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CustomText.title('Returning Package to Store', fontSize: 14.5, fontWeight: FontWeight.bold, color: const Color(0xFFE65100)),
+                                SizedBox(height: Responsive.h(3)),
+                                CustomText.caption(
+                                  'Reason: ${_order.returnDetails?['reason'] ?? 'Doorstep Delivery Failed'}',
+                                  color: Colors.brown.shade800,
+                                ),
+                                SizedBox(height: Responsive.h(2)),
+                                CustomText.caption(
+                                  'Deliver package back to ${_order.storeName}. Store merchant will inspect & confirm return.',
+                                  color: Colors.brown.shade600,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   // Step Progress Indicator
                   _buildProgressTracker(),
                   SizedBox(height: Responsive.h(20)),
@@ -235,7 +284,7 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
               Container(
                 padding: EdgeInsets.all(Responsive.w(8)),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
+                  color: AppColors.primary.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.storefront_rounded, color: AppColors.primary, size: 20),
@@ -313,7 +362,7 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
               Container(
                 padding: EdgeInsets.all(Responsive.w(8)),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withOpacity(0.1),
+                  color: AppColors.success.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.location_on_rounded, color: AppColors.success, size: 20),
@@ -409,7 +458,7 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                     width: 24,
                     height: 24,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.08),
+                      color: AppColors.primary.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Center(
@@ -556,23 +605,95 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
         ),
       );
     } else if (isOut) {
-      return SizedBox(
-        width: double.infinity,
-        height: Responsive.h(54),
-        child: ElevatedButton.icon(
-          onPressed: () {
-            _showDeliveryConfirmationDialog(context);
-          },
-          icon: const Icon(Icons.task_alt_rounded, color: Colors.white),
-          label: const Text(
-            'Confirm Delivered to Customer',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+      return Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: Responsive.h(54),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                _showDeliveryConfirmationDialog(context);
+              },
+              icon: const Icon(Icons.task_alt_rounded, color: Colors.white),
+              label: const Text(
+                'Confirm Delivered to Customer',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.success,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(14))),
+              ),
+            ),
           ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.success,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(14))),
+          SizedBox(height: Responsive.h(12)),
+          SizedBox(
+            width: double.infinity,
+            height: Responsive.h(50),
+            child: OutlinedButton.icon(
+              onPressed: () {
+                _showDoorstepReturnBottomSheet(context);
+              },
+              icon: const Icon(Icons.assignment_return_rounded, color: Color(0xFFD32F2F)),
+              label: const Text(
+                'Unable to Deliver / Return to Store',
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold, color: Color(0xFFD32F2F)),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFEF5350), width: 1.5),
+                backgroundColor: const Color(0xFFFFEBEE),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(14))),
+              ),
+            ),
           ),
-        ),
+        ],
+      );
+    } else if (_order.status == 'returning_to_store') {
+      return Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: Responsive.h(54),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                NavigationLauncher.openGoogleMapsDirections(
+                  _order.storeLat,
+                  _order.storeLng,
+                  label: _order.storeName,
+                );
+              },
+              icon: const Icon(Icons.navigation_rounded, color: Colors.white),
+              label: const Text(
+                'Navigate Back to Store',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE65100),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(14))),
+              ),
+            ),
+          ),
+          SizedBox(height: Responsive.h(10)),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: Responsive.w(14), vertical: Responsive.h(10)),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(Responsive.w(12)),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.storefront_rounded, color: Colors.grey, size: 20),
+                SizedBox(width: Responsive.w(8)),
+                Expanded(
+                  child: CustomText.caption(
+                    'Hand over package to merchant. Store will confirm return & restock items.',
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       );
     }
     // Fallback: order in an intermediate state (e.g. still appearing in a stale list)
@@ -621,6 +742,191 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
             child: const Text('Yes, Delivered', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showDoorstepReturnBottomSheet(BuildContext context) {
+    String selectedReason = 'Customer Phone Not Reachable';
+    final notesController = TextEditingController();
+    final reasons = [
+      'Customer Phone Not Reachable',
+      'Door Locked / Customer Unavailable',
+      'Address Not Found / Incorrect Location',
+      'Customer Rejected Package at Doorstep',
+      'Damaged in Transit / Leaked',
+      'Other',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Container(
+          padding: EdgeInsets.only(
+            left: Responsive.w(20),
+            right: Responsive.w(20),
+            top: Responsive.h(20),
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + Responsive.h(20),
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(Responsive.w(24))),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: Responsive.w(40),
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                SizedBox(height: Responsive.h(16)),
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(Responsive.w(8)),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFFEBEE),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.assignment_return_rounded, color: Color(0xFFD32F2F), size: 24),
+                    ),
+                    SizedBox(width: Responsive.w(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CustomText.title('Unable to Deliver?', fontSize: 18, fontWeight: FontWeight.bold),
+                          CustomText.caption('Initiate return of package back to store', color: AppColors.grayFont),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: Responsive.h(18)),
+                CustomText.caption('SELECT REASON', fontWeight: FontWeight.bold, color: AppColors.grayFont),
+                SizedBox(height: Responsive.h(8)),
+                ...reasons.map((r) {
+                  final isSelected = selectedReason == r;
+                  return InkWell(
+                    onTap: () => setModalState(() => selectedReason = r),
+                    borderRadius: BorderRadius.circular(Responsive.w(12)),
+                    child: Container(
+                      margin: EdgeInsets.only(bottom: Responsive.h(8)),
+                      padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(10)),
+                      decoration: BoxDecoration(
+                        color: isSelected ? const Color(0xFFFFF3E0) : Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(Responsive.w(12)),
+                        border: Border.all(
+                          color: isSelected ? const Color(0xFFFF9800) : Colors.grey.shade200,
+                          width: isSelected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                            color: isSelected ? const Color(0xFFE65100) : Colors.grey.shade400,
+                            size: 20,
+                          ),
+                          SizedBox(width: Responsive.w(10)),
+                          Expanded(
+                            child: Text(
+                              r,
+                              style: TextStyle(
+                                fontSize: Responsive.sp(13.5),
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                color: isSelected ? const Color(0xFFE65100) : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                SizedBox(height: Responsive.h(10)),
+                TextField(
+                  controller: notesController,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    hintText: 'Additional details or notes (optional)',
+                    hintStyle: TextStyle(fontSize: Responsive.sp(13), color: Colors.grey.shade500),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    contentPadding: EdgeInsets.all(Responsive.w(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Responsive.w(12)),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Responsive.w(12)),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                  ),
+                ),
+                SizedBox(height: Responsive.h(18)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: Responsive.h(14)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    SizedBox(width: Responsive.w(12)),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final effectiveRiderId = _order.riderId.isNotEmpty ? _order.riderId : HiveService.userId;
+                          Navigator.pop(ctx);
+                          context.read<DeliveryBloc>().add(
+                                InitiateReturnEvent(
+                                  orderId: _order.orderId,
+                                  riderId: effectiveRiderId,
+                                  reason: selectedReason,
+                                  notes: notesController.text.trim(),
+                                ),
+                              );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('📦 Return initiated for Order #${_order.orderId}. Return package to store.'),
+                              backgroundColor: const Color(0xFFE65100),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFD32F2F),
+                          padding: EdgeInsets.symmetric(vertical: Responsive.h(14)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
+                        ),
+                        child: const Text(
+                          'Confirm Return to Store',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

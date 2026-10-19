@@ -114,7 +114,7 @@ async function sendToRiderOrderAlert(fcmToken, orderPayload) {
       ? orderPayload.deliveryCharge
       : orderPayload.estimatedPayout || 0
   );
-  const fee = Math.max(40, customerFee);
+  const fee = customerFee;
 
   return sendToToken(fcmToken, {
     title: '🚨 New Delivery Order Available!',

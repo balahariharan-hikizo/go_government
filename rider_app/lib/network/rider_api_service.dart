@@ -246,6 +246,45 @@ class RiderApiService {
   }
 
   // --------------------------------------------------------------------------
+  // 7B. Initiate Rider Doorstep Return (POST /orders/:orderId/rider-return)
+  // --------------------------------------------------------------------------
+  static Future<Map<String, dynamic>> initiateRiderReturn({
+    required String orderId,
+    required String riderId,
+    required String reason,
+    String? notes,
+    String? proofImage,
+  }) async {
+    final url = '${ApiClient.baseUrl}/orders/$orderId/rider-return';
+    final body = {
+      'riderId': riderId,
+      'reason': reason,
+      'notes': notes ?? '',
+      'proofImage': proofImage ?? '',
+    };
+    ApiClient.logRequest('POST', url, body: body);
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(url),
+            headers: ApiClient.defaultHeaders,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      ApiClient.logResponse('POST', url, response.statusCode, response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'success': false, 'message': 'Failed to initiate return (${response.statusCode})'};
+    } catch (e) {
+      ApiClient.logError('POST', url, e);
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // --------------------------------------------------------------------------
   // 8. Fetch Single Order Details
   // --------------------------------------------------------------------------
   static Future<DeliveryOrder?> fetchOrderDetails(String orderId) async {

@@ -21,23 +21,72 @@ class HomeTab extends StatefulWidget {
   State<HomeTab> createState() => _HomeTabState();
 }
 
-class _HomeTabState extends State<HomeTab> {
+class _HomeTabState extends State<HomeTab> with WidgetsBindingObserver {
   String? _liveGpsAddress;
   bool _isLoadingLocation = false;
+  bool _isLocationAvailable = true;
+  bool _isPromptOpen = false;
 
   @override
   void initState() {
     super.initState();
-    _loadCurrentAddress();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndPromptLocation(showPromptIfMissing: true);
+    });
   }
 
-  Future<void> _loadCurrentAddress() async {
-    if (!LocationService.hasManualLocation) {
-      if (mounted) setState(() => _isLoadingLocation = true);
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAndPromptLocation(showPromptIfMissing: true);
+    }
+  }
+
+  Future<void> _checkAndPromptLocation({bool showPromptIfMissing = true}) async {
+    // 1. If citizen already selected a manual location, everything works seamlessly!
+    if (LocationService.hasManualLocation) {
+      if (mounted) {
+        setState(() {
+          _isLocationAvailable = true;
+          _isLoadingLocation = false;
+        });
+      }
+      return;
+    }
+
+    // 2. Check if live GPS is currently active and permitted
+    final bool available = await LocationService.isLocationAvailable();
+    if (!available) {
+      LocationService.clearGpsCache();
+      if (mounted) {
+        setState(() {
+          _isLocationAvailable = false;
+          _liveGpsAddress = null;
+          _isLoadingLocation = false;
+        });
+        if (showPromptIfMissing && !_isPromptOpen) {
+          _showLocationRequiredSheet();
+        }
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _isLocationAvailable = true;
+          _isLoadingLocation = true;
+        });
+      }
       final addr = await LocationService.getEffectiveAddress();
       if (mounted) {
         setState(() {
-          _liveGpsAddress = addr;
+          _liveGpsAddress = addr.isNotEmpty ? addr : null;
+          _isLocationAvailable = addr.isNotEmpty;
           _isLoadingLocation = false;
         });
       }
@@ -608,6 +657,7 @@ class _HomeTabState extends State<HomeTab> {
 
   Widget _buildLocationBanner(BuildContext context) {
     final hasManual = LocationService.hasManualLocation;
+    final bool hasLocation = hasManual || (_isLocationAvailable && _liveGpsAddress != null && _liveGpsAddress!.isNotEmpty);
     final rawAddress = hasManual
         ? (LocationService.manualAddress ?? 'Manual Location')
         : (_liveGpsAddress ?? (LocationService.cachedGpsAddress ?? 'Detecting GPS location...'));
@@ -618,6 +668,9 @@ class _HomeTabState extends State<HomeTab> {
     if (_isLoadingLocation) {
       primaryTitle = 'Detecting Location...';
       secondarySubtitle = 'Connecting to GPS & Ola Maps...';
+    } else if (!hasLocation) {
+      primaryTitle = 'Location Access Needed';
+      secondarySubtitle = 'Tap to enable GPS or select address manually';
     } else {
       final commaIndex = rawAddress.indexOf(',');
       if (commaIndex != -1 && commaIndex < rawAddress.length - 1) {
@@ -632,8 +685,19 @@ class _HomeTabState extends State<HomeTab> {
       }
     }
 
+    final Color borderColor = hasManual
+        ? const Color(0xFFFFCC80)
+        : (!hasLocation && !_isLoadingLocation
+            ? const Color(0xFFFFB74D)
+            : AppColors.outliner);
+
     return GestureDetector(
       onTap: () async {
+        if (!hasLocation && !_isLoadingLocation) {
+          _showLocationRequiredSheet();
+          return;
+        }
+
         final result = await Navigator.pushNamed(
           context,
           RouteConstants.pickLocation,
@@ -661,7 +725,9 @@ class _HomeTabState extends State<HomeTab> {
               address: addr,
             );
           }
-          if (mounted) setState(() {});
+          if (mounted) {
+            _checkAndPromptLocation(showPromptIfMissing: false);
+          }
         }
       },
       child: Container(
@@ -674,7 +740,7 @@ class _HomeTabState extends State<HomeTab> {
           color: AppColors.white,
           borderRadius: BorderRadius.circular(Responsive.w(16)),
           border: Border.all(
-            color: hasManual ? const Color(0xFFFFCC80) : AppColors.outliner,
+            color: borderColor,
             width: 1.2,
           ),
           boxShadow: [
@@ -694,12 +760,22 @@ class _HomeTabState extends State<HomeTab> {
               decoration: BoxDecoration(
                 color: hasManual
                     ? const Color(0xFFFFF3E0)
-                    : AppColors.primary.withValues(alpha: 0.1),
+                    : (!hasLocation && !_isLoadingLocation
+                        ? const Color(0xFFFFF3E0)
+                        : AppColors.primary.withValues(alpha: 0.1)),
                 borderRadius: BorderRadius.circular(Responsive.w(12)),
               ),
               child: Icon(
-                hasManual ? Icons.edit_location_alt_rounded : Icons.my_location_rounded,
-                color: hasManual ? const Color(0xFFE65100) : AppColors.primary,
+                hasManual
+                    ? Icons.edit_location_alt_rounded
+                    : (!hasLocation && !_isLoadingLocation
+                        ? Icons.location_off_rounded
+                        : Icons.my_location_rounded),
+                color: hasManual
+                    ? const Color(0xFFE65100)
+                    : (!hasLocation && !_isLoadingLocation
+                        ? const Color(0xFFE65100)
+                        : AppColors.primary),
                 size: Responsive.w(18),
               ),
             ),
@@ -738,22 +814,35 @@ class _HomeTabState extends State<HomeTab> {
                           vertical: Responsive.h(2),
                         ),
                         decoration: BoxDecoration(
-                          color: hasManual ? const Color(0xFFFFF3E0) : const Color(0xFFE8F5E9),
+                          color: hasManual
+                              ? const Color(0xFFFFF3E0)
+                              : (!hasLocation && !_isLoadingLocation
+                                  ? const Color(0xFFFFEBEE)
+                                  : const Color(0xFFE8F5E9)),
                           borderRadius: BorderRadius.circular(Responsive.w(6)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (!hasManual) ...[
+                            if (!hasManual && hasLocation) ...[
                               const Icon(Icons.gps_fixed, size: 9, color: Color(0xFF2E7D32)),
+                              SizedBox(width: Responsive.w(3)),
+                            ] else if (!hasLocation && !_isLoadingLocation) ...[
+                              const Icon(Icons.error_outline, size: 9, color: Color(0xFFD32F2F)),
                               SizedBox(width: Responsive.w(3)),
                             ],
                             Text(
-                              hasManual ? 'Manual' : 'Live GPS',
+                              hasManual
+                                  ? 'Manual'
+                                  : (!hasLocation && !_isLoadingLocation ? 'Disabled' : 'Live GPS'),
                               style: TextStyle(
                                 fontSize: Responsive.sp(9),
                                 fontWeight: FontWeight.bold,
-                                color: hasManual ? const Color(0xFFE65100) : const Color(0xFF2E7D32),
+                                color: hasManual
+                                    ? const Color(0xFFE65100)
+                                    : (!hasLocation && !_isLoadingLocation
+                                        ? const Color(0xFFD32F2F)
+                                        : const Color(0xFF2E7D32)),
                               ),
                             ),
                           ],
@@ -765,9 +854,13 @@ class _HomeTabState extends State<HomeTab> {
                   Text(
                     secondarySubtitle,
                     style: TextStyle(
-                      color: AppColors.grayFont,
+                      color: !hasLocation && !_isLoadingLocation
+                          ? const Color(0xFFE65100)
+                          : AppColors.grayFont,
                       fontSize: Responsive.sp(11),
-                      fontWeight: FontWeight.w500,
+                      fontWeight: !hasLocation && !_isLoadingLocation
+                          ? FontWeight.w600
+                          : FontWeight.w500,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -777,7 +870,7 @@ class _HomeTabState extends State<HomeTab> {
             ),
             SizedBox(width: Responsive.w(8)),
 
-            // 3. Right Action: "Use GPS" quick button (when in manual) OR sleek chevron
+            // 3. Right Action: "Use GPS" quick button (when in manual) OR "Enable" quick action OR chevron
             if (hasManual)
               GestureDetector(
                 onTap: () async {
@@ -835,6 +928,33 @@ class _HomeTabState extends State<HomeTab> {
                   ),
                 ),
               )
+            else if (!hasLocation && !_isLoadingLocation)
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: Responsive.w(10),
+                  vertical: Responsive.h(6),
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3E0),
+                  borderRadius: BorderRadius.circular(Responsive.w(14)),
+                  border: Border.all(color: const Color(0xFFFFCC80), width: 1),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.settings, size: 12, color: Color(0xFFE65100)),
+                    SizedBox(width: Responsive.w(4)),
+                    Text(
+                      'Enable',
+                      style: TextStyle(
+                        color: const Color(0xFFE65100),
+                        fontSize: Responsive.sp(11),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              )
             else
               Container(
                 padding: const EdgeInsets.all(6),
@@ -852,5 +972,230 @@ class _HomeTabState extends State<HomeTab> {
         ),
       ),
     );
+  }
+
+  void _showLocationRequiredSheet() {
+    if (_isPromptOpen || !mounted) return;
+    _isPromptOpen = true;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return PopScope(
+          onPopInvokedWithResult: (didPop, _) {
+            _isPromptOpen = false;
+          },
+          child: Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: Responsive.w(24),
+              vertical: Responsive.h(20),
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(Responsive.w(28)),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 20,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  Center(
+                    child: Container(
+                      width: Responsive.w(40),
+                      height: Responsive.h(4),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(Responsive.w(2)),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: Responsive.h(20)),
+
+                  // Visual Icon Badge
+                  Container(
+                    width: Responsive.w(68),
+                    height: Responsive.w(68),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E0),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: const Color(0xFFFFE0B2),
+                        width: 2,
+                      ),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.location_off_rounded,
+                        color: const Color(0xFFE65100),
+                        size: Responsive.w(34),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: Responsive.h(16)),
+
+                  // Title
+                  CustomText.header(
+                    'Location Access Needed',
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: Responsive.h(8)),
+
+                  // Explanatory Body Text
+                  CustomText.body(
+                    'To display nearby stores, bus routes, public toilets, and deliver your orders accurately, please enable device GPS or choose your location manually.',
+                    fontSize: 13,
+                    color: AppColors.grayFont,
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: Responsive.h(24)),
+
+                  // Action Button 1: Enable GPS / Open Settings
+                  BouncingButton(
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      _isPromptOpen = false;
+                      await LocationService.openAppropriateSettings();
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      height: Responsive.h(50),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.primary,
+                            AppColors.primary.withValues(alpha: 0.85),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(Responsive.w(25)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.28),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.my_location_rounded,
+                            color: Colors.white,
+                            size: Responsive.w(20),
+                          ),
+                          SizedBox(width: Responsive.w(8)),
+                          Text(
+                            'Enable Device GPS',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: Responsive.sp(14),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: Responsive.h(12)),
+
+                  // Action Button 2: Select Manually
+                  BouncingButton(
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      _isPromptOpen = false;
+                      final result = await Navigator.pushNamed(
+                        context,
+                        RouteConstants.pickLocation,
+                        arguments: {
+                          'initialLatLng': null,
+                          'initialAddress': null,
+                          'isLiveGps': false,
+                        },
+                      );
+                      if (result is Map<String, dynamic> && mounted) {
+                        if (result['latLng'] != null && result['address'] != null) {
+                          final latLng = result['latLng'] as LatLng;
+                          final addr = result['address'] as String;
+                          await HiveService.setManualLocation(
+                            latitude: latLng.latitude,
+                            longitude: latLng.longitude,
+                            address: addr,
+                          );
+                        }
+                        _checkAndPromptLocation(showPromptIfMissing: false);
+                      }
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      height: Responsive.h(50),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(Responsive.w(25)),
+                        border: Border.all(
+                          color: const Color(0xFFFFCC80),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.map_rounded,
+                            color: const Color(0xFFE65100),
+                            size: Responsive.w(20),
+                          ),
+                          SizedBox(width: Responsive.w(8)),
+                          Text(
+                            'Select Location Manually',
+                            style: TextStyle(
+                              color: const Color(0xFFE65100),
+                              fontSize: Responsive.sp(14),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: Responsive.h(10)),
+
+                  // Text Button: Not Now
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _isPromptOpen = false;
+                    },
+                    child: Text(
+                      'Not Now',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: Responsive.sp(13),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    ).then((_) {
+      _isPromptOpen = false;
+    });
   }
 }

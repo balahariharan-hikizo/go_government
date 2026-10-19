@@ -1,5 +1,6 @@
 const Complaint = require('../models/Complaint');
 const { getNextSequence } = require('../utils/sequenceGenerator');
+const { createNotification } = require('./notificationController');
 
 const STATUS_COLORS = {
   'Under Review': 0xffff5252,
@@ -7,6 +8,37 @@ const STATUS_COLORS = {
   'Resolved': 0xff4caf50,
   'Rejected': 0xff757575,
 };
+
+function formatComplaintDate(createdAt, fallbackDate) {
+  if (!createdAt) return fallbackDate || 'Recently';
+  const d = new Date(createdAt);
+  if (isNaN(d.getTime())) return fallbackDate || 'Recently';
+
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+
+  const timeStr = d.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  if (isToday) {
+    return `Today, ${timeStr}`;
+  }
+  if (isYesterday) {
+    return `Yesterday, ${timeStr}`;
+  }
+  const dateStr = d.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+  });
+  return `${dateStr}, ${timeStr}`;
+}
 
 function formatComplaint(doc, req) {
   if (!doc) return null;
@@ -20,6 +52,10 @@ function formatComplaint(doc, req) {
       obj.imagePath = `${protocol}://${host}${uploadPart}`;
     }
   }
+
+  // Dynamically calculate accurate date relative to actual creation time
+  obj.date = formatComplaintDate(obj.createdAt, obj.date);
+
   return obj;
 }
 
@@ -116,13 +152,12 @@ exports.createComplaint = async (req, res) => {
     if (!data.userId) {
       data.userId = 'USER_GUEST';
     }
-    if (!data.date) {
-      const now = new Date();
-      data.date =
-        now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) +
-        ', ' +
-        now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-    }
+    // Always save real absolute date format (e.g. "17 Oct, 04:45 PM") instead of static "Today"
+    const now = new Date();
+    data.date =
+      now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) +
+      ', ' +
+      now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
     // Normalize coordinates if provided
     if (data.latitude != null && data.lat == null) data.lat = Number(data.latitude);
@@ -157,6 +192,18 @@ exports.createComplaint = async (req, res) => {
     if (ioCreate) {
       ioCreate.emit('complaint_created', formattedComplaint);
       ioCreate.emit('complaints_changed', { action: 'create', complaintId: data.complaintId });
+    }
+
+    // Save In-App Notification
+    if (data.userId) {
+      createNotification({
+        userId: data.userId,
+        title: 'Complaint Registered',
+        message: `Your complaint #${complaint.complaintId} has been successfully registered under '${complaint.category}'.`,
+        type: 'complaint',
+        referenceId: complaint.complaintId,
+        metadata: { category: complaint.category, status: complaint.status },
+      }).catch((e) => console.warn('Notification error:', e.message));
     }
 
     res.status(201).json({ success: true, complaint: formattedComplaint });
@@ -348,6 +395,20 @@ exports.updateStatus = async (req, res) => {
         comment: adminComment,
       });
       ioStatus.emit('complaints_changed', { action: 'status_changed', complaintId, status });
+    }
+
+    // Save In-App Notification for Complaint Owner
+    if (updated.userId) {
+      createNotification({
+        userId: updated.userId,
+        title: `Complaint ${normalizedStatus}`,
+        message: adminNotes
+          ? `Complaint #${complaintId}: ${adminNotes}`
+          : `Your complaint #${complaintId} (${updated.category}) is now '${normalizedStatus}'.`,
+        type: 'complaint',
+        referenceId: complaintId,
+        metadata: { category: updated.category, status: normalizedStatus },
+      }).catch((e) => console.warn('Notification error:', e.message));
     }
 
     console.log(`📋 [Complaint Status Updated] ${complaintId} -> ${status}`);

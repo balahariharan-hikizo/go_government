@@ -41,3 +41,20 @@ class ConfirmDeliveredEvent extends DeliveryEvent {
   @override
   List<Object?> get props => [orderId];
 }
+
+class InitiateReturnEvent extends DeliveryEvent {
+  final String orderId;
+  final String riderId;
+  final String reason;
+  final String? notes;
+
+  const InitiateReturnEvent({
+    required this.orderId,
+    required this.riderId,
+    required this.reason,
+    this.notes,
+  });
+
+  @override
+  List<Object?> get props => [orderId, riderId, reason, notes];
+}

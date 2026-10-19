@@ -311,26 +311,38 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
   }
 
   final List<String> _statusTitles = [
-    'Arriving on time!',
+    'Order Placed',
     'Preparing your order',
-    'Ready! Rider coming to pick up',
+    'Rider heading to store for pickup',
     'Rider on the way 🚦',
     'Order Delivered 🎉',
   ];
 
   /// Returns a more descriptive subtitle based on the raw server status.
   String _getStatusSubtitle(String? rawStatus) {
+    final agent = _serverOrderData?['deliveryAgent'] as Map<String, dynamic>?;
+    final hasRider = agent != null &&
+        agent['riderId'] != null &&
+        agent['riderId'].toString().trim().isNotEmpty;
+    final riderName = agent?['name']?.toString().trim() ?? 'Delivery Partner';
+
     switch (rawStatus) {
       case 'placed':
-        return 'Order received by the store';
+        return hasRider
+            ? 'Order confirmed · $riderName heading to store'
+            : 'Order received by the store';
       case 'preparing':
-        return 'Store is packing your items';
+        return hasRider
+            ? 'Store is packing · $riderName heading to store'
+            : 'Store is packing your items';
       case 'ready_for_pickup':
-        return 'Packed & waiting for a delivery rider';
+        return hasRider
+            ? 'Parcel packed · $riderName arriving at store'
+            : 'Packed & waiting for delivery partner';
       case 'accepted':
-        return 'A rider has accepted — heading to store';
+        return '$riderName accepted — heading to store';
       case 'out_for_delivery':
-        return 'Rider is on the way to you';
+        return '$riderName is on the way to you';
       case 'delivered':
         return 'Successfully delivered!';
       default:
@@ -1353,7 +1365,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
           ),
           SizedBox(height: Responsive.h(12)),
 
-          // Message/Call buttons
+          // Message option commented out for now - Call option adapted to full-width
+          /*
           Row(
             children: [
               Expanded(
@@ -1392,61 +1405,72 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                 ),
               ),
               SizedBox(width: Responsive.w(12)),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () async {
-                    if (driverPhone.isNotEmpty) {
-                      final cleaned = driverPhone.replaceAll(
-                        RegExp(r'[^\d+]'),
-                        '',
-                      );
-                      final uri = Uri.parse('tel:$cleaned');
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(uri);
-                        return;
-                      }
-                    }
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            driverPhone.isNotEmpty
-                                ? 'Contacting $driverName at $driverPhone...'
-                                : 'Connecting to $driverName...',
-                          ),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    }
-                  },
-                  child: Container(
-                    height: Responsive.h(38),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(Responsive.w(19)),
-                      border: Border.all(color: Colors.green.shade300),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.phone_outlined,
-                          color: AppColors.primary,
-                          size: Responsive.w(14),
-                        ),
-                        SizedBox(width: Responsive.w(6)),
-                        CustomText.title(
-                          'Call',
-                          color: AppColors.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
             ],
+          ),
+          */
+
+          // Call Delivery Partner Action Button
+          GestureDetector(
+            onTap: () async {
+              if (driverPhone.isNotEmpty) {
+                final cleaned = driverPhone.replaceAll(
+                  RegExp(r'[^\d+]'),
+                  '',
+                );
+                final uri = Uri.parse('tel:$cleaned');
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri);
+                  return;
+                }
+              }
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      driverPhone.isNotEmpty
+                          ? 'Contacting $driverName at $driverPhone...'
+                          : 'Connecting to $driverName...',
+                    ),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+            child: Container(
+              width: double.infinity,
+              height: Responsive.h(40),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(Responsive.w(20)),
+                border: Border.all(color: Colors.green.shade400, width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.shade800.withValues(alpha: 0.06),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.phone_in_talk_rounded,
+                    color: Colors.green.shade800,
+                    size: Responsive.w(16),
+                  ),
+                  SizedBox(width: Responsive.w(8)),
+                  CustomText.title(
+                    driverPhone.isNotEmpty
+                        ? 'Call Delivery Partner ($driverPhone)'
+                        : 'Call Delivery Partner',
+                    color: Colors.green.shade800,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -1626,7 +1650,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                 'price': '₹${i['price'] ?? 0}',
                 'qty': i['quantity'] ?? i['qty'] ?? 1,
                 'image':
-                    i['imageUrl'] ?? i['image'] ?? 'assets/images/product1.png',
+                    (i['imageUrl'] ?? i['image'] ?? '').toString(),
               },
             )
             .toList(),
@@ -1660,7 +1684,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
               : 'Health Essentials',
           'price': '₹ 199.00',
           'qty': 1,
-          'image': 'assets/images/product1.png',
+          'image': '',
         },
       ],
       'address': _deliveryAddress,

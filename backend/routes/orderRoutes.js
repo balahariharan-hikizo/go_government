@@ -18,4 +18,10 @@ router.get('/:orderId', orderController.getOrderDetails);
 router.post('/:orderId/accept-rider', orderController.acceptOrder);
 router.patch('/:orderId/status', orderController.updateOrderStatus);
 
+// 4. Two-Way Return Flow Endpoints
+router.post('/:orderId/rider-return', orderController.initiateRiderReturn);
+router.post('/:orderId/store-confirm-return', orderController.storeConfirmReturn);
+router.post('/:orderId/citizen-return', orderController.citizenRequestReturn);
+router.post('/:orderId/store-review-return', orderController.storeReviewCitizenReturn);
+
 module.exports = router;

@@ -583,7 +583,9 @@ class _ReportScreenState extends State<ReportScreen> {
               color: Colors.grey.shade700,
               maxLines: 2,
             ),
-            if (report['imagePath'] != null && report['imagePath'].toString().isNotEmpty) ...[
+            if (report['imagePath'] != null &&
+                report['imagePath'].toString().trim().isNotEmpty &&
+                report['imagePath'].toString().trim() != 'assets/images/report1.png') ...[
               SizedBox(height: Responsive.h(12)),
               ClipRRect(
                 borderRadius: BorderRadius.circular(Responsive.w(16)),

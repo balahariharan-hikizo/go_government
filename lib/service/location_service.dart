@@ -66,6 +66,53 @@ class LocationService {
   /// Cached live GPS position if acquired during session
   static Position? get cachedGpsPosition => _cachedGpsPosition;
 
+  /// Clears in-memory GPS position and address caches.
+  static void clearGpsCache() {
+    _cachedGpsPosition = null;
+    _cachedGpsAddress = null;
+  }
+
+  /// Checks whether either a manual location is saved or live hardware GPS is currently active and permitted.
+  static Future<bool> isLocationAvailable() async {
+    if (hasManualLocation) return true;
+    try {
+      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        clearGpsCache();
+        return false;
+      }
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        clearGpsCache();
+        return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Opens the relevant system settings (app settings if permission permanently denied, or location settings if GPS switch is off).
+  static Future<void> openAppropriateSettings() async {
+    try {
+      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        await Geolocator.openLocationSettings();
+        return;
+      }
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.deniedForever) {
+        await Geolocator.openAppSettings();
+      } else {
+        final req = await Geolocator.requestPermission();
+        if (req == LocationPermission.deniedForever) {
+          await Geolocator.openAppSettings();
+        }
+      }
+    } catch (_) {}
+  }
+
   /// Checks device location service status and permissions, prioritizing the citizen's manual location if selected.
   static Future<Position?> getCurrentPosition({
     bool requestPermission = true,
@@ -172,15 +219,20 @@ class LocationService {
     if (hasManualLocation) {
       return manualAddress ?? 'Manual Location';
     }
+    final bool available = await isLocationAvailable();
+    if (!available) {
+      clearGpsCache();
+      return '';
+    }
     if (_cachedGpsAddress != null && _cachedGpsAddress!.isNotEmpty) {
       return _cachedGpsAddress!;
     }
-    final pos = await getCurrentPosition(requestPermission: true, forceGps: true);
+    final pos = await getCurrentPosition(requestPermission: false, forceGps: true);
     if (pos != null) {
       _cachedGpsAddress = await getAddressFromCoordinates(pos.latitude, pos.longitude);
       return _cachedGpsAddress!;
     }
-    return 'Current Location (GPS)';
+    return '';
   }
 
   static final Geocoding _geocoding = Geocoding();

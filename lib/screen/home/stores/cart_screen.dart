@@ -211,7 +211,7 @@ class _CartScreenState extends State<CartScreen> {
         'title': prod['title'] ?? 'Product',
         'price': '₹$p',
         'qty': e.value,
-        'image': prod['image'] ?? 'assets/images/product1.png',
+        'image': prod['image'] ?? '',
       };
     }).toList();
 
@@ -645,7 +645,7 @@ class _CartScreenState extends State<CartScreen> {
                                     subtitle: (product['unit'] != null && product['unit'].toString().trim().isNotEmpty)
                                         ? product['unit'].toString().trim()
                                         : '1 Unit',
-                                    image: product['image'] ?? 'assets/images/product1.png',
+                                    image: product['image'] ?? '',
                                     qty: qty,
                                     stock: stock,
                                     originalPrice: '₹${parsePrice(product['originalPrice'], 106)}',
@@ -1058,18 +1058,32 @@ class _CartScreenState extends State<CartScreen> {
         decoration: BoxDecoration(
           color: Colors.grey.shade100,
           borderRadius: BorderRadius.circular(Responsive.w(8)),
+          border: Border.all(color: Colors.grey.shade200, width: 0.8),
         ),
         child: Center(
-          child: Icon(
-            Icons.image_not_supported_outlined,
-            size: (width != null && width > 40) ? Responsive.w(22) : Responsive.w(16),
-            color: Colors.grey.shade400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.image_not_supported_outlined,
+                size: (width != null && width > 40) ? Responsive.w(20) : Responsive.w(15),
+                color: Colors.grey.shade400,
+              ),
+              if (height == null || height > 40) ...[
+                SizedBox(height: Responsive.h(1)),
+                Text(
+                  'No img',
+                  style: TextStyle(fontSize: Responsive.sp(7.5), color: Colors.grey.shade500),
+                ),
+              ],
+            ],
           ),
         ),
       );
     }
 
-    if (imagePath == null || imagePath.trim().isEmpty) {
+    if (imagePath == null || imagePath.trim().isEmpty || imagePath.trim() == 'assets/images/product1.png') {
       return buildPlaceholder();
     }
 

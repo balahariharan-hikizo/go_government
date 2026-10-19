@@ -22,11 +22,13 @@ const addressRoutes = require('./routes/addressRoutes');
 const storeRoutes = require('./routes/storeRoutes');
 const feedbackRoutes = require('./routes/feedbackRoutes');
 const productRoutes = require('./routes/productRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const wishlistRoutes = require('./routes/wishlistRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const walletRoutes = require('./routes/walletRoutes');
 const riderRoutes = require('./routes/riderRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 const fcmService = require('./services/fcmService');
 const User = require('./models/User');
 const Rider = require('./models/Rider');
@@ -149,8 +151,9 @@ function dispatchOrder(io, orderPayload, storeLat, storeLng, round = 1, prevDisp
       // Re-check if order is still unaccepted
       const Order = require('./models/Order');
       Order.findOne({ orderId }).then((order) => {
-        if (!order || order.status !== 'ready_for_pickup') {
-          console.log(`✅ [Dispatch] Order ${orderId} already accepted — no escalation needed`);
+        const isClaimed = Boolean(order?.deliveryAgent?.riderId && order.deliveryAgent.riderId.trim().length > 0);
+        if (!order || isClaimed || ['accepted', 'out_for_delivery', 'delivered', 'cancelled'].includes(order.status)) {
+          console.log(`✅ [Dispatch] Order ${orderId} already claimed or inactive — no escalation needed`);
           dispatchTimers.delete(orderId);
           return;
         }
@@ -162,18 +165,24 @@ function dispatchOrder(io, orderPayload, storeLat, storeLng, round = 1, prevDisp
 
     dispatchTimers.set(orderId, { timer, round, dispatchedIds });
   } else {
-    // Round 3 (or no riders nearby within 2km/6km) — broadcast ONLY to online riders
+    // Round 3 (or no riders nearby within 2km/6km) — broadcast ONLY to IDLE online riders
     const payload = {
       ...orderPayload,
       dispatchRound: 3,
       dispatchDistKm: null,
       countdownSecs: 30,
     };
-    io.to('online_riders').emit('order:dispatch', payload);
-    console.log(`📡 [Dispatch R3] Order ${orderId} → broadcast to online riders only`);
+    
+    // Broadcast via socket ONLY to active, online and non-busy riders
+    for (const [riderId, info] of riderRegistry.entries()) {
+      if (info.isOnline && !info.isBusy && info.socketId) {
+        io.to(info.socketId).emit('order:dispatch', payload);
+      }
+    }
+    console.log(`📡 [Dispatch R3] Order ${orderId} → broadcast to idle online riders only`);
 
-    // Broadcast FCM alert ONLY to riders who are actively ON DUTY (isOnline: true)
-    Rider.find({ isOnline: true, fcmToken: { $ne: '' } })
+    // Broadcast FCM alert ONLY to riders who are actively ON DUTY (isOnline: true) AND NOT BUSY
+    Rider.find({ isOnline: true, isBusy: { $ne: true }, fcmToken: { $ne: '' } })
       .select('fcmToken')
       .then((riders) => {
         for (const r of riders) {
@@ -402,11 +411,13 @@ app.use('/addresses', addressRoutes);
 app.use('/stores', storeRoutes);
 app.use('/feedback', feedbackRoutes);
 app.use('/products', productRoutes);
+app.use('/categories', categoryRoutes);
 app.use('/cart', cartRoutes);
 app.use('/wishlist', wishlistRoutes);
 app.use('/orders', orderRoutes);
 app.use('/wallet', walletRoutes);
 app.use('/riders', riderRoutes);
+app.use('/notifications', notificationRoutes);
 
 // Connect to MongoDB & Start Server
 const MONGO_URI = process.env.MONGO_URI;

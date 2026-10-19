@@ -155,6 +155,9 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
           final String description = liveReport['description']?.toString() ?? widget.description;
           final String id = liveReport['id']?.toString() ?? widget.id;
           final String? imagePath = liveReport['imagePath']?.toString() ?? widget.imagePath;
+          final bool hasRealImage = imagePath != null &&
+              imagePath.trim().isNotEmpty &&
+              imagePath.trim() != 'assets/images/report1.png';
           final String userAddress = liveReport['userAddress']?.toString() ??
               widget.userAddress ??
               'Location not specified';
@@ -191,56 +194,23 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 1. Image Header Section
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(Responsive.w(28)),
-                        child: Container(
-                          height: Responsive.h(280),
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: AppColors.outliner,
-                              width: Responsive.w(1.5),
+                      // 1. Image Header Section or Clean No Photo Card
+                      if (hasRealImage)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(Responsive.w(28)),
+                          child: Container(
+                            height: Responsive.h(280),
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: AppColors.outliner,
+                                width: Responsive.w(1.5),
+                              ),
                             ),
-                          ),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              GestureDetector(
-                                onTap: () {
-                                  ImagePreviewDialog.show(
-                                    context,
-                                    imagePath: imagePath,
-                                    title: title.isNotEmpty ? title : 'Complaint Photo Evidence',
-                                    subtitle: '$category • $userAddress',
-                                  );
-                                },
-                                child: _buildHeaderImage(imagePath),
-                              ),
-                              // Dark gradient overlay
-                              Positioned.fill(
-                                child: Align(
-                                  alignment: Alignment.bottomCenter,
-                                  child: Container(
-                                    height: Responsive.h(90),
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: [
-                                          Colors.transparent,
-                                          Colors.black.withValues(alpha: 0.85),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              // Zoom Preview badge top right
-                              Positioned(
-                                top: Responsive.h(12),
-                                right: Responsive.w(12),
-                                child: GestureDetector(
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                GestureDetector(
                                   onTap: () {
                                     ImagePreviewDialog.show(
                                       context,
@@ -249,74 +219,202 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                                       subtitle: '$category • $userAddress',
                                     );
                                   },
-                                  child: Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: Responsive.w(8),
-                                      vertical: Responsive.h(4),
+                                  child: _buildHeaderImage(imagePath),
+                                ),
+                                // Dark gradient overlay
+                                Positioned.fill(
+                                  child: Align(
+                                    alignment: Alignment.bottomCenter,
+                                    child: Container(
+                                      height: Responsive.h(90),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            Colors.transparent,
+                                            Colors.black.withValues(alpha: 0.85),
+                                          ],
+                                        ),
+                                      ),
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(alpha: 0.65),
-                                      borderRadius: BorderRadius.circular(Responsive.w(12)),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.zoom_in, color: Colors.white, size: Responsive.w(14)),
-                                        SizedBox(width: Responsive.w(4)),
-                                        Text(
-                                          'Preview',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: Responsive.sp(10),
-                                            fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                // Zoom Preview badge top right
+                                Positioned(
+                                  top: Responsive.h(12),
+                                  right: Responsive.w(12),
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      ImagePreviewDialog.show(
+                                        context,
+                                        imagePath: imagePath,
+                                        title: title.isNotEmpty ? title : 'Complaint Photo Evidence',
+                                        subtitle: '$category • $userAddress',
+                                      );
+                                    },
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: Responsive.w(8),
+                                        vertical: Responsive.h(4),
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.65),
+                                        borderRadius: BorderRadius.circular(Responsive.w(12)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.zoom_in, color: Colors.white, size: Responsive.w(14)),
+                                          SizedBox(width: Responsive.w(4)),
+                                          Text(
+                                            'Preview',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: Responsive.sp(10),
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                // Citizen avatar + details row inside image
+                                Positioned(
+                                  bottom: Responsive.h(16),
+                                  left: Responsive.w(16),
+                                  right: Responsive.w(16),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: Responsive.w(44),
+                                        height: Responsive.w(44),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.white,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Center(
+                                          child: Icon(
+                                            Icons.person,
+                                            color: AppColors.primary,
+                                            size: Responsive.w(24),
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(width: Responsive.w(12)),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            CustomText.title(
+                                              userName,
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                              maxLines: 1,
+                                            ),
+                                            CustomText.subtitle(
+                                              date,
+                                              fontSize: 11,
+                                              color: Colors.white70,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.all(Responsive.w(18)),
+                          decoration: BoxDecoration(
+                            color: AppColors.white,
+                            borderRadius: BorderRadius.circular(Responsive.w(24)),
+                            border: Border.all(
+                              color: AppColors.outliner,
+                              width: Responsive.w(1.5),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: Responsive.w(46),
+                                    height: Responsive.w(46),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(alpha: 0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.person,
+                                        color: AppColors.primary,
+                                        size: Responsive.w(26),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: Responsive.w(12)),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        CustomText.title(
+                                          userName,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.black,
+                                        ),
+                                        SizedBox(height: Responsive.h(2)),
+                                        CustomText.subtitle(
+                                          'Reported on $date',
+                                          fontSize: 12,
+                                          color: AppColors.grayFont,
                                         ),
                                       ],
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
-                              // Citizen avatar + details row inside image
-                              Positioned(
-                                bottom: Responsive.h(16),
-                                left: Responsive.w(16),
-                                right: Responsive.w(16),
+                              SizedBox(height: Responsive.h(14)),
+                              Container(
+                                width: double.infinity,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: Responsive.w(14),
+                                  vertical: Responsive.h(12),
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade50,
+                                  borderRadius: BorderRadius.circular(Responsive.w(14)),
+                                  border: Border.all(
+                                    color: Colors.grey.shade200,
+                                    width: 1,
+                                  ),
+                                ),
                                 child: Row(
                                   children: [
-                                    Container(
-                                      width: Responsive.w(44),
-                                      height: Responsive.w(44),
-                                      decoration: const BoxDecoration(
-                                        color: Colors.white,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Center(
-                                        child: Icon(
-                                          Icons.person,
-                                          color: AppColors.primary,
-                                          size: Responsive.w(24),
-                                        ),
-                                      ),
+                                    Icon(
+                                      Icons.image_not_supported_outlined,
+                                      size: Responsive.w(20),
+                                      color: Colors.grey.shade400,
                                     ),
-                                    SizedBox(width: Responsive.w(12)),
+                                    SizedBox(width: Responsive.w(10)),
                                     Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          CustomText.title(
-                                            userName,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                            maxLines: 1,
-                                          ),
-                                          CustomText.subtitle(
-                                            date,
-                                            fontSize: 11,
-                                            color: Colors.white70,
-                                          ),
-                                        ],
+                                      child: Text(
+                                        'No Photo Evidence Attached',
+                                        style: TextStyle(
+                                          fontSize: Responsive.sp(11.5),
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey.shade600,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -325,7 +423,6 @@ class _ComplaintDetailsScreenState extends State<ComplaintDetailsScreen> {
                             ],
                           ),
                         ),
-                      ),
                       SizedBox(height: Responsive.h(20)),
 
                       // 2. Complaint details card (Interactive 3D Perspective Tilt Card)

@@ -774,6 +774,16 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
 
   void _handleIncomingDispatchOrder(Map<String, dynamic> data) {
     if (!HiveService.isLoggedIn || !HiveService.isOnline) return;
+
+    // Suppress dispatch alerts if rider is already busy delivering an order
+    try {
+      final deliveryState = context.read<DeliveryBloc>().state;
+      if (deliveryState is DeliveryLoaded && deliveryState.activeOrders.isNotEmpty) {
+        debugPrint('🛑 [Dispatch Alert] Suppressed: Rider is currently busy with active delivery.');
+        return;
+      }
+    } catch (_) {}
+
     try {
       final order = DeliveryOrder.fromJson(data);
       if (order.orderId.isEmpty) return;
@@ -803,7 +813,8 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
             .invokeMethod('bringAppToFront');
       } catch (_) {}
 
-      // 3. Show Native System Alert Window Overlay (Pops up over Google Maps/any app!)
+      // 3. Native dark overlay disabled — only the clean interactive 30s countdown bottom sheet is displayed!
+      /*
       try {
         final storeName = order.storeName.isNotEmpty ? order.storeName : (data['storeName']?.toString() ?? 'Store');
         final dropAddress = order.dropAddress.isNotEmpty ? order.dropAddress : (data['dropAddress']?.toString() ?? 'Customer Location');
@@ -818,6 +829,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
           'countdownSecs': (data['countdownSecs'] as num?)?.toInt() ?? 30,
         });
       } catch (_) {}
+      */
 
       // 4. Post high-priority heads-up notification with sound & fullScreenIntent
       _showIncomingOrderNotification(order, data);

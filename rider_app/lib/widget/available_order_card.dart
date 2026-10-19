@@ -113,7 +113,11 @@ class _AvailableOrderCardState extends State<AvailableOrderCard>
                     children: [
                       CustomText.title('#${widget.order.orderId}',
                           fontSize: Responsive.sp(14), fontWeight: FontWeight.bold),
-                      CustomText.caption('New Order Request', color: AppColors.grayFont),
+                      CustomText.caption(
+                        widget.order.isReversePickup ? '🔄 Return Pickup Request' : 'New Order Request',
+                        color: widget.order.isReversePickup ? const Color(0xFFD97706) : AppColors.grayFont,
+                        fontWeight: widget.order.isReversePickup ? FontWeight.bold : FontWeight.normal,
+                      ),
                     ],
                   ),
                 ],
@@ -177,19 +181,29 @@ class _AvailableOrderCardState extends State<AvailableOrderCard>
           ),
           SizedBox(height: Responsive.h(14)),
 
-          // Store Pickup Address
+          // Step 1: Pickup Location (Store for normal, Citizen for reverse return)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.store, size: 16, color: AppColors.primary),
+              Icon(
+                widget.order.isReversePickup ? Icons.person_pin_circle_rounded : Icons.store,
+                size: 16,
+                color: widget.order.isReversePickup ? const Color(0xFFD97706) : AppColors.primary,
+              ),
               SizedBox(width: Responsive.w(8)),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CustomText.title(widget.order.storeName, fontSize: Responsive.sp(13)),
-                    CustomText.caption(widget.order.storeAddress,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    CustomText.title(
+                      widget.order.isReversePickup ? 'Pickup: ${widget.order.receiverName}' : widget.order.storeName,
+                      fontSize: Responsive.sp(13),
+                    ),
+                    CustomText.caption(
+                      widget.order.isReversePickup ? widget.order.dropAddress : widget.order.storeAddress,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
@@ -197,19 +211,29 @@ class _AvailableOrderCardState extends State<AvailableOrderCard>
           ),
           SizedBox(height: Responsive.h(8)),
 
-          // Customer Drop Address
+          // Step 2: Destination Location (Citizen for normal, Store for reverse return)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.location_on, size: 16, color: AppColors.success),
+              Icon(
+                widget.order.isReversePickup ? Icons.store : Icons.location_on,
+                size: 16,
+                color: widget.order.isReversePickup ? AppColors.primary : AppColors.success,
+              ),
               SizedBox(width: Responsive.w(8)),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CustomText.title('Drop: ${widget.order.receiverName}', fontSize: Responsive.sp(13)),
-                    CustomText.caption(widget.order.dropAddress,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    CustomText.title(
+                      widget.order.isReversePickup ? 'Return To: ${widget.order.storeName}' : 'Drop: ${widget.order.receiverName}',
+                      fontSize: Responsive.sp(13),
+                    ),
+                    CustomText.caption(
+                      widget.order.isReversePickup ? widget.order.storeAddress : widget.order.dropAddress,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
@@ -223,10 +247,12 @@ class _AvailableOrderCardState extends State<AvailableOrderCard>
               // Google Maps Preview Button
               IconButton(
                 onPressed: () {
+                  final targetLat = widget.order.isReversePickup ? widget.order.dropLat : widget.order.storeLat;
+                  final targetLng = widget.order.isReversePickup ? widget.order.dropLng : widget.order.storeLng;
                   NavigationLauncher.openGoogleMapsDirections(
-                    widget.order.storeLat,
-                    widget.order.storeLng,
-                    label: 'Store Location',
+                    targetLat,
+                    targetLng,
+                    label: widget.order.isReversePickup ? 'Citizen Pickup Location' : 'Store Location',
                   );
                 },
                 icon: const Icon(Icons.map_outlined, color: AppColors.primary),
@@ -241,7 +267,7 @@ class _AvailableOrderCardState extends State<AvailableOrderCard>
                   child: ElevatedButton(
                     onPressed: widget.isAccepting ? null : widget.onAccept,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: widget.order.isReversePickup ? const Color(0xFFD97706) : AppColors.primary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(Responsive.w(12)),
                       ),

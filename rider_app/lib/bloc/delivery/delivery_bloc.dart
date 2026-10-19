@@ -16,6 +16,7 @@ class DeliveryBloc extends Bloc<DeliveryEvent, DeliveryState> {
     on<AcceptDeliveryOrderEvent>(_onAcceptOrder);
     on<ConfirmStorePickupEvent>(_onConfirmStorePickup);
     on<ConfirmDeliveredEvent>(_onConfirmDelivered);
+    on<InitiateReturnEvent>(_onInitiateReturn);
   }
 
   Future<void> _onLoadDeliveries(
@@ -29,7 +30,10 @@ class DeliveryBloc extends Bloc<DeliveryEvent, DeliveryState> {
     final List<DeliveryOrder> availableOrders;
     if (currentOnline) {
       final rawAvailable = await RiderApiService.fetchAvailableOrders();
-      availableOrders = rawAvailable.where((o) => o.status == 'ready_for_pickup').toList();
+      availableOrders = rawAvailable.where((o) {
+        final s = o.status.toLowerCase().trim();
+        return s == 'placed' || s == 'preparing' || s == 'ready_for_pickup';
+      }).toList();
     } else {
       availableOrders = [];
     }
@@ -39,11 +43,11 @@ class DeliveryBloc extends Bloc<DeliveryEvent, DeliveryState> {
 
     final active = riderOrders.where((o) {
       final s = o.status.toLowerCase().trim();
-      return s != 'delivered' && s != 'cancelled' && s != 'completed';
+      return s != 'delivered' && s != 'cancelled' && s != 'completed' && s != 'returned_to_store' && s != 'returned';
     }).toList();
     final completed = riderOrders.where((o) {
       final s = o.status.toLowerCase().trim();
-      return s == 'delivered' || s == 'completed';
+      return s == 'delivered' || s == 'completed' || s == 'returned_to_store' || s == 'returned';
     }).toList();
 
     // Fetch live wallet balance from backend
@@ -55,7 +59,7 @@ class DeliveryBloc extends Bloc<DeliveryEvent, DeliveryState> {
       } else {
         liveEarnings = completed.fold<double>(
           0.0,
-          (sum, o) => sum + (o.estimatedPayout > 0 ? o.estimatedPayout : 45.0),
+          (sum, o) => sum + o.estimatedPayout,
         );
       }
     }
@@ -142,8 +146,23 @@ class DeliveryBloc extends Bloc<DeliveryEvent, DeliveryState> {
     );
 
     if (success) {
-      await HiveService.addEarnings(45.0);
       await HiveService.incrementCompletedCount();
+      add(LoadDeliveriesEvent());
+    }
+  }
+
+  Future<void> _onInitiateReturn(
+    InitiateReturnEvent event,
+    Emitter<DeliveryState> emit,
+  ) async {
+    final res = await RiderApiService.initiateRiderReturn(
+      orderId: event.orderId,
+      riderId: event.riderId,
+      reason: event.reason,
+      notes: event.notes,
+    );
+
+    if (res['success'] == true) {
       add(LoadDeliveriesEvent());
     }
   }

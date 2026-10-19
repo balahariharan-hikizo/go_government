@@ -6,6 +6,7 @@ const Product = require('../models/Product');
 const WalletTransaction = require('../models/WalletTransaction');
 const fcmService = require('../services/fcmService');
 const { getNextSequence } = require('../utils/sequenceGenerator');
+const { createNotification } = require('./notificationController');
 
 // 1. CREATE NEW ORDER (Citizen Placement)
 exports.createOrder = async (req, res) => {
@@ -155,6 +156,16 @@ exports.createOrder = async (req, res) => {
 
     await newOrder.save();
 
+    // Trigger In-App Notification for Citizen
+    createNotification({
+      userId,
+      title: 'Order Placed Successfully',
+      message: `Your order #${orderId} has been placed at ${finalStoreName} (₹${finalGrandTotal}).`,
+      type: 'order',
+      referenceId: orderId,
+      metadata: { storeName: finalStoreName, grandTotal: finalGrandTotal },
+    }).catch((e) => console.warn('Notification error:', e.message));
+
     // Decrement stock atomically (both base product and variant)
     for (const item of items) {
       const pId = item.productId || item.id;
@@ -202,13 +213,34 @@ exports.createOrder = async (req, res) => {
 
     console.log(`📦 [Order Placed] Order ID: ${orderId} by User: ${userId} for Store: ${storeId}`);
 
-    // Real-time Socket.io Notification to Merchant
+    // Real-time Socket.io Notification to Merchant & Immediate Rider Dispatch (Option 1)
     const io = req.app.get('io');
     if (io) {
       const orderPayload = newOrder.toObject ? newOrder.toObject() : newOrder;
       io.to(`store:${storeId}`).emit(`store:${storeId}:new_order`, orderPayload);
       io.emit(`store:${storeId}:new_order`, orderPayload);
       console.log(`📡 [Socket.io] Emitted single targeted new_order for store: ${storeId} (Order: ${orderId})`);
+
+      // ⚡ Immediate Parallel Rider Dispatch on Order Placement
+      io.emit('order:available', orderPayload);
+      io.to('riders').emit('order:available', orderPayload);
+
+      const dispatchOrder = req.app.get('dispatchOrder');
+      const storeLat = resolvedStoreDetails.latitude || 0;
+      const storeLng = resolvedStoreDetails.longitude || 0;
+      if (dispatchOrder && (storeLat !== 0 || storeLng !== 0)) {
+        dispatchOrder(io, orderPayload, storeLat, storeLng, 1, []);
+      } else {
+        const payload = { ...orderPayload, dispatchRound: 3, countdownSecs: 30 };
+        const registry = req.app.get('riderRegistry');
+        if (registry) {
+          for (const [rId, info] of registry.entries()) {
+            if (info.isOnline && !info.isBusy && info.socketId) {
+              io.to(info.socketId).emit('order:dispatch', payload);
+            }
+          }
+        }
+      }
     }
 
     // Send FCM Push to Store
@@ -359,6 +391,8 @@ exports.getStoreOrders = async (req, res) => {
     let totalSubsidyDisbursed = 0;
     let pendingSubsidyPayout = 0;
     let totalGrossSales = 0;
+    let totalDeliveryCharges = 0;
+    let netStoreEarnings = 0;
     let activeOrdersCount = 0;
 
     for (const order of orders) {
@@ -385,6 +419,10 @@ exports.getStoreOrders = async (req, res) => {
 
       if (order.status === 'delivered') {
         pendingSubsidyPayout += orderSubsidy;
+        const grand = Number(order.grandTotal) || 0;
+        const del = Number(order.deliveryCharge) || 0;
+        totalDeliveryCharges += del;
+        netStoreEarnings += Math.max(0, grand - del);
       }
     }
 
@@ -398,6 +436,8 @@ exports.getStoreOrders = async (req, res) => {
         totalSubsidyDisbursed: Math.round(totalSubsidyDisbursed),
         pendingSubsidyPayout: Math.round(pendingSubsidyPayout),
         totalGrossSales: Math.round(totalGrossSales),
+        totalDeliveryCharges: Math.round(totalDeliveryCharges),
+        netStoreEarnings: Math.round(netStoreEarnings),
       },
     });
   } catch (error) {
@@ -410,7 +450,7 @@ exports.getStoreOrders = async (req, res) => {
 exports.getAvailableDeliveries = async (req, res) => {
   try {
     const orders = await Order.find({
-      status: 'ready_for_pickup',
+      status: { $in: ['placed', 'preparing', 'ready_for_pickup', 'return_pickup_pending'] },
       $or: [
         { 'deliveryAgent.riderId': '' },
         { 'deliveryAgent.riderId': { $exists: false } },
@@ -429,8 +469,17 @@ exports.getAvailableDeliveries = async (req, res) => {
 exports.getRiderDeliveries = async (req, res) => {
   try {
     const { riderId } = req.params;
-    const orders = await Order.find({ 'deliveryAgent.riderId': riderId }).sort({ createdAt: -1 });
-    return res.status(200).json({ success: true, data: orders });
+    let queryRiders = [riderId];
+    const riderDoc = await Rider.findOne({
+      $or: [{ riderId }, { phone: riderId }],
+    });
+    if (riderDoc) {
+      if (riderDoc.riderId && !queryRiders.includes(riderDoc.riderId)) queryRiders.push(riderDoc.riderId);
+      if (riderDoc.phone && !queryRiders.includes(riderDoc.phone)) queryRiders.push(riderDoc.phone);
+    }
+
+    const orders = await Order.find({ 'deliveryAgent.riderId': { $in: queryRiders } }).sort({ createdAt: -1 });
+    return res.status(200).json({ success: true, count: orders.length, data: orders });
   } catch (error) {
     console.error('Error fetching rider deliveries:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch rider deliveries', error: error.message });
@@ -479,36 +528,30 @@ exports.getOrderDetails = async (req, res) => {
 exports.acceptOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { riderId, name, phone, vehicleNumber, rating = 4.9 } = req.body;
+    const { riderId } = req.body;
 
-    if (!riderId || !name) {
-      return res.status(400).json({ success: false, message: 'riderId and name are required' });
+    if (!riderId) {
+      return res.status(400).json({ success: false, message: 'riderId is required' });
     }
 
-    const existing = await Order.findOne({ orderId });
-    if (!existing) {
-      return res.status(404).json({ success: false, message: 'Order not found' });
+    // 1. Fetch official verified rider details from database
+    const rider = await Rider.findOne({ $or: [{ riderId }, { phone: riderId }] });
+    if (!rider) {
+      return res.status(404).json({ success: false, message: 'Rider not found in system' });
     }
 
-    // Already accepted check
-    if (existing.deliveryAgent && existing.deliveryAgent.riderId) {
-      if (existing.deliveryAgent.riderId === riderId) {
-        return res.status(200).json({
-          success: true,
-          message: 'Delivery already accepted by you',
-          data: existing,
-        });
-      } else {
-        return res.status(409).json({
-          success: false,
-          code: 'ALREADY_ACCEPTED',
-          message: 'This delivery task has already been accepted by another delivery partner.',
-          assignedTo: existing.deliveryAgent.name || 'Another rider',
-        });
-      }
-    }
+    const assignedRiderId = rider.riderId;
+    const assignedName = rider.name || req.body.name || 'Delivery Partner';
+    const assignedPhone = rider.phone || req.body.phone || '';
+    const assignedVehicle = rider.vehicleNumber || req.body.vehicleNumber || '';
+    const assignedRating = Number(req.body.rating) || 4.9;
 
-    // Atomic assignment
+    // Check if this is a reverse return pickup or normal forward delivery
+    const existingBefore = await Order.findOne({ orderId }).select('status');
+    const isReversePickup = existingBefore?.status === 'return_pickup_pending';
+    const newStatus = isReversePickup ? 'return_pickup_assigned' : 'accepted';
+
+    // 2. Single Atomic Assignment (Happy path = only 1 DB trip)
     const order = await Order.findOneAndUpdate(
       {
         orderId,
@@ -520,57 +563,55 @@ exports.acceptOrder = async (req, res) => {
       },
       {
         $set: {
-          'deliveryAgent.riderId': riderId,
-          'deliveryAgent.name': name,
-          'deliveryAgent.phone': phone || '',
-          'deliveryAgent.vehicleNumber': vehicleNumber || '',
-          'deliveryAgent.rating': Number(rating) || 4.9,
-          status: 'accepted',
+          'deliveryAgent.riderId': assignedRiderId,
+          'deliveryAgent.name': assignedName,
+          'deliveryAgent.phone': assignedPhone,
+          'deliveryAgent.vehicleNumber': assignedVehicle,
+          'deliveryAgent.rating': assignedRating,
+          status: newStatus,
         },
       },
       { returnDocument: 'after', runValidators: true }
     );
 
+    // 3. Conflict handling if order could not be locked
     if (!order) {
-      const contested = await Order.findOne({ orderId });
+      const existing = await Order.findOne({ orderId });
+      if (!existing) {
+        return res.status(404).json({ success: false, message: 'Order not found' });
+      }
       return res.status(409).json({
         success: false,
         code: 'ALREADY_ACCEPTED',
-        message: 'This delivery task has already been accepted by another delivery partner.',
-        assignedTo: contested?.deliveryAgent?.name || 'Another rider',
+        message: 'This delivery task has already been accepted and assigned.',
+        assignedTo: existing.deliveryAgent?.name || 'Assigned rider',
       });
     }
 
-    console.log(`🚴 [Rider Assigned] Rider ${name} (${riderId}) accepted order ${orderId}`);
+    console.log(`🚴 [Rider Assigned] Rider ${assignedName} (${assignedRiderId}) accepted order ${orderId}`);
 
-    // Mark rider as BUSY in registry & DB
-    const riderRegistry = req.app.get('riderRegistry');
-    if (riderRegistry && riderRegistry.has(riderId)) {
-      riderRegistry.get(riderId).isBusy = true;
-    }
-    await Rider.updateOne({ riderId }, { $set: { isBusy: true } }).catch(() => {});
+    // 4. Mark Rider as Busy in Registry & DB
+    req.app.get('riderRegistry')?.get(assignedRiderId) && (req.app.get('riderRegistry').get(assignedRiderId).isBusy = true);
+    Rider.updateOne({ riderId: assignedRiderId }, { $set: { isBusy: true } }).catch(() => {});
 
-    // Real-time socket alerts
+    // 5. Clean Socket Broadcast (Zero duplicates)
     const io = req.app.get('io');
     if (io) {
-      const orderPayload = order.toObject ? order.toObject() : order;
-      io.emit(`order:${orderId}:status_update`, orderPayload);
-      io.emit('order:status_update', orderPayload);
-      io.emit(`store:${order.storeId}:order_update`, orderPayload);
-      io.to(`store:${order.storeId}`).emit('order:status_update', orderPayload);
-      io.emit('order:assigned', orderPayload);
-      io.to('riders').emit('order:assigned', orderPayload);
+      const payload = order.toObject ? order.toObject() : order;
+      io.emit(`order:${orderId}:status_update`, payload);
+      io.emit('order:status_update', payload);
+      io.emit('order:assigned', payload);
     }
 
-    // Push Notification to Citizen
+    // 6. Push Notification to Citizen
     User.findOne({ $or: [{ userId: order.userId }, { phone: order.userId }] })
       .select('fcmToken')
       .then((citizen) => {
-        if (citizen && citizen.fcmToken) {
+        if (citizen?.fcmToken) {
           fcmService.sendToCitizenOrderStatus(
             citizen.fcmToken,
             '🛵 Delivery Partner Assigned!',
-            `${name} has accepted your order #${orderId} and is heading to the store.`,
+            `${assignedName} has accepted your order #${orderId} and is heading to the store.`,
             orderId
           );
         }
@@ -594,7 +635,7 @@ exports.updateOrderStatus = async (req, res) => {
     const { orderId } = req.params;
     const { status } = req.body;
 
-    const validStatuses = ['placed', 'preparing', 'ready_for_pickup', 'accepted', 'out_for_delivery', 'delivered', 'cancelled'];
+    const validStatuses = ['placed', 'preparing', 'ready_for_pickup', 'accepted', 'out_for_delivery', 'delivered', 'cancelled', 'return_requested', 'return_pickup_pending', 'return_pickup_assigned', 'returning_to_store', 'returned_to_store'];
     if (!status || !validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -663,12 +704,14 @@ exports.updateOrderStatus = async (req, res) => {
 
     // Order delivered payouts
     if (status === 'delivered' && existing.status !== 'delivered') {
-      // 1. Rider Payout (₹40 base or deliveryCharge)
-      const riderId = existing.deliveryAgent?.riderId;
-      if (riderId) {
-        const customerCharge = Number(existing.deliveryCharge) || 0;
-        const riderFee = Math.max(40, customerCharge);
+      const standardDeliveryFee = 35;
+      const customerDeliveryCharge = Number(existing.deliveryCharge) || 0;
+      // Way 2: If customer got Free Delivery (₹0), rider is guaranteed ₹35 sponsored by store high-value sale
+      const riderFee = customerDeliveryCharge > 0 ? customerDeliveryCharge : standardDeliveryFee;
 
+      // 1. Rider Payout (Always guaranteed at least ₹35)
+      const riderId = existing.deliveryAgent?.riderId;
+      if (riderId && riderFee > 0) {
         const updatedRider = await Rider.findOneAndUpdate(
           { $or: [{ riderId: riderId }, { phone: riderId }] },
           { $inc: { walletBalance: riderFee } },
@@ -682,7 +725,7 @@ exports.updateOrderStatus = async (req, res) => {
             amount: riderFee,
             type: 'credit',
             category: 'rider_payout',
-            paymentMethod: 'Rider Payout',
+            paymentMethod: customerDeliveryCharge > 0 ? 'Customer Delivery Fee' : 'Store Sponsored Delivery Fee',
             orderId: existing.orderId,
             title: 'Delivery Task Earnings',
             subtitle: `Earned ₹${riderFee} for delivering order #${existing.orderId} · ${dateStr}`,
@@ -694,11 +737,11 @@ exports.updateOrderStatus = async (req, res) => {
         }
       }
 
-      // 2. Store Settlement
+      // 2. Store Settlement (Way 2: Net of delivery fee if free delivery or customer delivery fee)
       if (existing.storeId) {
         const grandTotal = Number(existing.grandTotal) || 0;
-        const deliveryCharge = Number(existing.deliveryCharge) || 0;
-        const storeAmount = Math.max(0, grandTotal - deliveryCharge);
+        const deliveryDeduction = customerDeliveryCharge > 0 ? customerDeliveryCharge : standardDeliveryFee;
+        const storeAmount = Math.max(0, grandTotal - deliveryDeduction);
 
         if (storeAmount > 0) {
           const updatedStore = await Store.findOneAndUpdate(
@@ -749,17 +792,30 @@ exports.updateOrderStatus = async (req, res) => {
       io.to(`store:${order.storeId}`).emit('order:status_update', orderPayload);
 
       if (status === 'ready_for_pickup') {
-        io.emit('order:available', orderPayload);
-        io.to('riders').emit('order:available', orderPayload);
+        const hasAssignedRider = Boolean(order.deliveryAgent?.riderId);
+        if (!hasAssignedRider) {
+          io.emit('order:available', orderPayload);
+          io.to('riders').emit('order:available', orderPayload);
 
-        const dispatchOrder = req.app.get('dispatchOrder');
-        const storeLat = order.storeDetails?.latitude || 0;
-        const storeLng = order.storeDetails?.longitude || 0;
-        if (dispatchOrder && (storeLat !== 0 || storeLng !== 0)) {
-          dispatchOrder(io, orderPayload, storeLat, storeLng, 1, []);
+          const dispatchOrder = req.app.get('dispatchOrder');
+          const storeLat = order.storeDetails?.latitude || 0;
+          const storeLng = order.storeDetails?.longitude || 0;
+          if (dispatchOrder && (storeLat !== 0 || storeLng !== 0)) {
+            dispatchOrder(io, orderPayload, storeLat, storeLng, 1, []);
+          } else {
+            const payload = { ...orderPayload, dispatchRound: 3, countdownSecs: 30 };
+            const registry = req.app.get('riderRegistry');
+            if (registry) {
+              for (const [rId, info] of registry.entries()) {
+                if (info.isOnline && !info.isBusy && info.socketId) {
+                  io.to(info.socketId).emit('order:dispatch', payload);
+                }
+              }
+            }
+          }
         } else {
-          io.emit('order:dispatch', { ...orderPayload, dispatchRound: 3, countdownSecs: 30 });
-          io.to('riders').emit('order:dispatch', { ...orderPayload, dispatchRound: 3, countdownSecs: 30 });
+          console.log(`📦 [Store Ready] Parcel packed for order ${orderId}. Rider ${order.deliveryAgent.riderId} already assigned.`);
+          io.to(`rider:${order.deliveryAgent.riderId}`).emit('order:status_update', orderPayload);
         }
       }
 
@@ -818,6 +874,29 @@ exports.updateOrderStatus = async (req, res) => {
         .catch((err) => console.error('Error sending citizen FCM status:', err.message));
     }
 
+    // Record In-App Notification for Citizen on key status changes
+    if (order.userId && ['accepted', 'packed', 'ready_for_pickup', 'picked_up', 'out_for_delivery', 'delivered', 'cancelled'].includes(status)) {
+      const statusTitles = {
+        accepted: 'Store Accepted Your Order',
+        packed: 'Order Packed',
+        ready_for_pickup: 'Order Ready for Pickup',
+        picked_up: 'Rider Picked Up Your Order',
+        out_for_delivery: '🚚 Order Out for Delivery',
+        delivered: '🎉 Order Delivered Successfully',
+        cancelled: '❌ Order Cancelled',
+      };
+      createNotification({
+        userId: order.userId,
+        title: statusTitles[status] || `Order ${status.replace(/_/g, ' ')}`,
+        message: status === 'delivered'
+          ? `Your order #${orderId} was delivered successfully. Enjoy your items!`
+          : `Order #${orderId} from ${order.storeName || 'Store'} is now ${status.replace(/_/g, ' ')}.`,
+        type: 'order',
+        referenceId: orderId,
+        metadata: { status, grandTotal: order.grandTotal },
+      }).catch((e) => console.warn('Notification error:', e.message));
+    }
+
     return res.status(200).json({
       success: true,
       message: `Order status updated to ${status}`,
@@ -830,3 +909,441 @@ exports.updateOrderStatus = async (req, res) => {
   }
 };
 
+// 10. RIDER DOORSTEP RETURN (Rider marks customer unavailable or doorstep rejection)
+exports.initiateRiderReturn = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { riderId, reason, notes, proofImage } = req.body;
+
+    const order = await Order.findOne({ orderId });
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (!['accepted', 'out_for_delivery'].includes(order.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot initiate return for order with status '${order.status}'`,
+      });
+    }
+
+    order.status = 'returning_to_store';
+    order.returnDetails = {
+      returnType: 'rider_doorstep',
+      reason: reason || 'Customer Unavailable / Return to Store',
+      notes: notes || '',
+      proofImage: proofImage || '',
+      initiatedBy: riderId || order.deliveryAgent?.riderId || '',
+      requestedAt: new Date(),
+      restocked: false,
+    };
+
+    await order.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      const payload = {
+        orderId: order.orderId,
+        status: order.status,
+        returnDetails: order.returnDetails,
+        storeId: order.storeId,
+        riderId: order.deliveryAgent?.riderId,
+      };
+      io.emit('order:status_updated', payload);
+      io.to(`store:${order.storeId}`).emit('order:return_initiated', payload);
+      if (order.deliveryAgent?.riderId) {
+        io.to(`rider:${order.deliveryAgent.riderId}`).emit('order:return_initiated', payload);
+      }
+    }
+
+    console.log(`📦↩️ [Rider Return Initiated] Order ${orderId} -> returning to store ${order.storeId}. Reason: ${reason}`);
+
+    // In-App Notification to Citizen
+    if (order.userId) {
+      createNotification({
+        userId: order.userId,
+        title: 'Order Returning to Store',
+        message: `Delivery for order #${orderId} could not be completed (${reason || 'Doorstep delivery failed'}). Package is returning to store.`,
+        type: 'order',
+        referenceId: orderId,
+        metadata: { status: order.status, reason },
+      }).catch((e) => console.warn('Notification error:', e.message));
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Return initiated. Please deliver package back to store.',
+      data: order,
+    });
+  } catch (error) {
+    console.error('Error initiating rider return:', error);
+    return res.status(500).json({ success: false, message: 'Failed to initiate return', error: error.message });
+  }
+};
+
+// 11. STORE CONFIRM RETURN & RESTOCK (Store receives return from Rider, confirms & refunds)
+exports.storeConfirmReturn = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { storeId, condition, notes } = req.body;
+
+    const order = await Order.findOne({ orderId });
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const validConfirmStatuses = ['returning_to_store', 'return_pickup_assigned', 'return_requested'];
+    if (!validConfirmStatuses.includes(order.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Order status is '${order.status}', expected one of: ${validConfirmStatuses.join(', ')}`,
+      });
+    }
+
+    order.status = 'returned_to_store';
+    order.returnDetails.receivedAt = new Date();
+    order.returnDetails.notes = notes || order.returnDetails.notes || '';
+
+    // 1. Restock product catalog inventory
+    if (Array.isArray(order.items)) {
+      for (const item of order.items) {
+        const pId = item.productId || item.id;
+        const qty = Number(item.quantity || item.qty || 1);
+        if (pId && qty > 0) {
+          await Product.updateOne({ productId: pId }, { $inc: { stock: qty } }).catch(() => {});
+        }
+      }
+      order.returnDetails.restocked = true;
+    }
+
+    // 2. Financial Settlement on Return Confirmation
+    const deliveryFee = Number(order.deliveryCharge) || 0;
+    const isDoorstepReturn = order.returnDetails?.returnType === 'rider_doorstep' || order.returnDetails?.initiatedBy === 'rider';
+
+    // For doorstep return, citizen is refunded product cost (delivery fee is retained to pay rider for the completed trip)
+    let refundAmt = Number(order.grandTotal) || 0;
+    if (isDoorstepReturn && deliveryFee > 0) {
+      refundAmt = Math.max(0, refundAmt - deliveryFee);
+    }
+
+    const wasWallet = order.paymentMethod && order.paymentMethod.toLowerCase().includes('wallet');
+    const wasPaid = order.paymentStatus === 'paid';
+    let refundTxId = '';
+
+    const now = new Date();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateStr = `${months[now.getMonth()]} ${now.getDate()} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    if ((wasWallet || wasPaid) && order.paymentStatus !== 'refunded') {
+      if (refundAmt > 0) {
+        const refundedUser = await User.findOneAndUpdate(
+          { $or: [{ userId: order.userId }, { phone: order.userId }] },
+          { $inc: { walletBalance: refundAmt } },
+          { new: true }
+        );
+
+        if (refundedUser) {
+          refundTxId = await getNextSequence('walletTxId', 'TXN_REF_', 5);
+          const refundTx = new WalletTransaction({
+            transactionId: refundTxId,
+            userId: refundedUser.userId,
+            amount: refundAmt,
+            type: 'credit',
+            category: 'order_refund',
+            paymentMethod: 'Wallet Refund',
+            orderId: order.orderId,
+            title: 'Order Return Refund',
+            subtitle: `Return refund (items cost) for order #${order.orderId} · ${dateStr}`,
+            balanceAfter: refundedUser.walletBalance,
+            status: 'success',
+          });
+          await refundTx.save();
+          order.paymentStatus = 'refunded';
+          order.returnDetails.refundAmount = refundAmt;
+          order.returnDetails.refundTransactionId = refundTxId;
+          console.log(`💳 [Return Auto-Refund] ₹${refundAmt} refunded to user ${refundedUser.userId} (Tx: ${refundTxId})`);
+        }
+      }
+    }
+
+    // 3. Compensate Rider for the Return Trip (Doorstep Return or Reverse Citizen Return)
+    const riderId = order.deliveryAgent?.riderId;
+    const reverseDeliveryFee = Number(order.returnDetails?.reverseDeliveryFee) || 0;
+    let riderPayoutAmt = 0;
+    let payoutTitle = '';
+    let payoutSubtitle = '';
+
+    if (riderId && isDoorstepReturn && deliveryFee > 0) {
+      riderPayoutAmt = deliveryFee;
+      payoutTitle = 'Return Trip Payout';
+      payoutSubtitle = `Trip delivery payout for return order #${order.orderId} · ${dateStr}`;
+    } else if (riderId && reverseDeliveryFee > 0) {
+      riderPayoutAmt = reverseDeliveryFee;
+      payoutTitle = 'Reverse Return Trip Payout';
+      payoutSubtitle = `Reverse pickup delivery fee for return #${order.orderId} · ${dateStr}`;
+    }
+
+    if (riderId && riderPayoutAmt > 0) {
+      const updatedRider = await Rider.findOneAndUpdate(
+        { $or: [{ riderId }, { phone: riderId }] },
+        { $inc: { walletBalance: riderPayoutAmt } },
+        { new: true }
+      );
+      if (updatedRider) {
+        const riderTxId = await getNextSequence('walletTxId', 'TXN_PAYOUT_', 5);
+        const riderTx = new WalletTransaction({
+          transactionId: riderTxId,
+          userId: updatedRider.riderId || riderId,
+          amount: riderPayoutAmt,
+          type: 'credit',
+          category: 'delivery_payout',
+          paymentMethod: isDoorstepReturn ? 'Return Trip Fee' : 'Reverse Pickup Fee',
+          orderId: order.orderId,
+          title: payoutTitle,
+          subtitle: payoutSubtitle,
+          balanceAfter: updatedRider.walletBalance,
+          status: 'success',
+        });
+        await riderTx.save();
+        order.returnDetails.riderPayout = riderPayoutAmt;
+        console.log(`🛵 [Rider Return Payout] Credited ₹${riderPayoutAmt} to rider ${riderId} (Tx: ${riderTxId})`);
+      }
+    }
+
+    // 4. Free up rider in registry
+    if (riderId) {
+      const registry = req.app.get('riderRegistry');
+      if (registry && registry.has(riderId)) {
+        registry.get(riderId).isBusy = false;
+      }
+    }
+
+    await order.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      const payload = {
+        orderId: order.orderId,
+        status: order.status,
+        returnDetails: order.returnDetails,
+        paymentStatus: order.paymentStatus,
+        storeId: order.storeId,
+        riderId,
+      };
+      io.emit('order:status_updated', payload);
+      io.to(`store:${order.storeId}`).emit('order:returned', payload);
+      if (riderId) io.to(`rider:${riderId}`).emit('order:returned', payload);
+    }
+
+    console.log(`✅📦 [Return Confirmed] Store ${storeId} verified return for order ${orderId}`);
+
+    // In-App Notification to Citizen
+    if (order.userId) {
+      const refundMsg = (order.paymentStatus === 'refunded')
+        ? `Refund of ₹${order.grandTotal} has been credited to your wallet.`
+        : 'Items have been restocked.';
+      createNotification({
+        userId: order.userId,
+        title: 'Return Completed & Refunded',
+        message: `Your returned order #${orderId} has been confirmed by ${order.storeName || 'the store'}. ${refundMsg}`,
+        type: 'order',
+        referenceId: orderId,
+        metadata: { status: order.status, refundAmount: order.returnDetails.refundAmount, refundTxId },
+      }).catch((e) => console.warn('Notification error:', e.message));
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Return confirmed, items restocked, and customer refund processed!',
+      data: order,
+    });
+  } catch (error) {
+    console.error('Error confirming store return:', error);
+    return res.status(500).json({ success: false, message: 'Failed to confirm return', error: error.message });
+  }
+};
+
+// 12. CITIZEN REQUEST RETURN (Citizen requests return on delivered order)
+exports.citizenRequestReturn = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { userId, reason, notes, proofImage } = req.body;
+
+    const order = await Order.findOne({ orderId });
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (order.status !== 'delivered') {
+      return res.status(400).json({
+        success: false,
+        message: 'Return can only be requested for delivered orders',
+      });
+    }
+
+    order.status = 'return_requested';
+    order.returnDetails = {
+      returnType: 'citizen_request',
+      reason: reason || 'Item Defective / Wrong Item',
+      notes: notes || '',
+      proofImage: proofImage || '',
+      initiatedBy: userId || order.userId,
+      requestedAt: new Date(),
+      restocked: false,
+    };
+
+    await order.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      const payload = {
+        orderId: order.orderId,
+        status: order.status,
+        returnDetails: order.returnDetails,
+        storeId: order.storeId,
+      };
+      io.emit('order:status_updated', payload);
+      io.to(`store:${order.storeId}`).emit('order:return_requested', payload);
+    }
+
+    console.log(`🙋 [Citizen Return Requested] Order ${orderId} by user ${userId}. Reason: ${reason}`);
+
+    // In-App Notification to Citizen
+    if (order.userId) {
+      createNotification({
+        userId: order.userId,
+        title: 'Return Request Submitted',
+        message: `Your return request for order #${orderId} was submitted to ${order.storeName || 'Store'} for review.`,
+        type: 'order',
+        referenceId: orderId,
+        metadata: { status: order.status, reason },
+      }).catch((e) => console.warn('Notification error:', e.message));
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Return request submitted to store for review.',
+      data: order,
+    });
+  } catch (error) {
+    console.error('Error requesting citizen return:', error);
+    return res.status(500).json({ success: false, message: 'Failed to submit return request', error: error.message });
+  }
+};
+
+// 13. STORE REVIEW CITIZEN RETURN (Store Approves or Rejects Citizen Return Request)
+exports.storeReviewCitizenReturn = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { storeId, action, rejectionReason } = req.body; // action: 'approve' | 'reject'
+
+    const order = await Order.findOne({ orderId });
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (order.status !== 'return_requested') {
+      return res.status(400).json({
+        success: false,
+        message: `Order status is '${order.status}', expected 'return_requested'`,
+      });
+    }
+
+    if (action === 'approve') {
+      const reverseFee = 35; // Standard reverse delivery logistics fee paid by store to rider
+      order.status = 'return_pickup_pending';
+      order.returnDetails.reverseDeliveryFee = reverseFee;
+      // Reset deliveryAgent so available riders can accept reverse pickup
+      order.deliveryAgent = {
+        riderId: '',
+        name: '',
+        phone: '',
+        vehicleNumber: '',
+        rating: 4.9,
+      };
+
+      // 1. Deduct reverse delivery fee from Store Wallet
+      const now = new Date();
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const dateStr = `${months[now.getMonth()]} ${now.getDate()} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+      const updatedStore = await Store.findOneAndUpdate(
+        { storeId: order.storeId },
+        { $inc: { walletBalance: -reverseFee } },
+        { new: true }
+      );
+
+      if (updatedStore) {
+        const storeDebitTx = new WalletTransaction({
+          transactionId: await getNextSequence('walletTxId', 'TXN_DEBIT_', 5),
+          userId: updatedStore.storeId,
+          amount: reverseFee,
+          type: 'debit',
+          category: 'return_delivery_fee',
+          paymentMethod: 'Store Wallet',
+          orderId: order.orderId,
+          title: 'Reverse Return Pickup Charge',
+          subtitle: `Rider pickup charge for return #${order.orderId} · ${dateStr}`,
+          balanceAfter: updatedStore.walletBalance,
+          status: 'success',
+        });
+        await storeDebitTx.save();
+        console.log(`🏪 [Reverse Return Fee] Debited ₹${reverseFee} from store ${order.storeId}`);
+      }
+    } else {
+      order.status = 'return_rejected';
+      order.returnDetails.rejectionReason = rejectionReason || 'Store rejected return request';
+    }
+
+    await order.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      const payload = {
+        orderId: order.orderId,
+        status: order.status,
+        returnDetails: order.returnDetails,
+        paymentStatus: order.paymentStatus,
+        storeId: order.storeId,
+      };
+      io.emit('order:status_updated', payload);
+    }
+
+    console.log(`⚖️ [Return Reviewed] Order ${orderId} -> ${action.toUpperCase()}`);
+
+    // In-App Notification to Citizen
+    if (order.userId) {
+      const isApproved = action === 'approve';
+      createNotification({
+        userId: order.userId,
+        title: isApproved ? 'Return Request Approved · Pickup Scheduled' : 'Return Request Rejected',
+        message: isApproved
+          ? `Your return request for order #${orderId} was approved! A rider is being assigned to collect the items from your doorstep. Full refund will be finalized once returned.`
+          : `Your return request for order #${orderId} was not accepted: ${rejectionReason || 'Store rejected return request'}.`,
+        type: 'order',
+        referenceId: orderId,
+        metadata: { status: order.status, action, rejectionReason },
+      }).catch((e) => console.warn('Notification error:', e.message));
+
+      if (isApproved && order.storeId) {
+        createNotification({
+          userId: order.storeId,
+          title: 'Return Approved · Rider Dispatched',
+          message: `Return approved for order #${orderId}. ₹35 reverse delivery fee deducted. A delivery partner is being assigned for doorstep collection.`,
+          type: 'order',
+          referenceId: orderId,
+          metadata: { status: order.status, reverseDeliveryFee: 35 },
+        }).catch((e) => console.warn('Store notification error:', e.message));
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: action === 'approve' ? 'Return approved! ₹35 reverse pickup fee deducted and rider pickup dispatched.' : 'Return rejected',
+      data: order,
+    });
+  } catch (error) {
+    console.error('Error reviewing return:', error);
+    return res.status(500).json({ success: false, message: 'Failed to review return', error: error.message });
+  }
+};

@@ -5,7 +5,7 @@ class ApiClient {
   static String? _resolvedBaseUrl;
 
   // Active Wi-Fi backend URL
-  static String get defaultBaseUrl => 'http://192.168.1.24:5000';
+  static String get defaultBaseUrl => 'http://192.168.1.11:5000';
 
   static String get baseUrl => _resolvedBaseUrl ?? defaultBaseUrl;
 
@@ -20,9 +20,9 @@ class ApiClient {
 
   /// Candidate hosts for automatic resolution
   static List<String> get candidateHosts => [
-        'http://192.168.1.24:5000', // Active Wi-Fi IP
-        'http://192.168.1.12:5000', // Previous Wi-Fi IP
-        'http://192.168.1.11:5000', // Previous Wi-Fi IP
+        'http://192.168.1.11:5000', // current Wi-Fi IP
+    'http://192.168.1.24:5000', // previous Wi-Fi IP
+    'http://192.168.1.12:5000', // Previous Wi-Fi IP
         'http://192.168.1.8:5000',  // Home Wi-Fi
         'http://127.0.0.1:5000',    // Localhost / Web / Desktop
         if (!kIsWeb && Platform.isAndroid) 'http://10.0.2.2:5000', // Emulator

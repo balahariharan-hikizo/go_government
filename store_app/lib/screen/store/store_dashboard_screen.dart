@@ -611,15 +611,15 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
                         ),
                       ],
                     ),
-                    SizedBox(height: Responsive.h(12)),
-                    _buildOperationCard(
-                      title: 'Store Revenue & Wallet',
-                      subtitle: 'Live balance, sales ledger & express DBT payouts',
-                      icon: Icons.account_balance_wallet_rounded,
-                      iconColor: const Color(0xFFD97706),
-                      badgeColor: const Color(0xFFFFFBEB),
-                      onTap: _openStoreWallet,
-                    ),
+                    // SizedBox(height: Responsive.h(12)),
+                    // _buildOperationCard(
+                    //   title: 'Store Revenue & Wallet',
+                    //   subtitle: 'Live balance, sales ledger & express DBT payouts',
+                    //   icon: Icons.account_balance_wallet_rounded,
+                    //   iconColor: const Color(0xFFD97706),
+                    //   badgeColor: const Color(0xFFFFFBEB),
+                    //   onTap: _openStoreWallet,
+                    // ),
 
                     SizedBox(height: Responsive.h(18)),
 

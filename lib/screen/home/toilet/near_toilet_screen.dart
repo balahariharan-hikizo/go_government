@@ -963,6 +963,11 @@ class _NearToiletScreenState extends State<NearToiletScreen> {
                 subtitle: const Text('Find public toilets near your live device coordinates', style: TextStyle(fontSize: 12)),
                 onTap: () async {
                   Navigator.pop(ctx);
+                  final bool isAvailable = await LocationService.isLocationAvailable();
+                  if (!isAvailable) {
+                    await LocationService.openAppropriateSettings();
+                    return;
+                  }
                   final pos = await LocationService.switchToLiveGps();
                   if (pos != null && mounted) {
                     setState(() {

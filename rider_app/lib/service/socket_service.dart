@@ -77,13 +77,13 @@ class RiderSocketService {
         debugPrint('⚠️ [RiderSocketService] Connection error: $err');
       });
 
-      // 1. Available orders for riders (when store has packed & marked ready_for_pickup)
+      // 1. Available orders for riders (placed, preparing, or ready_for_pickup)
       _socket?.on('order:available', (data) {
         debugPrint('📦 [RiderSocketService] Real-time order:available received: $data');
         if (data is Map) {
           final map = Map<String, dynamic>.from(data);
-          final status = map['status']?.toString();
-          if (status == null || status == 'ready_for_pickup') {
+          final status = map['status']?.toString().toLowerCase().trim();
+          if (status == null || status == 'ready_for_pickup' || status == 'placed' || status == 'preparing') {
             _orderAvailableController.add(map);
           }
         }
@@ -95,7 +95,8 @@ class RiderSocketService {
         if (data is Map) {
           final map = Map<String, dynamic>.from(data);
           _orderStatusController.add(map);
-          if (map['status'] == 'ready_for_pickup') {
+          final status = map['status']?.toString().toLowerCase().trim();
+          if (status == 'ready_for_pickup' || status == 'placed' || status == 'preparing') {
             _orderAvailableController.add(map);
           }
         }

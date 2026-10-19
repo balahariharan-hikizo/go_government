@@ -49,7 +49,23 @@ const OrderSchema = new mongoose.Schema(
     
     status: {
       type: String,
-      enum: ['placed', 'preparing', 'ready_for_pickup', 'accepted', 'out_for_delivery', 'delivered', 'cancelled'],
+      enum: [
+        'placed',
+        'preparing',
+        'ready_for_pickup',
+        'accepted',
+        'out_for_delivery',
+        'delivered',
+        'cancelled',
+        'returning_to_store',
+        'returned_to_store',
+        'return_requested',
+        'return_approved',
+        'return_pickup_pending',
+        'return_pickup_assigned',
+        'return_rejected',
+        'returned',
+      ],
       default: 'placed',
       index: true,
     },
@@ -64,11 +80,39 @@ const OrderSchema = new mongoose.Schema(
     
     estimatedDeliveryTime: { type: String, default: '25-30 mins' },
     deliveredAt: { type: Date },
+
+    // Two-Way Return Flow Metadata
+    returnDetails: {
+      returnType: {
+        type: String,
+        enum: ['rider_doorstep', 'citizen_request', 'none'],
+        default: 'none',
+      },
+      reason: { type: String, default: '' },
+      notes: { type: String, default: '' },
+      proofImage: { type: String, default: '' },
+      initiatedBy: { type: String, default: '' },
+      requestedAt: { type: Date, default: null },
+      receivedAt: { type: Date, default: null },
+      refundAmount: { type: Number, default: 0 },
+      refundTransactionId: { type: String, default: '' },
+      riderPayout: { type: Number, default: 0 },
+      reverseDeliveryFee: { type: Number, default: 0 },
+      rejectionReason: { type: String, default: '' },
+      restocked: { type: Boolean, default: false },
+    },
   },
   {
     timestamps: true,
   }
 );
+
+OrderSchema.virtual('citizen', {
+  ref: 'User',
+  localField: 'userId',
+  foreignField: 'userId',
+  justOne: true,
+});
 
 OrderSchema.set('toJSON', {
   virtuals: true,
@@ -76,6 +120,10 @@ OrderSchema.set('toJSON', {
   transform: function (doc, ret) {
     delete ret._id;
   },
+});
+
+OrderSchema.set('toObject', {
+  virtuals: true,
 });
 
 

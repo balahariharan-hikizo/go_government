@@ -12,6 +12,7 @@ import '../../network/api_client.dart';
 import '../../constants/route_constants.dart';
 import '../../utils/call_launcher.dart';
 import '../../network/order_api_service.dart';
+import '../../hive/hive_service.dart';
 
 class TransactionDetailsScreen extends StatefulWidget {
   final String title;
@@ -28,42 +29,197 @@ class TransactionDetailsScreen extends StatefulWidget {
 }
 
 class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
-  void _showReturnDialog(BuildContext context, int index) {
-    showDialog(
+  void _showCitizenReturnBottomSheet(BuildContext context, String orderId) {
+    String selectedReason = 'Defective / Damaged Item';
+    final notesController = TextEditingController();
+    final reasons = [
+      'Defective / Damaged Item',
+      'Expired Product Delivered',
+      'Wrong Item / Missing Quantity',
+      'Poor Quality / Not as Described',
+      'Other',
+    ];
+
+    showModalBottomSheet(
       context: context,
-      builder: (dialogCtx) {
-        return AlertDialog(
-          backgroundColor: AppColors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Responsive.w(20)),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Container(
+          padding: EdgeInsets.only(
+            left: Responsive.w(20),
+            right: Responsive.w(20),
+            top: Responsive.h(20),
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + Responsive.h(20),
           ),
-          title: CustomText.header('Confirm Return', fontSize: 16, fontWeight: FontWeight.bold),
-          content: CustomText.body('Are you sure you want to return this product?', fontSize: 13),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: CustomText.title('Cancel', color: AppColors.grayFont, fontSize: 13),
-            ),
-            TextButton(
-              onPressed: () {
-                context.read<TransactionBloc>().add(ReturnWatermelonProductEvent(index));
-                Navigator.pop(dialogCtx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Return processed successfully!'),
-                    backgroundColor: AppColors.success,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(Responsive.w(12)),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(Responsive.w(24))),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: Responsive.w(40),
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                );
-              },
-              child: CustomText.title('Confirm', color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: Responsive.h(16)),
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(Responsive.w(8)),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFFF3E0),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.assignment_return_rounded, color: Color(0xFFE65100), size: 24),
+                    ),
+                    SizedBox(width: Responsive.w(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CustomText.title('Return Request', fontSize: 18, fontWeight: FontWeight.bold),
+                          CustomText.subtitle('Order #$orderId', color: AppColors.grayFont, fontSize: 12),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: Responsive.h(18)),
+                CustomText.subtitle('SELECT REASON FOR RETURN', fontWeight: FontWeight.bold, color: AppColors.grayFont, fontSize: 11),
+                SizedBox(height: Responsive.h(8)),
+                ...reasons.map((r) {
+                  final isSelected = selectedReason == r;
+                  return InkWell(
+                    onTap: () => setModalState(() => selectedReason = r),
+                    borderRadius: BorderRadius.circular(Responsive.w(12)),
+                    child: Container(
+                      margin: EdgeInsets.only(bottom: Responsive.h(8)),
+                      padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(10)),
+                      decoration: BoxDecoration(
+                        color: isSelected ? const Color(0xFFFFF3E0) : Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(Responsive.w(12)),
+                        border: Border.all(
+                          color: isSelected ? const Color(0xFFFF9800) : Colors.grey.shade200,
+                          width: isSelected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                            color: isSelected ? const Color(0xFFE65100) : Colors.grey.shade400,
+                            size: 20,
+                          ),
+                          SizedBox(width: Responsive.w(10)),
+                          Expanded(
+                            child: Text(
+                              r,
+                              style: TextStyle(
+                                fontSize: Responsive.sp(13.5),
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                color: isSelected ? const Color(0xFFE65100) : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                SizedBox(height: Responsive.h(10)),
+                TextField(
+                  controller: notesController,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    hintText: 'Additional details about the issue (optional)',
+                    hintStyle: TextStyle(fontSize: Responsive.sp(13), color: Colors.grey.shade500),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    contentPadding: EdgeInsets.all(Responsive.w(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Responsive.w(12)),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Responsive.w(12)),
+                      borderSide: BorderSide(color: Colors.grey.shade200),
+                    ),
+                  ),
+                ),
+                SizedBox(height: Responsive.h(18)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: Responsive.h(14)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    SizedBox(width: Responsive.w(12)),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE65100),
+                          padding: EdgeInsets.symmetric(vertical: Responsive.h(14)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(12))),
+                        ),
+                        onPressed: () async {
+                          final userId = HiveService.citizenId.isNotEmpty ? HiveService.citizenId : HiveService.userId;
+                          final messenger = ScaffoldMessenger.of(context);
+                          Navigator.pop(ctx);
+                          final res = await OrderApiService.requestReturn(
+                            orderId: orderId,
+                            userId: userId,
+                            reason: selectedReason,
+                            notes: notesController.text.trim(),
+                          );
+                          if (!mounted) return;
+                          if (res['success'] == true) {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('✅ Return request submitted! Store merchant will review it.'),
+                                backgroundColor: AppColors.success,
+                              ),
+                            );
+                            setState(() {
+                              if (widget.transaction != null) {
+                                widget.transaction!['status'] = 'return_requested';
+                              }
+                            });
+                          } else {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(res['message']?.toString() ?? 'Failed to submit return request'),
+                                backgroundColor: AppColors.error,
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('Submit Return', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ),
     );
   }
 
@@ -291,7 +447,7 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
                                         idx,
                                         it['title'] ?? 'Product',
                                         '${it['price'] ?? '₹ 99.0'} x ${it['qty'] ?? 1}',
-                                        it['image'] ?? 'assets/images/product1.png',
+                                        (it['image'] ?? it['imageUrl'] ?? '').toString(),
                                         isRet,
                                       );
                                     }).toList(),
@@ -771,7 +927,7 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
             'title': item['title'] ?? item['name'] ?? 'Product',
             'price': item['price'] ?? 99,
             'originalPrice': item['originalPrice'] ?? item['price'] ?? 99,
-            'image': item['image'] ?? item['imageUrl'] ?? 'assets/images/product1.png',
+            'image': (item['image'] ?? item['imageUrl'] ?? '').toString(),
             'stock': 10,
           };
           final qty = ((item['qty'] ?? item['quantity'] ?? 1) as num).toInt();
@@ -786,7 +942,7 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
         'title': widget.title,
         'price': 99,
         'originalPrice': 150,
-        'image': 'assets/images/product1.png',
+        'image': '',
         'stock': 10,
       }, qty: 1);
     }
@@ -881,7 +1037,7 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
                       'title': pTitle,
                       'price': pPrice,
                       'originalPrice': item?['originalPrice'] ?? pPrice,
-                      'image': item?['image'] ?? item?['imageUrl'] ?? 'assets/images/product1.png',
+                      'image': (item?['image'] ?? item?['imageUrl'] ?? '').toString(),
                       'stock': 10,
                     };
 
@@ -931,14 +1087,45 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
   }
 
   Widget _buildProductImage(String? imagePath, {required double width, required double height}) {
-    final raw = (imagePath ?? '').trim();
-    if (raw.isEmpty) {
-      return Image.asset(
-        'assets/images/product1.png',
+    Widget buildPlaceholder() {
+      return Container(
         width: width,
         height: height,
-        fit: BoxFit.cover,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(Responsive.w(8)),
+          border: Border.all(color: Colors.grey.shade200, width: 0.8),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.image_not_supported_outlined,
+                size: (width >= 40) ? Responsive.w(18) : Responsive.w(14),
+                color: Colors.grey.shade400,
+              ),
+              if (height >= 38) ...[
+                SizedBox(height: Responsive.h(1)),
+                Text(
+                  'No img',
+                  style: TextStyle(
+                    fontSize: Responsive.sp(7.5),
+                    color: Colors.grey.shade500,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       );
+    }
+
+    final raw = (imagePath ?? '').trim();
+    if (raw.isEmpty || raw == 'assets/images/product1.png') {
+      return buildPlaceholder();
     }
     final normalized = ApiClient.normalizeImageUrl(raw);
     if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
@@ -947,12 +1134,7 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
         width: width,
         height: height,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Image.asset(
-          'assets/images/product1.png',
-          width: width,
-          height: height,
-          fit: BoxFit.cover,
-        ),
+        errorBuilder: (context, error, stackTrace) => buildPlaceholder(),
       );
     }
     return Image.asset(
@@ -960,12 +1142,7 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
       width: width,
       height: height,
       fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) => Image.asset(
-        'assets/images/product1.png',
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-      ),
+      errorBuilder: (context, error, stackTrace) => buildPlaceholder(),
     );
   }
 
@@ -1004,30 +1181,6 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
                   ],
                 ),
               ),
-              SizedBox(width: Responsive.w(8)),
-              GestureDetector(
-                onTap: isReturned ? null : () => _showReturnDialog(context, index),
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: Responsive.w(12),
-                    vertical: Responsive.h(6),
-                  ),
-                  decoration: BoxDecoration(
-                    color: isReturned ? Colors.grey.shade100 : const Color(0xFFFFF2EC),
-                    borderRadius: BorderRadius.circular(Responsive.w(16)),
-                    border: Border.all(
-                      color: isReturned ? Colors.grey.shade300 : AppColors.primary,
-                      width: 1.0,
-                    ),
-                  ),
-                  child: CustomText.title(
-                    isReturned ? 'Returned' : 'Return',
-                    color: isReturned ? Colors.grey : AppColors.primary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
             ],
           ),
           SizedBox(height: Responsive.h(10)),
@@ -1037,94 +1190,227 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
     );
   }
 
-  Widget _buildBottomButtons(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: Responsive.h(48),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(Responsive.w(24)),
-              border: Border.all(
-                color: AppColors.primary,
-                width: Responsive.w(1.5),
-              ),
-            ),
-            child: InkWell(
-              onTap: () {
-                _reorderAllAndGoToCart(context);
-              },
-              borderRadius: BorderRadius.circular(Responsive.w(24)),
-              child: Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.replay,
-                      color: AppColors.primary,
-                      size: Responsive.w(18),
-                    ),
-                    SizedBox(width: Responsive.w(6)),
-                    CustomText.title(
-                      'Reorder',
-                      color: AppColors.primary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        SizedBox(width: Responsive.w(16)),
-        Expanded(
-          child: Container(
-            height: Responsive.h(48),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(Responsive.w(24)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: Responsive.w(6),
-                  offset: Offset(0, Responsive.h(3)),
-                ),
+  Widget _buildReturnStatusBanner({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color bgColor,
+    required Color borderColor,
+    required Color textColor,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(Responsive.w(14)),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(Responsive.w(16)),
+        border: Border.all(color: borderColor, width: 1.2),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: textColor, size: 22),
+          SizedBox(width: Responsive.w(12)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CustomText.title(title, fontSize: 13, fontWeight: FontWeight.bold, color: textColor),
+                SizedBox(height: Responsive.h(4)),
+                CustomText.subtitle(subtitle, fontSize: 11, color: textColor.withValues(alpha: 0.9), height: 1.3),
               ],
             ),
-            child: InkWell(
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Downloading invoice...'),
-                    backgroundColor: Colors.blue,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomButtons(BuildContext context) {
+    final tx = widget.transaction != null ? Map<String, dynamic>.from(widget.transaction!) : <String, dynamic>{};
+    final String orderId = (tx['id'] ?? tx['orderId'] ?? '').toString();
+    final String status = (tx['status'] ?? tx['orderStatus'] ?? '').toString().toLowerCase();
+
+    final bool isDelivered = status == 'delivered' || status == 'completed';
+    final bool isReturnRequested = status == 'return_requested';
+    final bool isReturnApproved = status == 'return_pickup_pending';
+    final bool isReturnAssigned = status == 'return_pickup_assigned';
+    final bool isReturned = status == 'returned_to_store';
+    final bool isReturnRejected = status == 'return_rejected';
+
+    return Column(
+      children: [
+        // 1. Live Return Status Tracking Banner (If in return lifecycle)
+        if (isReturnRequested) ...[
+          _buildReturnStatusBanner(
+            icon: Icons.hourglass_top_rounded,
+            title: 'Return Request Under Review',
+            subtitle: 'Store merchant is reviewing your return request. A delivery partner will be dispatched upon approval.',
+            bgColor: const Color(0xFFFFF3E0),
+            borderColor: const Color(0xFFFFB74D),
+            textColor: const Color(0xFFE65100),
+          ),
+          SizedBox(height: Responsive.h(16)),
+        ] else if (isReturnApproved) ...[
+          _buildReturnStatusBanner(
+            icon: Icons.moped_rounded,
+            title: 'Return Approved · Rider Dispatched',
+            subtitle: 'Store approved your return request! A delivery partner is being assigned for doorstep collection.',
+            bgColor: const Color(0xFFFFF8E1),
+            borderColor: const Color(0xFFFFD54F),
+            textColor: const Color(0xFFF57F17),
+          ),
+          SizedBox(height: Responsive.h(16)),
+        ] else if (isReturnAssigned) ...[
+          _buildReturnStatusBanner(
+            icon: Icons.two_wheeler_rounded,
+            title: 'Delivery Partner Assigned',
+            subtitle: 'A delivery partner is heading to your doorstep to collect the return parcel.',
+            bgColor: const Color(0xFFE3F2FD),
+            borderColor: const Color(0xFF90CAF9),
+            textColor: const Color(0xFF1565C0),
+          ),
+          SizedBox(height: Responsive.h(16)),
+        ] else if (isReturned) ...[
+          _buildReturnStatusBanner(
+            icon: Icons.check_circle_rounded,
+            title: 'Returned & 100% Refunded',
+            subtitle: 'Order items returned to store. Full refund has been credited directly to your GoGov Wallet.',
+            bgColor: const Color(0xFFE8F5E9),
+            borderColor: const Color(0xFFA5D6A7),
+            textColor: const Color(0xFF2E7D32),
+          ),
+          SizedBox(height: Responsive.h(16)),
+        ] else if (isReturnRejected) ...[
+          _buildReturnStatusBanner(
+            icon: Icons.cancel_outlined,
+            title: 'Return Request Rejected',
+            subtitle: 'Store merchant was unable to accept the return request for this order.',
+            bgColor: const Color(0xFFFFEBEE),
+            borderColor: const Color(0xFFEF9A9A),
+            textColor: const Color(0xFFC62828),
+          ),
+          SizedBox(height: Responsive.h(16)),
+        ],
+
+        // 2. Action Buttons (Reorder + Invoice)
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: Responsive.h(48),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(Responsive.w(24)),
+                  border: Border.all(
+                    color: AppColors.primary,
+                    width: Responsive.w(1.5),
                   ),
-                );
-              },
-              borderRadius: BorderRadius.circular(Responsive.w(24)),
-              child: Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.download_outlined,
-                      color: AppColors.black,
-                      size: Responsive.w(18),
+                ),
+                child: InkWell(
+                  onTap: () {
+                    _reorderAllAndGoToCart(context);
+                  },
+                  borderRadius: BorderRadius.circular(Responsive.w(24)),
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.replay,
+                          color: AppColors.primary,
+                          size: Responsive.w(18),
+                        ),
+                        SizedBox(width: Responsive.w(6)),
+                        CustomText.title(
+                          'Reorder',
+                          color: AppColors.primary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ],
                     ),
-                    SizedBox(width: Responsive.w(6)),
-                    CustomText.title(
-                      'Invoice',
-                      color: AppColors.black,
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: Responsive.w(16)),
+            Expanded(
+              child: Container(
+                height: Responsive.h(48),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(Responsive.w(24)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: Responsive.w(6),
+                      offset: Offset(0, Responsive.h(3)),
                     ),
                   ],
+                ),
+                child: InkWell(
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Downloading invoice...'),
+                        backgroundColor: Colors.blue,
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(Responsive.w(24)),
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.download_outlined,
+                          color: AppColors.black,
+                          size: Responsive.w(18),
+                        ),
+                        SizedBox(width: Responsive.w(6)),
+                        CustomText.title(
+                          'Invoice',
+                          color: AppColors.black,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        // 3. Return Action Button (ONLY AND ONLY FOR DELIVERED ORDERS!)
+        if (isDelivered) ...[
+          SizedBox(height: Responsive.h(14)),
+          SizedBox(
+            width: double.infinity,
+            height: Responsive.h(48),
+            child: OutlinedButton.icon(
+              onPressed: () => _showCitizenReturnBottomSheet(context, orderId),
+              icon: const Icon(Icons.assignment_return_outlined, color: Color(0xFFE65100), size: 18),
+              label: const Text(
+                'Request Return / Exchange',
+                style: TextStyle(
+                  color: Color(0xFFE65100),
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFFF9800), width: 1.5),
+                backgroundColor: const Color(0xFFFFF8F3),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(Responsive.w(24)),
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }

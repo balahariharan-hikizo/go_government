@@ -6,9 +6,10 @@ class AdminApiService {
   static const List<String> candidateBases = [
     'http://localhost:5000',
     'http://127.0.0.1:5000',
+    'http://192.168.1.11:5000',
     'http://192.168.1.24:5000',
     'http://192.168.1.12:5000',
-    'http://192.168.1.11:5000',
+    
   ];
 
   static String _baseUrl = 'http://localhost:5000';

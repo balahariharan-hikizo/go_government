@@ -712,6 +712,11 @@ class _NearStoresScreenState extends State<NearStoresScreen> {
                 subtitle: const Text('Find stores near your live device coordinates', style: TextStyle(fontSize: 12)),
                 onTap: () async {
                   Navigator.pop(ctx);
+                  final bool isAvailable = await LocationService.isLocationAvailable();
+                  if (!isAvailable) {
+                    await LocationService.openAppropriateSettings();
+                    return;
+                  }
                   final pos = await LocationService.switchToLiveGps();
                   if (pos != null && mounted) {
                     setState(() {

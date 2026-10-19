@@ -213,7 +213,7 @@ class WalletApiService {
             'title': i['title']?.toString() ?? 'Product',
             'price': '₹${(i['price'] as num?)?.toInt() ?? 0}',
             'qty': (i['quantity'] as num?)?.toInt() ?? 1,
-            'image': i['image']?.toString() ?? 'assets/images/product1.png',
+            'image': i['image']?.toString() ?? '',
             if (storeId.isNotEmpty) 'storeId': storeId,
             if (storeName.isNotEmpty) 'storeName': storeName,
           }).toList();

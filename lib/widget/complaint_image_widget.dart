@@ -30,18 +30,42 @@ class ComplaintImageWidget extends StatelessWidget {
   });
 
   Widget _buildFallback() {
-    return Image.asset(
-      'assets/images/report1.png',
-      fit: fit,
+    return Container(
       width: width,
       height: height,
-      gaplessPlayback: true,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: borderRadius,
+        border: Border.all(color: Colors.grey.shade200, width: 0.8),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.image_not_supported_outlined,
+              size: (height != null && height! < 100) ? 20 : 32,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'No image',
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.grey.shade500,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildImageContent() {
     final raw = imagePath?.trim();
-    if (raw == null || raw.isEmpty) {
+    if (raw == null || raw.isEmpty || raw == 'assets/images/report1.png') {
       return _buildFallback();
     }
 

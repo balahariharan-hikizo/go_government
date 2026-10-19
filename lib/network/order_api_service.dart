@@ -127,4 +127,37 @@ class OrderApiService {
       return false;
     }
   }
+
+  /// 5. Request Return for delivered order (POST /orders/:orderId/citizen-return)
+  static Future<Map<String, dynamic>> requestReturn({
+    required String orderId,
+    required String userId,
+    required String reason,
+    String? notes,
+    String? proofImage,
+  }) async {
+    final url = '${ApiClient.baseUrl}/orders/$orderId/citizen-return';
+    final payload = jsonEncode({
+      'userId': userId,
+      'reason': reason,
+      'notes': notes ?? '',
+      'proofImage': proofImage ?? '',
+    });
+
+    try {
+      ApiClient.logRequest('POST', url, body: payload);
+      final response = await http
+          .post(Uri.parse(url), headers: ApiClient.defaultHeaders, body: payload)
+          .timeout(const Duration(seconds: 10));
+
+      ApiClient.logResponse('POST', url, response.statusCode, response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'success': false, 'message': 'Failed to request return (${response.statusCode})'};
+    } catch (e) {
+      ApiClient.logError('POST', url, e);
+      return {'success': false, 'message': e.toString()};
+    }
+  }
 }

@@ -58,6 +58,7 @@ class DeliveryOrder {
   final String status;
   final String riderId;
   final DateTime? createdAt;
+  final Map<String, dynamic>? returnDetails;
 
   DeliveryOrder({
     required this.orderId,
@@ -82,6 +83,7 @@ class DeliveryOrder {
     required this.status,
     required this.riderId,
     this.createdAt,
+    this.returnDetails,
   });
 
   factory DeliveryOrder.fromJson(Map<String, dynamic> json) {
@@ -98,7 +100,20 @@ class DeliveryOrder {
       storeId: json['storeId']?.toString() ?? '',
       items: itemsList,
       itemTotal: (json['itemTotal'] as num?)?.toDouble() ?? 0.0,
-      deliveryCharge: (json['deliveryCharge'] as num?)?.toDouble() ?? 30.0,
+      deliveryCharge: () {
+        final returnMap = json['returnDetails'] is Map ? json['returnDetails'] as Map : null;
+        final reverseFee = (returnMap != null && returnMap['reverseDeliveryFee'] != null)
+            ? (returnMap['reverseDeliveryFee'] as num).toDouble()
+            : 0.0;
+        final isRev = json['status'] == 'return_pickup_pending' ||
+            json['status'] == 'return_pickup_assigned' ||
+            (returnMap != null && returnMap['returnType'] == 'citizen_request');
+        if (isRev && reverseFee > 0) {
+          return reverseFee;
+        }
+        final charge = (json['deliveryCharge'] as num?)?.toDouble() ?? 0.0;
+        return charge > 0 ? charge : 35.0;
+      }(),
       grandTotal: (json['grandTotal'] as num?)?.toDouble() ?? 0.0,
       paymentMethod: json['paymentMethod']?.toString() ?? 'Cash on Delivery',
       paymentStatus: json['paymentStatus']?.toString() ?? 'paid',
@@ -118,11 +133,17 @@ class DeliveryOrder {
       status: json['status']?.toString() ?? 'placed',
       riderId: agent['riderId']?.toString() ?? '',
       createdAt: json['createdAt'] != null ? DateTime.tryParse(json['createdAt'].toString()) : null,
+      returnDetails: json['returnDetails'] is Map ? Map<String, dynamic>.from(json['returnDetails']) : null,
     );
   }
 
-  // Hybrid model: Guaranteed base ₹40 or customer deliveryCharge if higher
-  double get estimatedPayout => deliveryCharge > 40.0 ? deliveryCharge : 40.0;
+  bool get isReversePickup =>
+      status == 'return_pickup_pending' ||
+      status == 'return_pickup_assigned' ||
+      (returnDetails != null && returnDetails!['returnType'] == 'citizen_request');
+
+  // Pure Order Model: Rider payout directly matches order deliveryCharge (Minimum ₹35)
+  double get estimatedPayout => deliveryCharge > 0 ? deliveryCharge : 35.0;
 
   Map<String, dynamic> toJson() {
     return {

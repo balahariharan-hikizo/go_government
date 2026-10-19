@@ -8,18 +8,31 @@ const { getNextSequence } = require('../utils/sequenceGenerator');
 exports.getWalletDetails = async (req, res) => {
   try {
     const { userId } = req.params;
+    const requestedRole = req.query.role; // optional 'store' | 'rider' | 'citizen'
 
-    // Check User, Rider, or Store
-    let account = await User.findOne({ $or: [{ userId }, { phone: userId }] });
+    let account = null;
     let role = 'citizen';
-    let balance = account?.walletBalance || 0;
-    let coins = account?.coinsBalance || 0;
+
+    // Prioritize prefix / role hint
+    if (requestedRole === 'store' || (userId && userId.startsWith('STORE_'))) {
+      account = await Store.findOne({ $or: [{ storeId: userId }, { phone: userId }] });
+      if (account) role = 'store_owner';
+    } else if (requestedRole === 'rider' || (userId && userId.startsWith('RIDER_'))) {
+      account = await Rider.findOne({ $or: [{ riderId: userId }, { phone: userId }] });
+      if (account) role = 'rider';
+    }
+
+    if (!account) {
+      account = await User.findOne({ $or: [{ userId }, { phone: userId }] });
+      if (account) {
+        role = 'citizen';
+      }
+    }
 
     if (!account) {
       account = await Rider.findOne({ $or: [{ riderId: userId }, { phone: userId }] });
       if (account) {
         role = 'rider';
-        balance = account.walletBalance || 0;
       }
     }
 
@@ -27,10 +40,11 @@ exports.getWalletDetails = async (req, res) => {
       account = await Store.findOne({ $or: [{ storeId: userId }, { phone: userId }] });
       if (account) {
         role = 'store_owner';
-        balance = account.walletBalance || 0;
       }
     }
 
+    let balance = account?.walletBalance || 0;
+    let coins = account?.coinsBalance || 0;
     const accountId = account?.userId || account?.riderId || account?.storeId || userId;
 
     const page = parseInt(req.query.page) || 1;
@@ -49,6 +63,39 @@ exports.getWalletDetails = async (req, res) => {
         .limit(limit),
     ]);
 
+    // Enhanced metrics for store_owner
+    let storeSummary = null;
+    if (role === 'store_owner') {
+      const Order = require('../models/Order');
+      const storeId = account?.storeId || accountId;
+      const orders = await Order.find({ storeId, status: 'delivered' }).select('grandTotal deliveryCharge items orderId createdAt');
+      let grossCustomerSales = 0;
+      let riderDeliveryCharges = 0;
+      let netProductEarnings = 0;
+      let totalItemsSold = 0;
+      for (const o of orders) {
+        const grandTotal = Number(o.grandTotal) || 0;
+        const deliveryCharge = Number(o.deliveryCharge) || 0;
+        grossCustomerSales += grandTotal;
+        riderDeliveryCharges += deliveryCharge;
+        netProductEarnings += Math.max(0, grandTotal - deliveryCharge);
+        if (Array.isArray(o.items)) {
+          for (const it of o.items) {
+            totalItemsSold += (Number(it.quantity) || 1);
+          }
+        }
+      }
+      storeSummary = {
+        grossCustomerSales: Math.round(grossCustomerSales),
+        riderDeliveryCharges: Math.round(riderDeliveryCharges),
+        netProductEarnings: Math.round(netProductEarnings),
+        totalRevenue: Math.round(netProductEarnings),
+        deliveredOrdersCount: orders.length,
+        totalItemsSold,
+        bankDetails: account?.bankDetails || {},
+      };
+    }
+
     res.status(200).json({
       success: true,
       userId: accountId,
@@ -57,6 +104,7 @@ exports.getWalletDetails = async (req, res) => {
       coinsBalance: coins,
       totalTransactions,
       transactions,
+      storeSummary,
     });
   } catch (error) {
     console.error('Error fetching wallet details:', error);

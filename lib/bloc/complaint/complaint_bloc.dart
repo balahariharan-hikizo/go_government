@@ -18,8 +18,11 @@ class ComplaintBloc extends Bloc<ComplaintEvent, ComplaintState> {
       emit(state.copyWith(isSubmitting: true));
 
       final now = DateTime.now();
-      final timeStr =
-          "${now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour)}:${now.minute.toString().padLeft(2, '0')} ${now.hour >= 12 ? 'PM' : 'AM'}";
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final hour = now.hour > 12 ? now.hour - 12 : (now.hour == 0 ? 12 : now.hour);
+      final ampm = now.hour >= 12 ? 'PM' : 'AM';
+      final timeStr = "$hour:${now.minute.toString().padLeft(2, '0')} $ampm";
+      final dateFormatted = "${now.day} ${months[now.month - 1]}, $timeStr";
 
       final rawPath = event.imagePath ?? state.imageFile?.path;
       String? remoteImagePath = rawPath;
@@ -45,7 +48,7 @@ class ComplaintBloc extends Bloc<ComplaintEvent, ComplaintState> {
         'lng': event.lng,
         'latitude': event.lat,
         'longitude': event.lng,
-        'date': 'Today, $timeStr',
+        'date': dateFormatted,
         'likesCount': 0,
         'isLiked': false,
         'comments': <Map<String, dynamic>>[],
