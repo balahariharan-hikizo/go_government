@@ -123,8 +123,9 @@ class AppRouter {
       case RouteConstants.orderQueue:
         final args = settings.arguments as Map<String, dynamic>? ?? {};
         final store = args['store'] as StoreModel? ?? StoreModel();
+        final initialTabIndex = (args['initialTabIndex'] as num?)?.toInt() ?? 0;
         return MaterialPageRoute(
-          builder: (_) => StoreOrdersQueueScreen(store: store),
+          builder: (_) => StoreOrdersQueueScreen(store: store, initialTabIndex: initialTabIndex),
         );
 
       case RouteConstants.storeWallet:

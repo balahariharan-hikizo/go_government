@@ -67,15 +67,18 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
 
         final rawStatus = order['status']?.toString() ?? 'placed';
         String displayStatus = 'Processing';
-        if (rawStatus == 'placed') displayStatus = 'Placed';
+        if (rawStatus == 'placed') displayStatus = 'Processing';
         if (rawStatus == 'preparing') displayStatus = 'Preparing';
         if (rawStatus == 'ready_for_pickup') displayStatus = 'Ready for Pickup';
+        if (rawStatus == 'accepted') displayStatus = 'Rider Assigned';
         if (rawStatus == 'out_for_delivery') displayStatus = 'Out for Delivery';
         if (rawStatus == 'delivered') displayStatus = 'Delivered';
         if (rawStatus == 'cancelled') displayStatus = 'Cancelled';
+        if (rawStatus == 'return_requested') displayStatus = 'Return Requested';
+        if (rawStatus == 'return_pickup_pending') displayStatus = 'Return Pickup Pending';
+        if (rawStatus == 'return_pickup_assigned') displayStatus = 'Return Rider Assigned';
         if (rawStatus == 'returning_to_store') displayStatus = 'Returning to Store';
         if (rawStatus == 'returned_to_store' || rawStatus == 'returned') displayStatus = 'Returned & Refunded';
-        if (rawStatus == 'return_requested') displayStatus = 'Return Requested';
         if (rawStatus == 'return_rejected') displayStatus = 'Return Declined';
 
         final existingIdx = currentTxs.indexWhere((tx) => tx['id']?.toString() == orderId);
@@ -96,32 +99,6 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
               UpdateOrderStatusEvent(orderId: orderId, status: displayStatus),
             );
           }
-        } else {
-          final storeDetails = order['storeDetails'] as Map? ?? {};
-          final storeName = storeDetails['name']?.toString() ?? 'Government Store';
-          final grandTotal = order['grandTotal']?.toString() ?? '0';
-          final items = (order['items'] as List?) ?? [];
-
-          final tx = {
-            'id': orderId,
-            'title': storeName,
-            'subtitle': 'Order placed',
-            'amount': '-₹$grandTotal',
-            'isPositive': false,
-            'status': displayStatus,
-            'date': 'Recent',
-            'items': items,
-            'address': order['deliveryAddress']?['address']?.toString() ?? '',
-            'listingPrice': '₹$grandTotal',
-            'sellingPrice': '₹$grandTotal',
-            'grandTotal': '₹$grandTotal',
-            'paid': '₹$grandTotal',
-            'storeDetails': storeDetails,
-            'storePhone': (storeDetails['phone'] ?? '').toString(),
-            'storeId': order['storeId'] ?? storeDetails['storeId'] ?? '',
-            'storeName': storeName,
-          };
-          context.read<TransactionBloc>().add(AddTransactionEvent(tx));
         }
       }
     } catch (_) {}
@@ -174,11 +151,13 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
             builder: (context, state) {
               final rawTransactions = state.transactions;
 
-              // Filter to store orders only (has items or starts with ORD-)
+              // Filter to store orders only (has items or starts with ORD)
               final allOrders = rawTransactions.where((tx) {
                 final List items = (tx['items'] as List?) ?? [];
                 final String id = tx['id']?.toString() ?? '';
-                return items.isNotEmpty || id.startsWith('ORD-');
+                final String category = tx['category']?.toString() ?? '';
+                if (category == 'topup' || category == 'reward_redemption') return false;
+                return items.isNotEmpty || id.startsWith('ORD-') || id.startsWith('ORD_') || id.startsWith('ORD');
               }).toList();
 
               // Apply status filter
@@ -191,6 +170,9 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
                     status.contains('completed') ||
                     status.contains('cancel') ||
                     status.contains('refund') ||
+                    status.contains('returned') ||
+                    status.contains('decline') ||
+                    status.contains('reject') ||
                     status.contains('fail');
                 final isActive = !isEnded;
                 if (_selectedFilter == 'Active') return isActive;

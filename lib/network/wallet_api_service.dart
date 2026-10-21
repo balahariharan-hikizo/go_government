@@ -234,9 +234,18 @@ class WalletApiService {
             'placed': 'Processing',
             'confirmed': 'Confirmed',
             'preparing': 'Preparing',
+            'ready_for_pickup': 'Ready for Pickup',
+            'accepted': 'Rider Assigned',
             'out_for_delivery': 'Out for Delivery',
             'delivered': 'Delivered',
             'cancelled': 'Cancelled',
+            'return_requested': 'Return Requested',
+            'return_pickup_pending': 'Return Pickup Pending',
+            'return_pickup_assigned': 'Return Rider Assigned',
+            'returning_to_store': 'Returning to Store',
+            'returned_to_store': 'Returned & Refunded',
+            'returned': 'Returned & Refunded',
+            'return_rejected': 'Return Declined',
           };
 
           return {

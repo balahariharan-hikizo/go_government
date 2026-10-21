@@ -179,6 +179,29 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
       return;
     }
 
+    final bool isReturnStatus = status == 'returning_to_store' ||
+        status == 'returned_to_store' ||
+        status.startsWith('return_');
+
+    if (isReturnStatus) {
+      String displayStatus = 'Returning to Store';
+      if (status == 'returned_to_store' || status == 'returned') {
+        displayStatus = 'Returned & Refunded';
+      } else if (status == 'return_requested') {
+        displayStatus = 'Return Requested';
+      } else if (status == 'return_pickup_pending') {
+        displayStatus = 'Return Pickup Pending';
+      } else if (status == 'return_pickup_assigned') {
+        displayStatus = 'Return Rider Assigned';
+      } else if (status == 'return_rejected') {
+        displayStatus = 'Return Declined';
+      }
+
+      context.read<TransactionBloc>().add(
+        UpdateOrderStatusEvent(orderId: _orderId, status: displayStatus),
+      );
+    }
+
     int step = 0;
     if (status == 'placed') {
       step = 0;
@@ -193,10 +216,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
       step = 3;
     } else if (status == 'delivered') {
       step = 4;
+    } else if (status == 'returning_to_store') {
+      step = 3; // Keep live tracking map active while rider returns package to store
+    } else if (status == 'returned_to_store') {
+      step = 4; // Final returned state
     }
 
     final current = context.read<OrderTrackingBloc>().state.currentStep;
-    if (step != current) {
+    if (step != current && !isReturnStatus) {
       context.read<OrderTrackingBloc>().add(UpdateTrackingStepEvent(step));
       if (step == 4) {
         context.read<TransactionBloc>().add(
@@ -318,6 +345,31 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     'Order Delivered 🎉',
   ];
 
+  /// Returns a clean header/title based on the raw server status.
+  String _getStatusTitle(String? rawStatus, int step) {
+    switch (rawStatus) {
+      case 'returning_to_store':
+        return '🔄 Returning to Store';
+      case 'returned_to_store':
+        return '📦 Returned & Refunded';
+      case 'return_requested':
+        return '🔄 Return Requested';
+      case 'return_pickup_pending':
+        return '🔄 Return Approved';
+      case 'return_pickup_assigned':
+        return '🛵 Return Rider Assigned';
+      case 'return_rejected':
+        return '❌ Return Declined';
+      case 'cancelled':
+        return 'Order Cancelled';
+      default:
+        if (step >= 0 && step < _statusTitles.length) {
+          return _statusTitles[step];
+        }
+        return 'Order Processing';
+    }
+  }
+
   /// Returns a more descriptive subtitle based on the raw server status.
   String _getStatusSubtitle(String? rawStatus) {
     final agent = _serverOrderData?['deliveryAgent'] as Map<String, dynamic>?;
@@ -345,12 +397,31 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
         return '$riderName is on the way to you';
       case 'delivered':
         return 'Successfully delivered!';
+      case 'returning_to_store':
+        final retDetails = _serverOrderData?['returnDetails'] as Map<String, dynamic>?;
+        final reason = retDetails?['reason']?.toString() ?? 'Unable to complete delivery';
+        return '$riderName could not complete delivery ($reason). Package is returning to the store.';
+      case 'returned_to_store':
+        return 'Package safely returned to store. Your refund has been processed to your wallet.';
+      case 'return_requested':
+        return 'Return request submitted. Waiting for store approval.';
+      case 'return_pickup_pending':
+        return 'Return approved. Assigning a delivery partner for doorstep pickup.';
+      case 'return_pickup_assigned':
+        return '$riderName is on the way to collect return items from your doorstep.';
+      case 'return_rejected':
+        return 'Return request was not approved by the store.';
       default:
         return 'Processing your order';
     }
   }
 
   String _getEstimatedTimeDisplay() {
+    final rawStatus = (_serverOrderData?['status'] ?? widget.transaction?['status'] ?? '').toString().toLowerCase();
+    if (rawStatus == 'returning_to_store') return 'Returning';
+    if (rawStatus == 'returned_to_store') return 'Completed';
+    if (rawStatus == 'cancelled') return 'Cancelled';
+
     final createdAt = _serverOrderData?['createdAt']?.toString();
     if (createdAt != null && createdAt.isNotEmpty) {
       final dt = DateTime.tryParse(createdAt)?.toLocal();
@@ -657,16 +728,20 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
         final bool isCancelled =
             state.isCancelled || _serverOrderData?['status'] == 'cancelled';
         final int currentStep = state.currentStep;
-        final bool isMapVisible = !isCancelled && currentStep > 0;
+        final rawStatus = (_serverOrderData?['status'] ?? widget.transaction?['status'] ?? '').toString().toLowerCase();
+        final bool isReturning = rawStatus == 'returning_to_store';
+        final bool isReturned = rawStatus == 'returned_to_store';
+        final bool isReturnFlow = isReturning || isReturned || rawStatus.startsWith('return_');
+        final bool isMapVisible = !isCancelled && !isReturned && (currentStep > 0 || isReturning);
         final agent =
             _serverOrderData?['deliveryAgent'] as Map<String, dynamic>?;
         final bool hasAssignedRider = agent != null &&
             ((agent['riderId']?.toString().trim().isNotEmpty ?? false) ||
                 (agent['name']?.toString().trim().isNotEmpty ?? false));
         final bool isDriverCardVisible =
-            !isCancelled && hasAssignedRider && currentStep >= 2;
+            !isCancelled && hasAssignedRider && (currentStep >= 2 || isReturning);
         final bool isAwaitingRiderVisible =
-            !isCancelled && !hasAssignedRider && currentStep >= 2;
+            !isCancelled && !hasAssignedRider && currentStep >= 2 && !isReturnFlow;
 
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: const SystemUiOverlayStyle(
@@ -732,6 +807,99 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                                         const SizedBox(height: 2),
                                         CustomText.subtitle(
                                           'This order was cancelled. Any amount paid has been refunded to your wallet.',
+                                          fontSize: 12,
+                                          color: Colors.black87,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+
+                          // Return alert banner if returning to store or returned
+                          if (isReturning) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: EdgeInsets.all(Responsive.w(16)),
+                              margin: EdgeInsets.only(bottom: Responsive.h(16)),
+                              decoration: BoxDecoration(
+                                color: Colors.deepOrange.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(
+                                  Responsive.w(16),
+                                ),
+                                border: Border.all(
+                                  color: Colors.deepOrange.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.assignment_return_rounded,
+                                    color: Colors.deepOrange,
+                                    size: 28,
+                                  ),
+                                  SizedBox(width: Responsive.w(12)),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        CustomText.title(
+                                          'Doorstep Delivery Failed · Returning to Store',
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.deepOrange,
+                                        ),
+                                        const SizedBox(height: 3),
+                                        CustomText.subtitle(
+                                          _getStatusSubtitle(rawStatus),
+                                          fontSize: 12,
+                                          color: Colors.black87,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ] else if (isReturned) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: EdgeInsets.all(Responsive.w(16)),
+                              margin: EdgeInsets.only(bottom: Responsive.h(16)),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(
+                                  Responsive.w(16),
+                                ),
+                                border: Border.all(
+                                  color: Colors.green.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.verified_rounded,
+                                    color: Colors.green,
+                                    size: 28,
+                                  ),
+                                  SizedBox(width: Responsive.w(12)),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        CustomText.title(
+                                          'Return Completed & Refunded',
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green.shade800,
+                                        ),
+                                        const SizedBox(height: 3),
+                                        CustomText.subtitle(
+                                          'The store confirmed receipt of the return package. Refund has been credited to your wallet balance.',
                                           fontSize: 12,
                                           color: Colors.black87,
                                         ),
@@ -837,12 +1005,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                                       child: CustomText.title(
                                         isCancelled
                                             ? 'Cancelled'
-                                            : _statusTitles[currentStep],
+                                            : _getStatusTitle(
+                                                rawStatus,
+                                                currentStep,
+                                              ),
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
                                         color: isCancelled
                                             ? AppColors.error
-                                            : Colors.black87,
+                                            : (isReturning
+                                                ? Colors.deepOrange
+                                                : (isReturned
+                                                    ? Colors.green.shade700
+                                                    : Colors.black87)),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -852,7 +1027,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                                       CustomText.title(
                                         _getEstimatedTimeDisplay(),
                                         fontSize: 13,
-                                        color: AppColors.grayFont,
+                                        color: isReturning
+                                            ? Colors.deepOrange
+                                            : (isReturned
+                                                ? Colors.green.shade700
+                                                : AppColors.grayFont),
                                       ),
                                   ],
                                 ),
@@ -867,7 +1046,77 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                                   fontSize: 12,
                                   color: AppColors.grayFont,
                                 ),
-                                if (!isCancelled) ...[
+                                if (isReturning) ...[
+                                  SizedBox(height: Responsive.h(12)),
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: Responsive.w(12),
+                                      vertical: Responsive.h(8),
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.deepOrange.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(Responsive.w(12)),
+                                      border: Border.all(
+                                        color: Colors.deepOrange.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.sync_problem_rounded,
+                                          color: Colors.deepOrange,
+                                          size: 18,
+                                        ),
+                                        SizedBox(width: Responsive.w(8)),
+                                        Expanded(
+                                          child: Text(
+                                            'Package in transit back to store',
+                                            style: TextStyle(
+                                              color: Colors.deepOrange.shade800,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ] else if (isReturned) ...[
+                                  SizedBox(height: Responsive.h(12)),
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: Responsive.w(12),
+                                      vertical: Responsive.h(8),
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(Responsive.w(12)),
+                                      border: Border.all(
+                                        color: Colors.green.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.check_circle_rounded,
+                                          color: Colors.green,
+                                          size: 18,
+                                        ),
+                                        SizedBox(width: Responsive.w(8)),
+                                        Expanded(
+                                          child: Text(
+                                            'Return finalized & refund settled',
+                                            style: TextStyle(
+                                              color: Colors.green.shade800,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ] else if (!isCancelled) ...[
                                   SizedBox(height: Responsive.h(16)),
                                   // Progress dots
                                   Row(
@@ -909,8 +1158,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
 
                           // Citizen cancel button if order is in 'placed' state
                           if (!isCancelled &&
-                              (_serverOrderData?['status'] == 'placed' ||
-                                  currentStep == 0)) ...[
+                              !isReturnFlow &&
+                              _serverOrderData?['status'] == 'placed') ...[
                             SizedBox(height: Responsive.h(12)),
                             SizedBox(
                               width: double.infinity,
@@ -1029,7 +1278,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
               Expanded(
                 child: Center(
                   child: CustomText.title(
-                    _statusTitles[_currentStep],
+                    _getStatusTitle(
+                      _serverOrderData?['status']?.toString() ??
+                          widget.transaction?['status']?.toString(),
+                      _currentStep,
+                    ),
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -1846,6 +2099,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
   void _showNeedHelpBottomSheet(BuildContext context) {
     final tx = _getResolvedTransaction();
     final String storeName = tx['title']?.toString() ?? 'Store Order';
+    final currentStatus = (_serverOrderData?['status'] ?? widget.transaction?['status'] ?? '').toString().toLowerCase().trim();
+    final bool canCancel = currentStatus == 'placed' || currentStatus == 'preparing';
 
     showModalBottomSheet(
       context: context,
@@ -1951,20 +2206,22 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                         },
                       ),
                     ),
-                    SizedBox(width: Responsive.w(10)),
 
-                    // Cancel order
-                    Expanded(
-                      child: _buildQuickHelpAction(
-                        icon: Icons.cancel_outlined,
-                        label: 'Cancel Order',
-                        color: const Color(0xFFD32F2F),
-                        onTap: () {
-                          Navigator.pop(sheetCtx);
-                          _showCancelOrderDialog(context);
-                        },
+                    if (canCancel) ...[
+                      SizedBox(width: Responsive.w(10)),
+                      // Cancel order (only before merchant prepares / dispatches)
+                      Expanded(
+                        child: _buildQuickHelpAction(
+                          icon: Icons.cancel_outlined,
+                          label: 'Cancel Order',
+                          color: const Color(0xFFD32F2F),
+                          onTap: () {
+                            Navigator.pop(sheetCtx);
+                            _showCancelOrderDialog(context);
+                          },
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
                 SizedBox(height: Responsive.h(20)),

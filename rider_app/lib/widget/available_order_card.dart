@@ -96,32 +96,50 @@ class _AvailableOrderCardState extends State<AvailableOrderCard>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Order ID & Icon
-              Row(
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(Responsive.w(6)),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.shopping_bag_outlined, size: 18, color: AppColors.primary),
-                  ),
-                  SizedBox(width: Responsive.w(8)),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      CustomText.title('#${widget.order.orderId}',
-                          fontSize: Responsive.sp(14), fontWeight: FontWeight.bold),
-                      CustomText.caption(
-                        widget.order.isReversePickup ? '🔄 Return Pickup Request' : 'New Order Request',
-                        color: widget.order.isReversePickup ? const Color(0xFFD97706) : AppColors.grayFont,
-                        fontWeight: widget.order.isReversePickup ? FontWeight.bold : FontWeight.normal,
+              // Order ID & Icon (Expanded to prevent overflow)
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(Responsive.w(6)),
+                      decoration: BoxDecoration(
+                        color: widget.order.isReversePickup
+                            ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
+                            : AppColors.primary.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
                       ),
-                    ],
-                  ),
-                ],
+                      child: Icon(
+                        widget.order.isReversePickup ? Icons.swap_horiz_rounded : Icons.shopping_bag_outlined,
+                        size: 18,
+                        color: widget.order.isReversePickup ? const Color(0xFFD97706) : AppColors.primary,
+                      ),
+                    ),
+                    SizedBox(width: Responsive.w(8)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CustomText.title(
+                            '#${widget.order.orderId}',
+                            fontSize: Responsive.sp(14),
+                            fontWeight: FontWeight.bold,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          CustomText.caption(
+                            widget.order.isReversePickup ? '🔄 Return Pickup' : 'New Order',
+                            color: widget.order.isReversePickup ? const Color(0xFFD97706) : AppColors.grayFont,
+                            fontWeight: widget.order.isReversePickup ? FontWeight.bold : FontWeight.normal,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              SizedBox(width: Responsive.w(6)),
 
               // Payout Badge & 30s Ring
               Row(

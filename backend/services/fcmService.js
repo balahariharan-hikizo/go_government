@@ -97,15 +97,20 @@ async function sendToToken(fcmToken, { title, body, data = {}, sound = 'default'
  * Send high-priority alert to a Rider for an incoming delivery dispatch.
  */
 async function sendToRiderOrderAlert(fcmToken, orderPayload) {
-  const storeName =
+  const isReverse = Boolean(orderPayload.isReversePickup || orderPayload.status === 'return_pickup_pending');
+
+  const rawStoreName =
     orderPayload.storeName ||
     (orderPayload.storeDetails && orderPayload.storeDetails.name) ||
     'Store';
 
-  const dropAddress =
+  const rawCustomerAddress =
     orderPayload.dropAddress ||
     (orderPayload.deliveryAddress && orderPayload.deliveryAddress.address) ||
     'Customer Location';
+
+  const pickupLocation = isReverse ? rawCustomerAddress : rawStoreName;
+  const dropLocation = isReverse ? rawStoreName : rawCustomerAddress;
 
   const customerFee = Number(
     orderPayload.deliveryFee !== undefined && orderPayload.deliveryFee !== null
@@ -114,21 +119,26 @@ async function sendToRiderOrderAlert(fcmToken, orderPayload) {
       ? orderPayload.deliveryCharge
       : orderPayload.estimatedPayout || 0
   );
-  const fee = customerFee;
+  // Guarantee minimum ₹35 delivery payout to rider on all orders (sponsored or customer paid)
+  const fee = customerFee > 0 ? Math.max(customerFee, 35) : 35;
+
+  const title = isReverse ? '🚨 Return Pickup Request Available!' : '🚨 New Delivery Order Available!';
+  const body = `Earn ₹${fee} · Pick up from ${pickupLocation} to ${dropLocation}`;
 
   return sendToToken(fcmToken, {
-    title: '🚨 New Delivery Order Available!',
-    body: `Earn ₹${fee} · Pick up from ${storeName} to ${dropAddress}`,
+    title,
+    body,
     channelId: 'rider_order_alerts_v2',
     sound: 'alert',
     priority: 'high',
     data: {
       type: 'order_dispatch',
       orderId: orderPayload.orderId || '',
-      storeName: storeName,
-      dropAddress: dropAddress,
+      storeName: pickupLocation,
+      dropAddress: dropLocation,
       fee: String(fee),
       countdownSecs: String(orderPayload.countdownSecs || 30),
+      isReversePickup: isReverse ? 'true' : 'false',
       click_action: 'FLUTTER_NOTIFICATION_CLICK',
     },
   });
@@ -172,10 +182,51 @@ async function sendToCitizenOrderStatus(fcmToken, title, body, orderId) {
   });
 }
 
+/**
+ * Send push notification to Store Owner when a citizen requests return.
+ */
+async function sendToStoreReturnAlert(fcmToken, order) {
+  const reason = order.returnDetails?.reason || 'Customer Return Request';
+  return sendToToken(fcmToken, {
+    title: '⚠️ Citizen Return Requested!',
+    body: `Customer requested return for Order #${order.orderId}. Reason: ${reason}. Tap to review.`,
+    channelId: 'store_order_alerts',
+    sound: 'default',
+    priority: 'high',
+    isDataOnly: true,
+    data: {
+      type: 'return_requested',
+      orderId: order.orderId || '',
+      reason: reason,
+      click_action: 'FLUTTER_NOTIFICATION_CLICK',
+    },
+  });
+}
+
+/**
+ * Send push notification to Store Owner when order status or rider assignment updates.
+ */
+async function sendToStoreOrderStatus(fcmToken, title, body, orderId) {
+  return sendToToken(fcmToken, {
+    title,
+    body,
+    channelId: 'store_order_alerts',
+    sound: 'default',
+    priority: 'high',
+    data: {
+      type: 'order_assigned',
+      orderId: orderId || '',
+      click_action: 'FLUTTER_NOTIFICATION_CLICK',
+    },
+  });
+}
+
 module.exports = {
   isReady: () => fcmMessaging !== null,
   sendToToken,
   sendToRiderOrderAlert,
   sendToStoreNewOrder,
+  sendToStoreReturnAlert,
+  sendToStoreOrderStatus,
   sendToCitizenOrderStatus,
 };

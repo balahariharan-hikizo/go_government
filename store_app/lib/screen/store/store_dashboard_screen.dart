@@ -37,6 +37,7 @@ class StoreDashboardScreen extends StatefulWidget {
 class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
   late StoreModel _store;
   StreamSubscription? _newOrderSub;
+  StreamSubscription? _returnReqSub;
   Map<String, dynamic>? _subsidyMetrics;
   String? _lastNotifiedOrderId;
   int _lastNotifiedTime = 0;
@@ -60,12 +61,48 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
         body: 'Order #$orderId received. Tap to fulfill items.',
       );
     });
+
+    _returnReqSub = StoreSocketService().onReturnRequested.listen((data) {
+      if (!mounted) return;
+      final orderId = data['orderId']?.toString() ?? '';
+      final reason = data['returnDetails']?['reason']?.toString();
+      _handleIncomingReturnRequest(orderId, reason: reason);
+    });
   }
 
   @override
   void dispose() {
     _newOrderSub?.cancel();
+    _returnReqSub?.cancel();
     super.dispose();
+  }
+
+  void _handleIncomingReturnRequest(String orderId, {String? reason}) {
+    if (orderId.isEmpty || !mounted) return;
+    _fetchFinancialMetrics();
+
+    final reasonText = (reason != null && reason.trim().isNotEmpty) ? reason.trim() : 'Item Defective / Wrong Item';
+
+    // 1. Trigger local notification with sound & heads-up banner with customer reason
+    NotificationService.showNewOrderNotification(
+      orderId: 'RET_$orderId',
+      title: '⚠️ Citizen Return Requested!',
+      body: 'Customer requested return for Order #$orderId. Reason: $reasonText. Tap to review.',
+    );
+
+    // 2. Show in-app action snackbar
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('⚠️ Return requested for Order #$orderId (Reason: $reasonText).'),
+        backgroundColor: const Color(0xFFE65100),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'Review Return',
+          textColor: Colors.white,
+          onPressed: () => _openOrderQueue(initialTabIndex: 7),
+        ),
+      ),
+    );
   }
 
   void _handleIncomingNewOrder(String orderId, {String? title, String? body}) {
@@ -202,11 +239,14 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
     );
   }
 
-  void _openOrderQueue() {
+  void _openOrderQueue({int initialTabIndex = 0}) {
     Navigator.pushNamed(
       context,
       RouteConstants.orderQueue,
-      arguments: {'store': _store},
+      arguments: {
+        'store': _store,
+        'initialTabIndex': initialTabIndex,
+      },
     );
   }
 

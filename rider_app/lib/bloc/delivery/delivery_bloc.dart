@@ -32,7 +32,7 @@ class DeliveryBloc extends Bloc<DeliveryEvent, DeliveryState> {
       final rawAvailable = await RiderApiService.fetchAvailableOrders();
       availableOrders = rawAvailable.where((o) {
         final s = o.status.toLowerCase().trim();
-        return s == 'placed' || s == 'preparing' || s == 'ready_for_pickup';
+        return s == 'placed' || s == 'preparing' || s == 'ready_for_pickup' || s == 'return_pickup_pending';
       }).toList();
     } else {
       availableOrders = [];
@@ -41,9 +41,19 @@ class DeliveryBloc extends Bloc<DeliveryEvent, DeliveryState> {
     // Fetch rider assigned orders from backend
     final riderOrders = await RiderApiService.fetchRiderOrders(riderId);
 
+    const activeStatuses = {
+      'placed',
+      'preparing',
+      'ready_for_pickup',
+      'accepted',
+      'out_for_delivery',
+      'return_pickup_assigned',
+      'returning_to_store',
+    };
+
     final active = riderOrders.where((o) {
       final s = o.status.toLowerCase().trim();
-      return s != 'delivered' && s != 'cancelled' && s != 'completed' && s != 'returned_to_store' && s != 'returned';
+      return activeStatuses.contains(s);
     }).toList();
     final completed = riderOrders.where((o) {
       final s = o.status.toLowerCase().trim();

@@ -32,6 +32,23 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       title: title,
       body: body,
     );
+  } else if (message.notification == null && message.data['type'] == 'return_requested') {
+    final orderId = message.data['orderId']?.toString() ?? '';
+    final reason = message.data['reason']?.toString() ?? 'Customer Return Request';
+    await NotificationService.showNewOrderNotification(
+      orderId: 'RET_$orderId',
+      title: '⚠️ Citizen Return Requested!',
+      body: 'Customer requested return for Order #$orderId. Reason: $reason. Tap to review.',
+    );
+  } else if (message.notification == null && message.data['type'] == 'order_assigned') {
+    final orderId = message.data['orderId']?.toString() ?? '';
+    final title = message.data['title']?.toString() ?? '🛵 Delivery Partner Assigned';
+    final body = message.data['body']?.toString() ?? 'A delivery partner has accepted order #$orderId and is heading to your store.';
+    await NotificationService.showNewOrderNotification(
+      orderId: 'ASG_$orderId',
+      title: title,
+      body: body,
+    );
   }
 }
 

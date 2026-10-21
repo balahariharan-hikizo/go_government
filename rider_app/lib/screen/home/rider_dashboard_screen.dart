@@ -943,52 +943,63 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Header badge & timer
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(6)),
-                        decoration: BoxDecoration(
-                          color: AppColors.error.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.flash_on_rounded, color: AppColors.error, size: 18),
-                            SizedBox(width: Responsive.w(4)),
-                            CustomText.caption(
-                              'NEW ORDER ALERT',
-                              color: AppColors.error,
-                              fontWeight: FontWeight.bold,
+                  Builder(
+                    builder: (context) {
+                      final isReverse = order.isReversePickup;
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(6)),
+                            decoration: BoxDecoration(
+                              color: isReverse
+                                  ? const Color(0xFFD97706).withOpacity(0.14)
+                                  : AppColors.error.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(6)),
-                        decoration: BoxDecoration(
-                          color: remainingSeconds <= 10
-                              ? AppColors.error.withOpacity(0.15)
-                              : AppColors.primary.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.timer_outlined,
-                              size: 16,
-                              color: remainingSeconds <= 10 ? AppColors.error : AppColors.primary,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isReverse ? Icons.swap_horiz_rounded : Icons.flash_on_rounded,
+                                  color: isReverse ? const Color(0xFFD97706) : AppColors.error,
+                                  size: 18,
+                                ),
+                                SizedBox(width: Responsive.w(4)),
+                                CustomText.caption(
+                                  isReverse ? 'RETURN PICKUP ALERT' : 'NEW ORDER ALERT',
+                                  color: isReverse ? const Color(0xFFD97706) : AppColors.error,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ],
                             ),
-                            SizedBox(width: Responsive.w(4)),
-                            CustomText.caption(
-                              '${remainingSeconds}s',
-                              fontWeight: FontWeight.bold,
-                              color: remainingSeconds <= 10 ? AppColors.error : AppColors.primary,
+                          ),
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(6)),
+                            decoration: BoxDecoration(
+                              color: remainingSeconds <= 10
+                                  ? AppColors.error.withOpacity(0.15)
+                                  : AppColors.primary.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                          ],
-                        ),
-                      ),
-                    ],
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.timer_outlined,
+                                  size: 16,
+                                  color: remainingSeconds <= 10 ? AppColors.error : AppColors.primary,
+                                ),
+                                SizedBox(width: Responsive.w(4)),
+                                CustomText.caption(
+                                  '${remainingSeconds}s',
+                                  fontWeight: FontWeight.bold,
+                                  color: remainingSeconds <= 10 ? AppColors.error : AppColors.primary,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   SizedBox(height: Responsive.h(16)),
 
@@ -1002,7 +1013,9 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                           CustomText.title('Order #${order.orderId}', fontSize: Responsive.sp(18)),
                           SizedBox(height: Responsive.h(2)),
                           CustomText.caption(
-                            '${order.items.length} Items · ${order.paymentMethod.toUpperCase()}',
+                            order.isReversePickup
+                                ? '${order.items.length} Items · REVERSE PICKUP'
+                                : '${order.items.length} Items · ${order.paymentMethod.toUpperCase()}',
                             color: AppColors.grayFont,
                           ),
                         ],
@@ -1031,28 +1044,48 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                   const Divider(height: 1),
                   SizedBox(height: Responsive.h(14)),
 
-                  // Store Pickup Info
+                  // Pickup Location Info (Citizen Doorstep for Return, Store for Normal)
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.1),
+                          color: order.isReversePickup
+                              ? const Color(0xFFD97706).withOpacity(0.12)
+                              : AppColors.primary.withOpacity(0.1),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.store_mall_directory_rounded, color: AppColors.primary, size: 20),
+                        child: Icon(
+                          order.isReversePickup ? Icons.person_pin_circle_rounded : Icons.store_mall_directory_rounded,
+                          color: order.isReversePickup ? const Color(0xFFD97706) : AppColors.primary,
+                          size: 20,
+                        ),
                       ),
                       SizedBox(width: Responsive.w(12)),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            CustomText.body('PICKUP STORE', fontSize: Responsive.sp(11), color: AppColors.grayFont, fontWeight: FontWeight.bold),
+                            CustomText.body(
+                              order.isReversePickup ? 'PICKUP FROM CITIZEN' : 'PICKUP STORE',
+                              fontSize: Responsive.sp(11),
+                              color: AppColors.grayFont,
+                              fontWeight: FontWeight.bold,
+                            ),
                             SizedBox(height: Responsive.h(2)),
-                            CustomText.title(order.storeName.isNotEmpty ? order.storeName : 'Partner Store', fontSize: Responsive.sp(14)),
+                            CustomText.title(
+                              order.isReversePickup
+                                  ? (order.receiverName.isNotEmpty ? order.receiverName : 'Citizen Doorstep')
+                                  : (order.storeName.isNotEmpty ? order.storeName : 'Partner Store'),
+                              fontSize: Responsive.sp(14),
+                            ),
                             SizedBox(height: Responsive.h(2)),
-                            CustomText.caption(order.storeAddress, color: AppColors.grayFont, maxLines: 2),
+                            CustomText.caption(
+                              order.isReversePickup ? order.dropAddress : order.storeAddress,
+                              color: AppColors.grayFont,
+                              maxLines: 2,
+                            ),
                           ],
                         ),
                       ),
@@ -1060,28 +1093,48 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
                   ),
                   SizedBox(height: Responsive.h(14)),
 
-                  // Customer Dropoff Info
+                  // Dropoff Location Info (Store for Return, Customer for Normal)
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: AppColors.info.withOpacity(0.1),
+                          color: order.isReversePickup
+                              ? AppColors.primary.withOpacity(0.1)
+                              : AppColors.info.withOpacity(0.1),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.location_on_rounded, color: AppColors.info, size: 20),
+                        child: Icon(
+                          order.isReversePickup ? Icons.store_mall_directory_rounded : Icons.location_on_rounded,
+                          color: order.isReversePickup ? AppColors.primary : AppColors.info,
+                          size: 20,
+                        ),
                       ),
                       SizedBox(width: Responsive.w(12)),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            CustomText.body('DELIVERY DROP', fontSize: Responsive.sp(11), color: AppColors.grayFont, fontWeight: FontWeight.bold),
+                            CustomText.body(
+                              order.isReversePickup ? 'RETURN TO STORE' : 'DELIVERY DROP',
+                              fontSize: Responsive.sp(11),
+                              color: AppColors.grayFont,
+                              fontWeight: FontWeight.bold,
+                            ),
                             SizedBox(height: Responsive.h(2)),
-                            CustomText.title(order.receiverName.isNotEmpty ? order.receiverName : 'Customer', fontSize: Responsive.sp(14)),
+                            CustomText.title(
+                              order.isReversePickup
+                                  ? (order.storeName.isNotEmpty ? order.storeName : 'Partner Store')
+                                  : (order.receiverName.isNotEmpty ? order.receiverName : 'Customer'),
+                              fontSize: Responsive.sp(14),
+                            ),
                             SizedBox(height: Responsive.h(2)),
-                            CustomText.caption(order.dropAddress, color: AppColors.grayFont, maxLines: 2),
+                            CustomText.caption(
+                              order.isReversePickup ? order.storeAddress : order.dropAddress,
+                              color: AppColors.grayFont,
+                              maxLines: 2,
+                            ),
                           ],
                         ),
                       ),

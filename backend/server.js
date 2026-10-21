@@ -260,6 +260,11 @@ io.on('connection', (socket) => {
   socket.on('rider:location_ping', async (data) => {
     const { riderId, lat, lng, isOnline, bgPing } = data || {};
     if (!riderId) return;
+
+    socket.data.riderId = riderId;
+    socket.join('riders');
+    socket.join(`rider:${riderId}`);
+
     const existing = riderRegistry.get(riderId) || {};
 
     if (existing.disconnectTimer) {

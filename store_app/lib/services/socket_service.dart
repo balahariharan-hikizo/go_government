@@ -14,14 +14,19 @@ class StoreSocketService {
   String? _currentStoreId;
   String? _lastBroadcastOrderId;
   int _lastBroadcastTime = 0;
+  String? _lastReturnBroadcastOrderId;
+  int _lastReturnBroadcastTime = 0;
 
   final StreamController<Map<String, dynamic>> _newOrderController =
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _orderUpdateController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _returnRequestedController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onNewOrder => _newOrderController.stream;
   Stream<Map<String, dynamic>> get onOrderUpdate => _orderUpdateController.stream;
+  Stream<Map<String, dynamic>> get onReturnRequested => _returnRequestedController.stream;
 
   void _dispatchNewOrder(Map<String, dynamic> map) {
     final orderId = map['orderId']?.toString() ?? '';
@@ -35,6 +40,20 @@ class StoreSocketService {
       _lastBroadcastTime = now;
     }
     _newOrderController.add(map);
+  }
+
+  void _dispatchReturnRequested(Map<String, dynamic> map) {
+    final orderId = map['orderId']?.toString() ?? '';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (orderId.isNotEmpty && _lastReturnBroadcastOrderId == orderId && (now - _lastReturnBroadcastTime < 10000)) {
+      debugPrint('⚡ [StoreSocketService] Suppressing duplicate return_requested event for order: $orderId');
+      return;
+    }
+    if (orderId.isNotEmpty) {
+      _lastReturnBroadcastOrderId = orderId;
+      _lastReturnBroadcastTime = now;
+    }
+    _returnRequestedController.add(map);
   }
 
   void init() {
@@ -102,6 +121,18 @@ class StoreSocketService {
         }
       });
 
+      // 3. Global return requested listener
+      _socket?.on('order:return_requested', (data) {
+        debugPrint('⚠️ [StoreSocketService] Global order:return_requested received');
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          final sid = map['storeId']?.toString() ?? map['storeDetails']?['storeId']?.toString();
+          if (_currentStoreId == null || sid == null || sid.toLowerCase() == _currentStoreId!.toLowerCase()) {
+            _dispatchReturnRequested(map);
+          }
+        }
+      });
+
       _socket?.connect();
     } catch (e) {
       debugPrint('⚠️ [StoreSocketService] Exception: $e');
@@ -120,6 +151,7 @@ class StoreSocketService {
     // Unbind prior listeners to prevent duplicate triggers
     _socket?.off('store:$storeId:new_order');
     _socket?.off('store:$storeId:order_update');
+    _socket?.off('store:$storeId:return_requested');
 
     _socket?.on('store:$storeId:new_order', (data) {
       debugPrint('📦 [StoreSocketService] Store-specific new order received for $storeId: $data');
@@ -132,6 +164,13 @@ class StoreSocketService {
       debugPrint('🔄 [StoreSocketService] Store-specific order update for $storeId: $data');
       if (data is Map) {
         _orderUpdateController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    _socket?.on('store:$storeId:return_requested', (data) {
+      debugPrint('⚠️ [StoreSocketService] Store-specific return requested for $storeId: $data');
+      if (data is Map) {
+        _dispatchReturnRequested(Map<String, dynamic>.from(data));
       }
     });
   }

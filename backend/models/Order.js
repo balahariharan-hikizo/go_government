@@ -114,6 +114,13 @@ OrderSchema.virtual('citizen', {
   justOne: true,
 });
 
+OrderSchema.virtual('store', {
+  ref: 'Store',
+  localField: 'storeId',
+  foreignField: 'storeId',
+  justOne: true,
+});
+
 OrderSchema.set('toJSON', {
   virtuals: true,
   versionKey: false,

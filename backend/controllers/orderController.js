@@ -7,6 +7,7 @@ const WalletTransaction = require('../models/WalletTransaction');
 const fcmService = require('../services/fcmService');
 const { getNextSequence } = require('../utils/sequenceGenerator');
 const { createNotification } = require('./notificationController');
+const { sendOrderAssignedAlerts, sendOrderStatusUpdateAlerts } = require('../utils/orderNotificationHelper');
 
 // 1. CREATE NEW ORDER (Citizen Placement)
 exports.createOrder = async (req, res) => {
@@ -386,7 +387,7 @@ exports.getUserOrders = async (req, res) => {
 exports.getStoreOrders = async (req, res) => {
   try {
     const { storeId } = req.params;
-    const orders = await Order.find({ storeId }).sort({ createdAt: -1 });
+    const orders = await Order.find({ storeId }).sort({ updatedAt: -1, createdAt: -1 });
 
     let totalSubsidyDisbursed = 0;
     let pendingSubsidyPayout = 0;
@@ -478,7 +479,10 @@ exports.getRiderDeliveries = async (req, res) => {
       if (riderDoc.phone && !queryRiders.includes(riderDoc.phone)) queryRiders.push(riderDoc.phone);
     }
 
-    const orders = await Order.find({ 'deliveryAgent.riderId': { $in: queryRiders } }).sort({ createdAt: -1 });
+    const orders = await Order.find({
+      'deliveryAgent.riderId': { $in: queryRiders },
+      status: { $nin: ['return_requested', 'return_rejected', 'return_pickup_pending'] },
+    }).sort({ createdAt: -1 });
     return res.status(200).json({ success: true, count: orders.length, data: orders });
   } catch (error) {
     console.error('Error fetching rider deliveries:', error);
@@ -524,7 +528,7 @@ exports.getOrderDetails = async (req, res) => {
   }
 };
 
-// 9. RIDER ACCEPTS DELIVERY TASK (Concurrency & Race Protected)
+// 9. RIDER ACCEPTS DELIVERY TASK (Concurrency & Race Protected with Citizen Virtual Populate)
 exports.acceptOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -534,7 +538,7 @@ exports.acceptOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: 'riderId is required' });
     }
 
-    // 1. Fetch official verified rider details from database
+    // 1. Fetch official verified rider details from database using riderId
     const rider = await Rider.findOne({ $or: [{ riderId }, { phone: riderId }] });
     if (!rider) {
       return res.status(404).json({ success: false, message: 'Rider not found in system' });
@@ -544,14 +548,8 @@ exports.acceptOrder = async (req, res) => {
     const assignedName = rider.name || req.body.name || 'Delivery Partner';
     const assignedPhone = rider.phone || req.body.phone || '';
     const assignedVehicle = rider.vehicleNumber || req.body.vehicleNumber || '';
-    const assignedRating = Number(req.body.rating) || 4.9;
+    const assignedRating = Number(rider.rating || req.body.rating) || 4.9;
 
-    // Check if this is a reverse return pickup or normal forward delivery
-    const existingBefore = await Order.findOne({ orderId }).select('status');
-    const isReversePickup = existingBefore?.status === 'return_pickup_pending';
-    const newStatus = isReversePickup ? 'return_pickup_assigned' : 'accepted';
-
-    // 2. Single Atomic Assignment (Happy path = only 1 DB trip)
     const order = await Order.findOneAndUpdate(
       {
         orderId,
@@ -561,62 +559,48 @@ exports.acceptOrder = async (req, res) => {
           { 'deliveryAgent.riderId': null },
         ],
       },
-      {
-        $set: {
-          'deliveryAgent.riderId': assignedRiderId,
-          'deliveryAgent.name': assignedName,
-          'deliveryAgent.phone': assignedPhone,
-          'deliveryAgent.vehicleNumber': assignedVehicle,
-          'deliveryAgent.rating': assignedRating,
-          status: newStatus,
+      [
+        {
+          $set: {
+            'deliveryAgent.riderId': assignedRiderId,
+            'deliveryAgent.name': assignedName,
+            'deliveryAgent.phone': assignedPhone,
+            'deliveryAgent.vehicleNumber': assignedVehicle,
+            'deliveryAgent.rating': assignedRating,
+            status: {
+              $cond: {
+                if: { $eq: ['$status', 'return_pickup_pending'] },
+                then: 'return_pickup_assigned',
+                else: 'accepted',
+              },
+            },
+          },
         },
-      },
-      { returnDocument: 'after', runValidators: true }
-    );
+      ],
+      { updatePipeline: true, returnDocument: 'after' }
+    ).populate('citizen', 'fcmToken name').populate('store', 'fcmToken name');
 
-    // 3. Conflict handling if order could not be locked
+    // 3. Conflict / Not Found Handling (Only executed if order could not be claimed)
     if (!order) {
-      const existing = await Order.findOne({ orderId });
-      if (!existing) {
+      const exists = await Order.exists({ orderId });
+      if (!exists) {
         return res.status(404).json({ success: false, message: 'Order not found' });
       }
       return res.status(409).json({
         success: false,
         code: 'ALREADY_ACCEPTED',
         message: 'This delivery task has already been accepted and assigned.',
-        assignedTo: existing.deliveryAgent?.name || 'Assigned rider',
       });
     }
 
-    console.log(`🚴 [Rider Assigned] Rider ${assignedName} (${assignedRiderId}) accepted order ${orderId}`);
+    console.log(`🚴 [Rider Assigned] Rider ${assignedName} (${assignedRiderId}) accepted order ${orderId} (${order.status})`);
 
-    // 4. Mark Rider as Busy in Registry & DB
+    // 5. Mark Rider as Busy in Registry & DB (Non-blocking)
     req.app.get('riderRegistry')?.get(assignedRiderId) && (req.app.get('riderRegistry').get(assignedRiderId).isBusy = true);
     Rider.updateOne({ riderId: assignedRiderId }, { $set: { isBusy: true } }).catch(() => {});
 
-    // 5. Clean Socket Broadcast (Zero duplicates)
-    const io = req.app.get('io');
-    if (io) {
-      const payload = order.toObject ? order.toObject() : order;
-      io.emit(`order:${orderId}:status_update`, payload);
-      io.emit('order:status_update', payload);
-      io.emit('order:assigned', payload);
-    }
-
-    // 6. Push Notification to Citizen
-    User.findOne({ $or: [{ userId: order.userId }, { phone: order.userId }] })
-      .select('fcmToken')
-      .then((citizen) => {
-        if (citizen?.fcmToken) {
-          fcmService.sendToCitizenOrderStatus(
-            citizen.fcmToken,
-            '🛵 Delivery Partner Assigned!',
-            `${assignedName} has accepted your order #${orderId} and is heading to the store.`,
-            orderId
-          );
-        }
-      })
-      .catch((err) => console.error('Error sending citizen FCM:', err.message));
+    // 6. Clean Socket Broadcast & Citizen Push Notifications
+    sendOrderAssignedAlerts(order, req.app);
 
     return res.status(200).json({
       success: true,
@@ -659,6 +643,16 @@ exports.updateOrderStatus = async (req, res) => {
     const dateStr = `${months[now.getMonth()]} ${now.getDate()} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
     // Order cancellation handling
+    if (status === 'cancelled') {
+      const nonCancellable = ['delivered', 'return_requested', 'return_pickup_pending', 'return_pickup_assigned', 'returning_to_store', 'returned_to_store'];
+      if (nonCancellable.includes(existing.status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot cancel an order in '${existing.status}' status. Delivered orders must proceed through the reverse return flow.`,
+        });
+      }
+    }
+
     if (status === 'cancelled' && existing.status !== 'cancelled') {
       // 1. Restore product inventory
       for (const item of (existing.items || [])) {
@@ -775,7 +769,9 @@ exports.updateOrderStatus = async (req, res) => {
       { orderId },
       { $set: updateFields },
       { returnDocument: 'after', runValidators: true }
-    );
+    )
+      .populate('citizen', 'fcmToken')
+      .populate('store', 'fcmToken');
 
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
@@ -783,119 +779,8 @@ exports.updateOrderStatus = async (req, res) => {
 
     console.log(`🔄 [Order Status Updated] Order ${orderId} -> ${status}`);
 
-    const io = req.app.get('io');
-    if (io) {
-      const orderPayload = order.toObject ? order.toObject() : order;
-      io.emit(`order:${orderId}:status_update`, orderPayload);
-      io.emit('order:status_update', orderPayload);
-      io.emit(`store:${order.storeId}:order_update`, orderPayload);
-      io.to(`store:${order.storeId}`).emit('order:status_update', orderPayload);
-
-      if (status === 'ready_for_pickup') {
-        const hasAssignedRider = Boolean(order.deliveryAgent?.riderId);
-        if (!hasAssignedRider) {
-          io.emit('order:available', orderPayload);
-          io.to('riders').emit('order:available', orderPayload);
-
-          const dispatchOrder = req.app.get('dispatchOrder');
-          const storeLat = order.storeDetails?.latitude || 0;
-          const storeLng = order.storeDetails?.longitude || 0;
-          if (dispatchOrder && (storeLat !== 0 || storeLng !== 0)) {
-            dispatchOrder(io, orderPayload, storeLat, storeLng, 1, []);
-          } else {
-            const payload = { ...orderPayload, dispatchRound: 3, countdownSecs: 30 };
-            const registry = req.app.get('riderRegistry');
-            if (registry) {
-              for (const [rId, info] of registry.entries()) {
-                if (info.isOnline && !info.isBusy && info.socketId) {
-                  io.to(info.socketId).emit('order:dispatch', payload);
-                }
-              }
-            }
-          }
-        } else {
-          console.log(`📦 [Store Ready] Parcel packed for order ${orderId}. Rider ${order.deliveryAgent.riderId} already assigned.`);
-          io.to(`rider:${order.deliveryAgent.riderId}`).emit('order:status_update', orderPayload);
-        }
-      }
-
-      if (status === 'accepted') {
-        const dispatchTimers = req.app.get('dispatchTimers');
-        if (dispatchTimers && dispatchTimers.has(orderId)) {
-          clearTimeout(dispatchTimers.get(orderId).timer);
-          dispatchTimers.delete(orderId);
-        }
-        io.to(`store:${order.storeId}`).emit('order:status_update', orderPayload);
-        io.to('riders').emit('order:dispatch_cancelled', { orderId });
-      }
-
-      if (status === 'delivered') {
-        const riderId = order.deliveryAgent?.riderId;
-        if (riderId) {
-          const riderRegistry = req.app.get('riderRegistry');
-          if (riderRegistry && riderRegistry.has(riderId)) {
-            riderRegistry.get(riderId).isBusy = false;
-          }
-          await Rider.updateOne({ riderId }, { $set: { isBusy: false } }).catch(() => {});
-        }
-      }
-    }
-
-    // Send FCM Push on status updates
-    if (['out_for_delivery', 'delivered', 'cancelled'].includes(status)) {
-      User.findOne({ $or: [{ userId: order.userId }, { phone: order.userId }] })
-        .select('fcmToken')
-        .then((citizen) => {
-          if (citizen && citizen.fcmToken) {
-            if (status === 'out_for_delivery') {
-              fcmService.sendToCitizenOrderStatus(
-                citizen.fcmToken,
-                '🚚 Out for Delivery!',
-                `Your order #${orderId} is on the way to your delivery address.`,
-                orderId
-              );
-            } else if (status === 'delivered') {
-              fcmService.sendToCitizenOrderStatus(
-                citizen.fcmToken,
-                '🎉 Order Delivered!',
-                `Your order #${orderId} has been successfully delivered. Thank you!`,
-                orderId
-              );
-            } else if (status === 'cancelled') {
-              fcmService.sendToCitizenOrderStatus(
-                citizen.fcmToken,
-                '❌ Order Cancelled',
-                `Your order #${orderId} has been cancelled.`,
-                orderId
-              );
-            }
-          }
-        })
-        .catch((err) => console.error('Error sending citizen FCM status:', err.message));
-    }
-
-    // Record In-App Notification for Citizen on key status changes
-    if (order.userId && ['accepted', 'packed', 'ready_for_pickup', 'picked_up', 'out_for_delivery', 'delivered', 'cancelled'].includes(status)) {
-      const statusTitles = {
-        accepted: 'Store Accepted Your Order',
-        packed: 'Order Packed',
-        ready_for_pickup: 'Order Ready for Pickup',
-        picked_up: 'Rider Picked Up Your Order',
-        out_for_delivery: '🚚 Order Out for Delivery',
-        delivered: '🎉 Order Delivered Successfully',
-        cancelled: '❌ Order Cancelled',
-      };
-      createNotification({
-        userId: order.userId,
-        title: statusTitles[status] || `Order ${status.replace(/_/g, ' ')}`,
-        message: status === 'delivered'
-          ? `Your order #${orderId} was delivered successfully. Enjoy your items!`
-          : `Order #${orderId} from ${order.storeName || 'Store'} is now ${status.replace(/_/g, ' ')}.`,
-        type: 'order',
-        referenceId: orderId,
-        metadata: { status, grandTotal: order.grandTotal },
-      }).catch((e) => console.warn('Notification error:', e.message));
-    }
+    // Real-time Sockets, Citizen FCM Push, and In-App Notifications
+    sendOrderStatusUpdateAlerts(order, req.app);
 
     return res.status(200).json({
       success: true,
@@ -942,21 +827,32 @@ exports.initiateRiderReturn = async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
-      const payload = {
-        orderId: order.orderId,
-        status: order.status,
-        returnDetails: order.returnDetails,
-        storeId: order.storeId,
-        riderId: order.deliveryAgent?.riderId,
-      };
-      io.emit('order:status_updated', payload);
-      io.to(`store:${order.storeId}`).emit('order:return_initiated', payload);
+      const orderPayload = order.toObject ? order.toObject() : order;
+      io.emit(`order:${orderId}:status_update`, orderPayload);
+      io.emit('order:status_update', orderPayload);
+      io.emit('order:status_updated', orderPayload);
+      io.to(`store:${order.storeId}`).emit('order:return_initiated', orderPayload);
       if (order.deliveryAgent?.riderId) {
-        io.to(`rider:${order.deliveryAgent.riderId}`).emit('order:return_initiated', payload);
+        io.to(`rider:${order.deliveryAgent.riderId}`).emit('order:return_initiated', orderPayload);
       }
     }
 
     console.log(`📦↩️ [Rider Return Initiated] Order ${orderId} -> returning to store ${order.storeId}. Reason: ${reason}`);
+
+    // High-Priority Push Notification to Citizen
+    User.findOne({ $or: [{ userId: order.userId }, { phone: order.userId }] })
+      .select('fcmToken')
+      .then((citizen) => {
+        if (citizen?.fcmToken) {
+          fcmService.sendToCitizenOrderStatus(
+            citizen.fcmToken,
+            '🔄 Package Returning to Store',
+            `Delivery for order #${orderId} could not be completed (${reason || 'Doorstep delivery failed'}). Package is returning to the store.`,
+            orderId
+          );
+        }
+      })
+      .catch((err) => console.warn('Citizen return FCM error:', err.message));
 
     // In-App Notification to Citizen
     if (order.userId) {
@@ -1122,20 +1018,30 @@ exports.storeConfirmReturn = async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
-      const payload = {
-        orderId: order.orderId,
-        status: order.status,
-        returnDetails: order.returnDetails,
-        paymentStatus: order.paymentStatus,
-        storeId: order.storeId,
-        riderId,
-      };
-      io.emit('order:status_updated', payload);
-      io.to(`store:${order.storeId}`).emit('order:returned', payload);
-      if (riderId) io.to(`rider:${riderId}`).emit('order:returned', payload);
+      const orderPayload = order.toObject ? order.toObject() : order;
+      io.emit(`order:${orderId}:status_update`, orderPayload);
+      io.emit('order:status_update', orderPayload);
+      io.emit('order:status_updated', orderPayload);
+      io.to(`store:${order.storeId}`).emit('order:returned', orderPayload);
+      if (riderId) io.to(`rider:${riderId}`).emit('order:returned', orderPayload);
     }
 
     console.log(`✅📦 [Return Confirmed] Store ${storeId} verified return for order ${orderId}`);
+
+    // High-Priority Citizen FCM Push on Return Confirmation
+    User.findOne({ $or: [{ userId: order.userId }, { phone: order.userId }] })
+      .select('fcmToken')
+      .then((citizen) => {
+        if (citizen?.fcmToken) {
+          fcmService.sendToCitizenOrderStatus(
+            citizen.fcmToken,
+            '📦 Return Received & Refunded',
+            `Your return for order #${orderId} was confirmed by the store. ₹${order.returnDetails?.refundAmount || order.grandTotal} has been refunded to your wallet.`,
+            orderId
+          );
+        }
+      })
+      .catch((err) => console.warn('Citizen return confirm FCM error:', err.message));
 
     // In-App Notification to Citizen
     if (order.userId) {
@@ -1182,14 +1088,24 @@ exports.citizenRequestReturn = async (req, res) => {
     }
 
     order.status = 'return_requested';
+    const previousRiderId = order.deliveryAgent?.riderId || '';
     order.returnDetails = {
       returnType: 'citizen_request',
       reason: reason || 'Item Defective / Wrong Item',
       notes: notes || '',
       proofImage: proofImage || '',
       initiatedBy: userId || order.userId,
+      originalDeliveryRiderId: previousRiderId,
       requestedAt: new Date(),
       restocked: false,
+    };
+    // Decouple original delivering rider so it never appears in rider active orders before store review
+    order.deliveryAgent = {
+      riderId: '',
+      name: '',
+      phone: '',
+      vehicleNumber: '',
+      rating: 4.9,
     };
 
     await order.save();
@@ -1202,8 +1118,9 @@ exports.citizenRequestReturn = async (req, res) => {
         returnDetails: order.returnDetails,
         storeId: order.storeId,
       };
-      io.emit('order:status_updated', payload);
+      io.emit(`order:${order.orderId}:status_update`, payload);
       io.to(`store:${order.storeId}`).emit('order:return_requested', payload);
+      io.to(`store:${order.storeId}`).emit('order:status_update', payload);
     }
 
     console.log(`🙋 [Citizen Return Requested] Order ${orderId} by user ${userId}. Reason: ${reason}`);
@@ -1218,6 +1135,26 @@ exports.citizenRequestReturn = async (req, res) => {
         referenceId: orderId,
         metadata: { status: order.status, reason },
       }).catch((e) => console.warn('Notification error:', e.message));
+    }
+
+    // In-App Notification & Push Alert to STORE
+    if (order.storeId) {
+      createNotification({
+        userId: order.storeId,
+        title: '⚠️ Return Request Received',
+        message: `Customer requested return for Order #${orderId} (Reason: ${reason || 'Item Defective / Wrong Item'}). Tap to review and take action.`,
+        type: 'order',
+        referenceId: orderId,
+        metadata: { status: order.status, reason: reason || '', notes: notes || '' },
+      }).catch((e) => console.warn('Store notification error:', e.message));
+
+      Store.findOne({ storeId: order.storeId }).then((storeDoc) => {
+        if (storeDoc && storeDoc.fcmToken) {
+          fcmService.sendToStoreReturnAlert(storeDoc.fcmToken, order).catch((e) =>
+            console.warn('FCM store return push error:', e.message)
+          );
+        }
+      }).catch((e) => console.warn('Store lookup error:', e.message));
     }
 
     return res.status(200).json({
@@ -1299,14 +1236,71 @@ exports.storeReviewCitizenReturn = async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
-      const payload = {
-        orderId: order.orderId,
-        status: order.status,
-        returnDetails: order.returnDetails,
-        paymentStatus: order.paymentStatus,
-        storeId: order.storeId,
-      };
-      io.emit('order:status_updated', payload);
+      const orderPayload = order.toObject ? order.toObject() : order;
+      io.emit('order:status_updated', orderPayload);
+      io.emit('order:status_update', orderPayload);
+      io.emit(`order:${orderId}:status_update`, orderPayload);
+
+      if (action === 'approve') {
+        io.emit('order:available', orderPayload);
+        io.to('riders').emit('order:available', orderPayload);
+
+        // Targeted reverse pickup dispatch alert to online, non-busy delivery partners
+        const dispatchPayload = {
+          ...orderPayload,
+          dispatchRound: 3,
+          countdownSecs: 30,
+          isReversePickup: true,
+          deliveryFee: 35,
+          deliveryCharge: 35,
+        };
+
+        const notifiedTokens = new Set();
+        const registry = req.app.get('riderRegistry');
+        if (registry) {
+          for (const [rId, info] of registry.entries()) {
+            if (info.isOnline && !info.isBusy) {
+              if (info.socketId) {
+                io.to(info.socketId).emit('order:dispatch', dispatchPayload);
+              }
+              io.to(`rider:${rId}`).emit('order:dispatch', dispatchPayload);
+            }
+          }
+        }
+
+        // Broadcast FCM wake-up push alert to all online, non-busy riders
+        // (Forces Android/iOS to wake screen and bring Rider App to foreground even if idle or backgrounded)
+        Rider.find({ isOnline: true, isBusy: { $ne: true }, fcmToken: { $ne: '' } })
+          .select('fcmToken riderId phone')
+          .then(async (riders) => {
+            for (const r of riders) {
+              if (r.fcmToken && !notifiedTokens.has(r.fcmToken)) {
+                notifiedTokens.add(r.fcmToken);
+                fcmService.sendToRiderOrderAlert(r.fcmToken, dispatchPayload);
+              }
+            }
+
+            // Also check User collection for riders in registry whose FCM token might be on User
+            if (registry) {
+              for (const [rId, info] of registry.entries()) {
+                if (info.isOnline && !info.isBusy) {
+                  try {
+                    const uDoc = await User.findOne({
+                      $or: [{ userId: rId }, { phone: rId }],
+                      fcmToken: { $exists: true, $ne: '' },
+                    }).select('fcmToken');
+                    if (uDoc?.fcmToken && !notifiedTokens.has(uDoc.fcmToken)) {
+                      notifiedTokens.add(uDoc.fcmToken);
+                      fcmService.sendToRiderOrderAlert(uDoc.fcmToken, dispatchPayload);
+                    }
+                  } catch (_) {}
+                }
+              }
+            }
+            console.log(`📡 [Return Dispatch] Sent wake-up push to ${notifiedTokens.size} online riders for order ${orderId}`);
+          })
+          .catch((err) => console.error('Error broadcasting return dispatch rider FCM:', err.message));
+      }
     }
 
     console.log(`⚖️ [Return Reviewed] Order ${orderId} -> ${action.toUpperCase()}`);

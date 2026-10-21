@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../network/rider_api_service.dart';
 import '../../bloc/delivery/delivery_bloc.dart';
 import '../../bloc/delivery/delivery_event.dart';
 import '../../bloc/delivery/delivery_state.dart';
@@ -98,29 +99,35 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
               decoration: BoxDecoration(
                 color: _order.status == 'returning_to_store'
                     ? const Color(0xFFFF9800).withValues(alpha: 0.18)
-                    : (_order.status == 'out_for_delivery'
-                        ? AppColors.info.withValues(alpha: 0.15)
-                        : AppColors.warning.withValues(alpha: 0.15)),
+                    : (_order.status == 'return_pickup_assigned'
+                        ? const Color(0xFF9C27B0).withValues(alpha: 0.18)
+                        : (_order.status == 'out_for_delivery'
+                            ? AppColors.info.withValues(alpha: 0.15)
+                            : AppColors.warning.withValues(alpha: 0.15))),
                 borderRadius: BorderRadius.circular(Responsive.w(12)),
               ),
               child: Center(
                 child: CustomText.caption(
                   _order.status == 'returning_to_store'
                       ? 'RETURNING TO STORE'
-                      : (_order.status == 'out_for_delivery'
-                          ? 'ON THE WAY'
-                          : (_order.status == 'accepted'
-                              ? 'ACCEPTED ✔'
-                              : (_order.status == 'ready_for_pickup'
-                                  ? 'READY FOR PICKUP'
-                                  : (_order.status == 'preparing' ? 'STORE PACKING' : 'PENDING PACKING')))),
+                      : (_order.status == 'return_pickup_assigned'
+                          ? 'REVERSE PICKUP'
+                          : (_order.status == 'out_for_delivery'
+                              ? 'ON THE WAY'
+                              : (_order.status == 'accepted'
+                                  ? 'ACCEPTED ✔'
+                                  : (_order.status == 'ready_for_pickup'
+                                      ? 'READY FOR PICKUP'
+                                      : (_order.status == 'preparing' ? 'STORE PACKING' : 'PENDING PACKING'))))),
                   color: _order.status == 'returning_to_store'
                       ? const Color(0xFFE65100)
-                      : (_order.status == 'out_for_delivery'
-                          ? AppColors.info
-                          : (_order.status == 'accepted'
-                              ? AppColors.success
-                              : (_order.status == 'ready_for_pickup' ? AppColors.warning : AppColors.warning))),
+                      : (_order.status == 'return_pickup_assigned'
+                          ? const Color(0xFF7B1FA2)
+                          : (_order.status == 'out_for_delivery'
+                              ? AppColors.info
+                              : (_order.status == 'accepted'
+                                  ? AppColors.success
+                                  : (_order.status == 'ready_for_pickup' ? AppColors.warning : AppColors.warning)))),
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -134,6 +141,43 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // REVERSE PICKUP ASSIGNED BANNER
+                  if (_order.status == 'return_pickup_assigned') ...[
+                    Container(
+                      margin: EdgeInsets.only(bottom: Responsive.h(16)),
+                      padding: EdgeInsets.all(Responsive.w(14)),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3E5F5),
+                        borderRadius: BorderRadius.circular(Responsive.w(14)),
+                        border: Border.all(color: const Color(0xFFCE93D8), width: 1.2),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.swap_horiz_rounded, color: Color(0xFF7B1FA2), size: 28),
+                          SizedBox(width: Responsive.w(12)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CustomText.title('Reverse Pickup · Doorstep Collection', fontSize: 14.5, fontWeight: FontWeight.bold, color: const Color(0xFF7B1FA2)),
+                                SizedBox(height: Responsive.h(3)),
+                                CustomText.caption(
+                                  'Reason: ${_order.returnDetails?['reason'] ?? 'Citizen Return'}',
+                                  color: Colors.purple.shade900,
+                                ),
+                                SizedBox(height: Responsive.h(2)),
+                                CustomText.caption(
+                                  'Go to customer doorstep to collect returned items, then deliver back to store.',
+                                  color: Colors.purple.shade700,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   // RETURNING TO STORE ALERT BANNER
                   if (_order.status == 'returning_to_store') ...[
                     Container(
@@ -155,7 +199,7 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                                 CustomText.title('Returning Package to Store', fontSize: 14.5, fontWeight: FontWeight.bold, color: const Color(0xFFE65100)),
                                 SizedBox(height: Responsive.h(3)),
                                 CustomText.caption(
-                                  'Reason: ${_order.returnDetails?['reason'] ?? 'Doorstep Delivery Failed'}',
+                                  'Reason: ${_order.returnDetails?['reason'] ?? 'Citizen Return / Doorstep Failure'}',
                                   color: Colors.brown.shade800,
                                 ),
                                 SizedBox(height: Responsive.h(2)),
@@ -207,6 +251,38 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
   // Progress tracker
   // --------------------------------------------------------------------------
   Widget _buildProgressTracker() {
+    if (_order.isReversePickup) {
+      final isAssigned = _order.status == 'return_pickup_assigned';
+      final isReturning = _order.status == 'returning_to_store';
+      return Container(
+        padding: EdgeInsets.all(Responsive.w(16)),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(Responsive.w(14)),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            _stepNode(1, 'Assigned', true, isAssigned),
+            Expanded(
+              child: Container(
+                height: 3,
+                color: isReturning ? const Color(0xFFE65100) : AppColors.lightGray,
+              ),
+            ),
+            _stepNode(2, 'Customer Pickup', isReturning, isReturning),
+            Expanded(
+              child: Container(
+                height: 3,
+                color: AppColors.lightGray,
+              ),
+            ),
+            _stepNode(3, 'Store Restock', false, false),
+          ],
+        ),
+      );
+    }
+
     final isAccepted = _order.status == 'accepted';
     final isOut = _order.status == 'out_for_delivery';
 
@@ -641,6 +717,81 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Color(0xFFEF5350), width: 1.5),
                 backgroundColor: const Color(0xFFFFEBEE),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(14))),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else if (_order.status == 'return_pickup_assigned') {
+      return Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: Responsive.h(54),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                NavigationLauncher.openGoogleMapsDirections(
+                  _order.dropLat,
+                  _order.dropLng,
+                  label: _order.receiverName.isNotEmpty ? _order.receiverName : 'Customer Location',
+                );
+              },
+              icon: const Icon(Icons.navigation_rounded, color: Colors.white),
+              label: const Text(
+                'Navigate to Customer Doorstep',
+                style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7B1FA2),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(14))),
+              ),
+            ),
+          ),
+          SizedBox(height: Responsive.h(12)),
+          SizedBox(
+            width: double.infinity,
+            height: Responsive.h(52),
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Confirm Item Collected'),
+                    content: const Text('Have you collected the returned package/items from the customer?'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7B1FA2)),
+                        child: const Text('Yes, Collected', style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true && context.mounted) {
+                  final ok = await RiderApiService.updateOrderStatus(
+                    orderId: _order.orderId,
+                    status: 'returning_to_store',
+                  );
+                  if (ok && context.mounted) {
+                    context.read<DeliveryBloc>().add(LoadDeliveriesEvent());
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Items collected! Now navigate back to store to return to merchant.'),
+                        backgroundColor: Color(0xFFE65100),
+                      ),
+                    );
+                  }
+                }
+              },
+              icon: const Icon(Icons.check_circle_outline, color: Colors.white),
+              label: const Text(
+                'Confirm Return Collected from Customer',
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE65100),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(14))),
               ),
             ),

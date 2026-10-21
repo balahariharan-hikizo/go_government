@@ -11,8 +11,13 @@ import '../../widget/custom_text.dart';
 
 class StoreOrdersQueueScreen extends StatefulWidget {
   final StoreModel store;
+  final int initialTabIndex;
 
-  const StoreOrdersQueueScreen({super.key, required this.store});
+  const StoreOrdersQueueScreen({
+    super.key,
+    required this.store,
+    this.initialTabIndex = 0,
+  });
 
   @override
   State<StoreOrdersQueueScreen> createState() => _StoreOrdersQueueScreenState();
@@ -24,11 +29,16 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
   bool _isLoading = true;
   StreamSubscription? _newOrderSub;
   StreamSubscription? _orderUpdateSub;
+  StreamSubscription? _returnReqSub;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 9, vsync: this);
+    _tabController = TabController(
+      length: 9,
+      vsync: this,
+      initialIndex: widget.initialTabIndex.clamp(0, 8),
+    );
     _fetchOrders();
 
     // Subscribe to real-time Socket.io events for this store
@@ -55,12 +65,18 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
       if (!mounted) return;
       final orderId = updatedOrder['orderId']?.toString();
       setState(() {
-        final idx = _orders.indexWhere((o) => o['orderId']?.toString() == orderId);
-        if (idx != -1) {
-          _orders[idx] = updatedOrder;
-        } else {
-          _orders.insert(0, updatedOrder);
-        }
+        _orders.removeWhere((o) => o['orderId']?.toString() == orderId);
+        _orders.insert(0, updatedOrder);
+      });
+      _fetchOrders(showLoading: false);
+    });
+
+    _returnReqSub = StoreSocketService().onReturnRequested.listen((returnOrder) {
+      if (!mounted) return;
+      final orderId = returnOrder['orderId']?.toString();
+      setState(() {
+        _orders.removeWhere((o) => o['orderId']?.toString() == orderId);
+        _orders.insert(0, returnOrder);
       });
       _fetchOrders(showLoading: false);
     });
@@ -70,6 +86,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
   void dispose() {
     _newOrderSub?.cancel();
     _orderUpdateSub?.cancel();
+    _returnReqSub?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -114,24 +131,65 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
     }
   }
 
+  // Actionable return requests and new orders always come FIRST
+  int _orderPriority(Map<String, dynamic> o) {
+    final s = o['status']?.toString().toLowerCase().trim() ?? '';
+    // Priority 0: Active citizen return request waiting for store review (Approve / Reject)
+    if (s == 'return_requested') return 0;
+    // Priority 1: Package returning to store (rider bringing back, store must inspect & restock)
+    if (s == 'returning_to_store') return 1;
+    // Priority 2: New unfulfilled orders that need to be accepted & packed
+    if (s == 'placed') return 2;
+    // Priority 3: Packing in progress
+    if (s == 'preparing') return 3;
+    // Priority 4: Ready for pickup & rider assignment
+    if (s == 'ready_for_pickup') return 4;
+    if (s == 'accepted') return 5;
+    if (s == 'out_for_delivery') return 6;
+    if (s == 'return_pickup_pending') return 7;
+    if (s == 'return_pickup_assigned') return 8;
+    // Lower priority: completed or closed orders
+    if (s == 'delivered') return 9;
+    if (s == 'returned_to_store' || s == 'returned') return 10;
+    if (s == 'return_rejected') return 11;
+    if (s == 'cancelled') return 12;
+    return 13;
+  }
+
+  List<Map<String, dynamic>> _sortOrders(List<Map<String, dynamic>> list) {
+    final sorted = List<Map<String, dynamic>>.from(list);
+    sorted.sort((a, b) {
+      final pA = _orderPriority(a);
+      final pB = _orderPriority(b);
+      if (pA != pB) return pA.compareTo(pB);
+
+      // When same priority, sort by most recent update / return request / creation
+      final tA = a['updatedAt'] ?? a['returnDetails']?['requestedAt'] ?? a['createdAt'] ?? '';
+      final tB = b['updatedAt'] ?? b['returnDetails']?['requestedAt'] ?? b['createdAt'] ?? '';
+      return tB.toString().compareTo(tA.toString());
+    });
+    return sorted;
+  }
+
   @override
   Widget build(BuildContext context) {
     Responsive.init(context);
 
-    final placedOrders = _orders.where((o) => o['status'] == 'placed').toList();
-    final preparingOrders = _orders.where((o) => o['status'] == 'preparing').toList();
-    final readyOrders = _orders.where((o) => o['status'] == 'ready_for_pickup').toList();
-    final acceptedOrders = _orders.where((o) => o['status'] == 'accepted').toList();
-    final dispatchedOrders = _orders.where((o) => o['status'] == 'out_for_delivery').toList();
-    final completedOrders = _orders.where((o) => o['status'] == 'delivered').toList();
-    final returnOrders = _orders.where((o) => [
+    final allSorted = _sortOrders(_orders);
+    final placedOrders = _sortOrders(_orders.where((o) => o['status'] == 'placed').toList());
+    final preparingOrders = _sortOrders(_orders.where((o) => o['status'] == 'preparing').toList());
+    final readyOrders = _sortOrders(_orders.where((o) => o['status'] == 'ready_for_pickup').toList());
+    final acceptedOrders = _sortOrders(_orders.where((o) => o['status'] == 'accepted').toList());
+    final dispatchedOrders = _sortOrders(_orders.where((o) => o['status'] == 'out_for_delivery').toList());
+    final completedOrders = _sortOrders(_orders.where((o) => o['status'] == 'delivered').toList());
+    final returnOrders = _sortOrders(_orders.where((o) => [
       'returning_to_store',
       'returned_to_store',
       'return_requested',
       'returned',
       'return_rejected',
-    ].contains(o['status'])).toList();
-    final cancelledOrders = _orders.where((o) => o['status'] == 'cancelled').toList();
+    ].contains(o['status'])).toList());
+    final cancelledOrders = _sortOrders(_orders.where((o) => o['status'] == 'cancelled').toList());
 
     return Scaffold(
       backgroundColor: AppColors.screenColor,
@@ -175,7 +233,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
               : TabBarView(
                   controller: _tabController,
                   children: [
-                    _buildOrdersList(_orders),
+                    _buildOrdersList(allSorted),
                     _buildOrdersList(placedOrders),
                     _buildOrdersList(preparingOrders),
                     _buildOrdersList(readyOrders),
@@ -422,90 +480,126 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
               ),
             ),
 
-          // Return Details Banner (If in return lifecycle)
-          if (order['returnDetails'] != null ||
-              ['returning_to_store', 'returned_to_store', 'return_requested', 'returned', 'return_rejected'].contains(status))
-            Container(
-              margin: EdgeInsets.only(bottom: Responsive.h(12)),
-              padding: EdgeInsets.all(Responsive.w(10)),
-              decoration: BoxDecoration(
-                color: (status == 'returning_to_store' || status == 'return_requested')
-                    ? const Color(0xFFFFF3E0)
-                    : (status == 'returned_to_store' || status == 'returned'
-                        ? const Color(0xFFE8F5E9)
-                        : const Color(0xFFFFEBEE)),
-                borderRadius: BorderRadius.circular(Responsive.w(10)),
-                border: Border.all(
-                  color: (status == 'returning_to_store' || status == 'return_requested')
-                      ? const Color(0xFFFFB74D)
-                      : (status == 'returned_to_store' || status == 'returned'
-                          ? const Color(0xFF81C784)
-                          : const Color(0xFFEF9A9A)),
+          // Return Details Banner (Only if order is actively in return lifecycle)
+          Builder(
+            builder: (context) {
+              final returnDetails = order['returnDetails'] as Map<String, dynamic>?;
+              final returnType = returnDetails?['returnType']?.toString() ?? 'none';
+              final custReason = returnDetails?['reason']?.toString().trim() ?? '';
+              final custNotes = returnDetails?['notes']?.toString().trim() ?? '';
+              final declineReason = returnDetails?['rejectionReason']?.toString().trim() ?? '';
+
+              final isReturnLifecycle = [
+                'return_requested',
+                'return_pickup_pending',
+                'return_pickup_assigned',
+                'returning_to_store',
+                'returned_to_store',
+                'returned',
+                'return_rejected',
+              ].contains(status) && (returnType != 'none' || custReason.isNotEmpty || declineReason.isNotEmpty);
+
+              if (!isReturnLifecycle) return const SizedBox.shrink();
+
+              Color bgColor;
+              Color borderColor;
+              Color iconColor;
+              String title;
+
+              if (status == 'return_rejected') {
+                bgColor = const Color(0xFFFFEBEE);
+                borderColor = const Color(0xFFEF9A9A);
+                iconColor = const Color(0xFFC62828);
+                title = 'Return Request Declined';
+              } else if (status == 'returned_to_store' || status == 'returned') {
+                bgColor = const Color(0xFFE8F5E9);
+                borderColor = const Color(0xFF81C784);
+                iconColor = const Color(0xFF2E7D32);
+                title = 'Package Returned & Restocked';
+              } else if (status == 'return_pickup_assigned') {
+                bgColor = const Color(0xFFE3F2FD);
+                borderColor = const Color(0xFF90CAF9);
+                iconColor = const Color(0xFF1565C0);
+                title = 'Rider Assigned for Doorstep Pickup';
+              } else if (status == 'return_pickup_pending') {
+                bgColor = const Color(0xFFFFF3E0);
+                borderColor = const Color(0xFFFFB74D);
+                iconColor = const Color(0xFFE65100);
+                title = 'Return Approved · Rider Pickup Pending';
+              } else if (status == 'returning_to_store') {
+                bgColor = const Color(0xFFFFF3E0);
+                borderColor = const Color(0xFFFFB74D);
+                iconColor = const Color(0xFFE65100);
+                title = 'Rider Returning Package to Store';
+              } else {
+                bgColor = const Color(0xFFFFF3E0);
+                borderColor = const Color(0xFFFFB74D);
+                iconColor = const Color(0xFFE65100);
+                title = 'Citizen Requested Return';
+              }
+
+              return Container(
+                margin: EdgeInsets.only(bottom: Responsive.h(12)),
+                padding: EdgeInsets.all(Responsive.w(10)),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(Responsive.w(10)),
+                  border: Border.all(color: borderColor),
                 ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    status == 'return_rejected' ? Icons.error_outline_rounded : Icons.assignment_return_rounded,
-                    size: 20,
-                    color: (status == 'returning_to_store' || status == 'return_requested')
-                        ? const Color(0xFFE65100)
-                        : (status == 'returned_to_store' || status == 'returned'
-                            ? const Color(0xFF2E7D32)
-                            : const Color(0xFFC62828)),
-                  ),
-                  SizedBox(width: Responsive.w(8)),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CustomText.title(
-                          status == 'returning_to_store'
-                              ? 'Rider Returning Package to Store'
-                              : (status == 'return_requested'
-                                  ? 'Citizen Requested Return'
-                                  : (status == 'returned_to_store' || status == 'returned'
-                                      ? 'Package Returned & Restocked'
-                                      : 'Return Request Declined')),
-                          fontSize: Responsive.sp(12.5),
-                          fontWeight: FontWeight.bold,
-                          color: (status == 'returning_to_store' || status == 'return_requested')
-                              ? const Color(0xFFE65100)
-                              : (status == 'returned_to_store' || status == 'returned'
-                                  ? const Color(0xFF2E7D32)
-                                  : const Color(0xFFC62828)),
-                        ),
-                        if (order['returnDetails']?['reason'] != null) ...[
-                          SizedBox(height: Responsive.h(2)),
-                          CustomText.caption(
-                            'Reason: ${order['returnDetails']['reason']}',
-                            fontSize: Responsive.sp(11),
-                            color: Colors.black87,
-                          ),
-                        ],
-                        if (order['returnDetails']?['notes'] != null &&
-                            order['returnDetails']['notes'].toString().isNotEmpty) ...[
-                          CustomText.caption(
-                            'Notes: ${order['returnDetails']['notes']}',
-                            fontSize: Responsive.sp(10.5),
-                            color: Colors.grey.shade700,
-                          ),
-                        ],
-                        if (order['returnDetails']?['rejectionReason'] != null &&
-                            order['returnDetails']['rejectionReason'].toString().isNotEmpty) ...[
-                          CustomText.caption(
-                            'Decline Note: ${order['returnDetails']['rejectionReason']}',
-                            fontSize: Responsive.sp(10.5),
-                            color: const Color(0xFFC62828),
-                          ),
-                        ],
-                      ],
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      status == 'return_rejected'
+                          ? Icons.error_outline_rounded
+                          : Icons.assignment_return_rounded,
+                      size: 20,
+                      color: iconColor,
                     ),
-                  ),
-                ],
-              ),
-            ),
+                    SizedBox(width: Responsive.w(8)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CustomText.title(
+                            title,
+                            fontSize: Responsive.sp(12.5),
+                            fontWeight: FontWeight.bold,
+                            color: iconColor,
+                          ),
+                          if (custReason.isNotEmpty) ...[
+                            SizedBox(height: Responsive.h(2)),
+                            CustomText.caption(
+                              'Customer Reason: $custReason',
+                              fontSize: Responsive.sp(11),
+                              color: Colors.black87,
+                            ),
+                          ],
+                          if (custNotes.isNotEmpty) ...[
+                            SizedBox(height: Responsive.h(2)),
+                            CustomText.caption(
+                              'Customer Notes: $custNotes',
+                              fontSize: Responsive.sp(10.5),
+                              color: Colors.grey.shade700,
+                            ),
+                          ],
+                          if (status == 'return_rejected' && declineReason.isNotEmpty) ...[
+                            SizedBox(height: Responsive.h(3)),
+                            CustomText.caption(
+                              'Store Decline Reason: $declineReason',
+                              fontSize: Responsive.sp(11),
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFFC62828),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
 
           // Action Buttons for Store Owner
           _buildStoreActions(orderId, status, hasRider: hasRider, agent: agent),
@@ -631,21 +725,26 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
           children: [
             const Icon(Icons.two_wheeler_rounded, color: AppColors.success, size: 20),
             SizedBox(width: Responsive.w(8)),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CustomText.caption(
-                  'Rider Accepted — On the Way to Store',
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.success,
-                ),
-                if (hasRider)
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   CustomText.caption(
-                    'Rider: ${agent['name']} · ${agent['vehicleNumber'] ?? ''}',
-                    color: AppColors.grayFont,
-                    fontSize: Responsive.sp(11),
+                    'Rider Accepted — On the Way to Store',
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.success,
                   ),
-              ],
+                  if (hasRider)
+                    CustomText.caption(
+                      'Rider: ${agent['name']} · ${agent['vehicleNumber'] ?? ''}',
+                      color: AppColors.grayFont,
+                      fontSize: Responsive.sp(11),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
             ),
           ],
         ),
@@ -717,7 +816,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
               child: ElevatedButton.icon(
                 onPressed: () => _showApproveReturnDialog(orderId),
                 icon: const Icon(Icons.check_circle_outline, size: 18, color: Colors.white),
-                label: const Text('Approve & Refund', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                label: const Text('Approve Return', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.success,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -726,6 +825,49 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
             ),
           ),
         ],
+      );
+    } else if (status == 'return_pickup_pending') {
+      return Container(
+        padding: EdgeInsets.symmetric(vertical: Responsive.h(8)),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.schedule_rounded, color: Color(0xFFE65100), size: 18),
+            SizedBox(width: Responsive.w(8)),
+            Flexible(
+              child: CustomText.caption(
+                'Return Approved · Dispatching Rider for Doorstep Pickup',
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFFE65100),
+                maxLines: 2,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (status == 'return_pickup_assigned') {
+      final riderName = (hasRider && agent['name'] != null && agent['name'].toString().isNotEmpty)
+          ? agent['name'].toString()
+          : 'Delivery Partner';
+      return Container(
+        padding: EdgeInsets.symmetric(vertical: Responsive.h(8)),
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.delivery_dining_rounded, color: AppColors.info, size: 18),
+            SizedBox(width: Responsive.w(8)),
+            Flexible(
+              child: CustomText.caption(
+                'Rider Assigned ($riderName) · Heading to Customer Doorstep',
+                fontWeight: FontWeight.bold,
+                color: AppColors.info,
+                maxLines: 2,
+              ),
+            ),
+          ],
+        ),
       );
     } else if (status == 'returned_to_store' || status == 'returned') {
       return Container(
@@ -736,7 +878,14 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
           children: [
             const Icon(Icons.assignment_turned_in_rounded, color: AppColors.success, size: 18),
             SizedBox(width: Responsive.w(8)),
-            CustomText.caption('Return Completed · Restocked & Refunded', fontWeight: FontWeight.bold, color: AppColors.success),
+            Flexible(
+              child: CustomText.caption(
+                'Return Completed · Restocked & Refunded',
+                fontWeight: FontWeight.bold,
+                color: AppColors.success,
+                maxLines: 2,
+              ),
+            ),
           ],
         ),
       );
@@ -776,7 +925,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Confirm Return Received?'),
         content: const Text(
-          'Have you received the physical package back from the delivery rider? This will automatically restock the items into your store catalog and refund the customer wallet.',
+          'Have you received the physical package back from the delivery rider? This will automatically restock the items into your store catalog, credit the delivery rider payout (₹35), and refund the customer wallet.',
         ),
         actions: [
           TextButton(
@@ -825,9 +974,9 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Approve Citizen Return?'),
+        title: const Text('Approve Return Request?'),
         content: const Text(
-          'Approving this return will restock the returned products into your inventory and automatically issue a wallet refund to the customer.',
+          'Approving this return will dispatch a delivery partner to collect the items from the citizen\'s doorstep (₹35 reverse logistics fee).\n\nCustomer refund and catalog restock will take place ONLY AFTER the rider delivers the package back to your store and you inspect it.',
         ),
         actions: [
           TextButton(
@@ -850,7 +999,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('✅ Return approved! Items restocked & customer refunded.'),
+                    content: Text('✅ Return approved! Delivery partner dispatched for customer doorstep pickup.'),
                     backgroundColor: AppColors.success,
                   ),
                 );
@@ -865,7 +1014,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
                 );
               }
             },
-            child: const Text('Approve & Refund', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text('Approve & Dispatch Rider', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
