@@ -7,6 +7,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'bloc/auth/rider_auth_bloc.dart';
 import 'bloc/delivery/delivery_bloc.dart';
+import 'bloc/customer_chat/customer_chat_bloc.dart';
 import 'constants/route_constants.dart';
 import 'hive/hive_service.dart';
 import 'network/rider_api_service.dart';
@@ -95,6 +96,9 @@ class GoGovernmentRiderApp extends StatelessWidget {
         ),
         BlocProvider<DeliveryBloc>(
           create: (_) => DeliveryBloc.instance,
+        ),
+        BlocProvider<CustomerChatBloc>(
+          create: (_) => CustomerChatBloc(),
         ),
       ],
       child: MaterialApp(

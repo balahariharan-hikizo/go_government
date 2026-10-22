@@ -97,7 +97,7 @@ exports.createOrder = async (req, res) => {
           walletBalance: { $gte: numGrandTotal },
         },
         { $inc: { walletBalance: -numGrandTotal } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       if (!updatedUser) {
@@ -387,17 +387,32 @@ exports.getUserOrders = async (req, res) => {
 exports.getStoreOrders = async (req, res) => {
   try {
     const { storeId } = req.params;
-    const orders = await Order.find({ storeId }).sort({ updatedAt: -1, createdAt: -1 });
+    const [orders, storeDoc] = await Promise.all([
+      Order.find({ storeId }).sort({ updatedAt: -1, createdAt: -1 }),
+      Store.findOne({ $or: [{ storeId }, { phone: storeId }] }).select('walletBalance name status bankDetails'),
+    ]);
 
     let totalSubsidyDisbursed = 0;
     let pendingSubsidyPayout = 0;
-    let totalGrossSales = 0;
+    let deliveredGrossSales = 0;
     let totalDeliveryCharges = 0;
     let netStoreEarnings = 0;
     let activeOrdersCount = 0;
+    let deliveredOrdersCount = 0;
+    let returnedOrdersCount = 0;
+    let cancelledOrdersCount = 0;
+    let totalRefundAmount = 0;
 
     for (const order of orders) {
-      if (order.status === 'cancelled') continue;
+      if (order.status === 'cancelled') {
+        cancelledOrdersCount++;
+        continue;
+      }
+
+      if (['returned_to_store', 'returning_to_store', 'return_pickup_pending', 'return_pickup_assigned'].includes(order.status)) {
+        returnedOrdersCount++;
+        totalRefundAmount += (Number(order.returnDetails?.refundAmount) || 0);
+      }
 
       let orderSubsidy = 0;
       if (Array.isArray(order.items)) {
@@ -412,16 +427,17 @@ exports.getStoreOrders = async (req, res) => {
       }
 
       totalSubsidyDisbursed += orderSubsidy;
-      totalGrossSales += (order.grandTotal || 0);
 
       if (['placed', 'preparing', 'ready_for_pickup', 'accepted', 'out_for_delivery'].includes(order.status)) {
         activeOrdersCount++;
       }
 
       if (order.status === 'delivered') {
+        deliveredOrdersCount++;
         pendingSubsidyPayout += orderSubsidy;
         const grand = Number(order.grandTotal) || 0;
         const del = Number(order.deliveryCharge) || 0;
+        deliveredGrossSales += grand;
         totalDeliveryCharges += del;
         netStoreEarnings += Math.max(0, grand - del);
       }
@@ -434,11 +450,17 @@ exports.getStoreOrders = async (req, res) => {
       summary: {
         totalOrders: orders.length,
         activeOrdersCount,
+        deliveredOrdersCount,
+        returnedOrdersCount,
+        cancelledOrdersCount,
+        walletBalance: storeDoc?.walletBalance ?? 0,
         totalSubsidyDisbursed: Math.round(totalSubsidyDisbursed),
         pendingSubsidyPayout: Math.round(pendingSubsidyPayout),
-        totalGrossSales: Math.round(totalGrossSales),
+        deliveredGrossSales: Math.round(deliveredGrossSales),
+        totalGrossSales: Math.round(deliveredGrossSales), // Aligned with delivered sales so merchant sees consistent numbers
         totalDeliveryCharges: Math.round(totalDeliveryCharges),
         netStoreEarnings: Math.round(netStoreEarnings),
+        totalRefundAmount: Math.round(totalRefundAmount),
       },
     });
   } catch (error) {
@@ -528,6 +550,24 @@ exports.getOrderDetails = async (req, res) => {
   }
 };
 
+// 8b. GET ORDER CHAT HISTORY
+exports.getOrderChat = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const order = await Order.findOne({ orderId }).select('chatMessages').lean();
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+    return res.status(200).json({
+      success: true,
+      data: order.chatMessages || [],
+    });
+  } catch (error) {
+    console.error('Error fetching order chat history:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch chat history', error: error.message });
+  }
+};
+
 // 9. RIDER ACCEPTS DELIVERY TASK (Concurrency & Race Protected with Citizen Virtual Populate)
 exports.acceptOrder = async (req, res) => {
   try {
@@ -580,24 +620,23 @@ exports.acceptOrder = async (req, res) => {
       { updatePipeline: true, returnDocument: 'after' }
     ).populate('citizen', 'fcmToken name').populate('store', 'fcmToken name');
 
-    // 3. Conflict / Not Found Handling (Only executed if order could not be claimed)
+    // 3. Conflict / Already Claimed Handling
     if (!order) {
-      const exists = await Order.exists({ orderId });
-      if (!exists) {
-        return res.status(404).json({ success: false, message: 'Order not found' });
-      }
       return res.status(409).json({
         success: false,
         code: 'ALREADY_ACCEPTED',
-        message: 'This delivery task has already been accepted and assigned.',
+        message: 'This delivery task has already been accepted or is unavailable.',
       });
     }
 
     console.log(`🚴 [Rider Assigned] Rider ${assignedName} (${assignedRiderId}) accepted order ${orderId} (${order.status})`);
 
-    // 5. Mark Rider as Busy in Registry & DB (Non-blocking)
-    req.app.get('riderRegistry')?.get(assignedRiderId) && (req.app.get('riderRegistry').get(assignedRiderId).isBusy = true);
-    Rider.updateOne({ riderId: assignedRiderId }, { $set: { isBusy: true } }).catch(() => {});
+    // 5. Mark Rider as Busy in Live Registry (RAM) & Database (MongoDB)
+    const riderRegistry = req.app.get('riderRegistry');
+    if (riderRegistry && riderRegistry.has(assignedRiderId)) {
+      riderRegistry.get(assignedRiderId).isBusy = true;
+    }
+    await Rider.updateOne({ riderId: assignedRiderId }, { $set: { isBusy: true } });
 
     // 6. Clean Socket Broadcast & Citizen Push Notifications
     sendOrderAssignedAlerts(order, req.app);
@@ -671,7 +710,7 @@ exports.updateOrderStatus = async (req, res) => {
           const refundedUser = await User.findOneAndUpdate(
             { $or: [{ userId: existing.userId }, { phone: existing.userId }] },
             { $inc: { walletBalance: refundAmt } },
-            { new: true }
+            { returnDocument: 'after' }
           );
 
           if (refundedUser) {
@@ -709,7 +748,7 @@ exports.updateOrderStatus = async (req, res) => {
         const updatedRider = await Rider.findOneAndUpdate(
           { $or: [{ riderId: riderId }, { phone: riderId }] },
           { $inc: { walletBalance: riderFee } },
-          { new: true }
+          { returnDocument: 'after' }
         );
 
         if (updatedRider) {
@@ -741,7 +780,7 @@ exports.updateOrderStatus = async (req, res) => {
           const updatedStore = await Store.findOneAndUpdate(
             { storeId: existing.storeId },
             { $inc: { walletBalance: storeAmount } },
-            { new: true }
+            { returnDocument: 'after' }
           );
 
           if (updatedStore) {
@@ -753,8 +792,8 @@ exports.updateOrderStatus = async (req, res) => {
               category: 'store_settlement',
               paymentMethod: 'Store Settlement',
               orderId: existing.orderId,
-              title: updatedStore.name || 'Store Settlement',
-              subtitle: `Settlement for order #${existing.orderId} · ${dateStr}`,
+              title: `Order #${existing.orderId} · Sales Credit`,
+              subtitle: `Product sales credited to store wallet · ${dateStr}`,
               balanceAfter: updatedStore.walletBalance || 0,
               status: 'success',
             });
@@ -935,7 +974,7 @@ exports.storeConfirmReturn = async (req, res) => {
         const refundedUser = await User.findOneAndUpdate(
           { $or: [{ userId: order.userId }, { phone: order.userId }] },
           { $inc: { walletBalance: refundAmt } },
-          { new: true }
+          { returnDocument: 'after' }
         );
 
         if (refundedUser) {
@@ -983,7 +1022,7 @@ exports.storeConfirmReturn = async (req, res) => {
       const updatedRider = await Rider.findOneAndUpdate(
         { $or: [{ riderId }, { phone: riderId }] },
         { $inc: { walletBalance: riderPayoutAmt } },
-        { new: true }
+        { returnDocument: 'after' }
       );
       if (updatedRider) {
         const riderTxId = await getNextSequence('walletTxId', 'TXN_PAYOUT_', 5);
@@ -1006,12 +1045,42 @@ exports.storeConfirmReturn = async (req, res) => {
       }
     }
 
-    // 4. Free up rider in registry
+    // 4. Adjust Store Wallet for returned & restocked items (Customer refunded)
+    if (!isDoorstepReturn && order.storeId && refundAmt > 0) {
+      const storeProductAmt = Math.max(0, (Number(order.grandTotal) || 0) - deliveryFee);
+      if (storeProductAmt > 0) {
+        const updatedStore = await Store.findOneAndUpdate(
+          { storeId: order.storeId },
+          { $inc: { walletBalance: -storeProductAmt } },
+          { returnDocument: 'after' }
+        );
+        if (updatedStore) {
+          const storeReturnTx = new WalletTransaction({
+            transactionId: await getNextSequence('walletTxId', 'TXN_RET_STORE_', 5),
+            userId: updatedStore.storeId,
+            amount: storeProductAmt,
+            type: 'debit',
+            category: 'order_return',
+            paymentMethod: 'Store Wallet',
+            orderId: order.orderId,
+            title: `Order #${order.orderId} · Return Refund`,
+            subtitle: `Items restocked to inventory · Citizen refunded · ${dateStr}`,
+            balanceAfter: updatedStore.walletBalance,
+            status: 'success',
+          });
+          await storeReturnTx.save();
+          console.log(`🏪 [Store Return Debited] Debited ₹${storeProductAmt} from store ${order.storeId} for restocked order ${order.orderId}`);
+        }
+      }
+    }
+
+    // 5. Free up rider in registry & Database
     if (riderId) {
       const registry = req.app.get('riderRegistry');
       if (registry && registry.has(riderId)) {
         registry.get(riderId).isBusy = false;
       }
+      await Rider.updateOne({ riderId }, { $set: { isBusy: false } });
     }
 
     await order.save();
@@ -1207,7 +1276,7 @@ exports.storeReviewCitizenReturn = async (req, res) => {
       const updatedStore = await Store.findOneAndUpdate(
         { storeId: order.storeId },
         { $inc: { walletBalance: -reverseFee } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       if (updatedStore) {
@@ -1219,8 +1288,8 @@ exports.storeReviewCitizenReturn = async (req, res) => {
           category: 'return_delivery_fee',
           paymentMethod: 'Store Wallet',
           orderId: order.orderId,
-          title: 'Reverse Return Pickup Charge',
-          subtitle: `Rider pickup charge for return #${order.orderId} · ${dateStr}`,
+          title: `Order #${order.orderId} · Return Pickup Fee`,
+          subtitle: `Rider logistics charge for reverse return · ${dateStr}`,
           balanceAfter: updatedStore.walletBalance,
           status: 'success',
         });

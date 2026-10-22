@@ -104,6 +104,20 @@ class HiveService {
   }
 
   // ----------------------------------------------------
+  // Chat Unread Count Tracking per Order
+  // ----------------------------------------------------
+  static int getLastReadChatCount(String orderId) {
+    if (orderId.isEmpty) return 0;
+    final val = _authBox.get('chat_last_read_$orderId', defaultValue: 0);
+    return (val is num) ? val.toInt() : 0;
+  }
+
+  static Future<void> setLastReadChatCount(String orderId, int count) async {
+    if (orderId.isEmpty) return;
+    await _authBox.put('chat_last_read_$orderId', count);
+  }
+
+  // ----------------------------------------------------
   // Clear Session
   // ----------------------------------------------------
   static Future<void> clearAuth() async {

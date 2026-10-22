@@ -46,6 +46,7 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
   void initState() {
     super.initState();
     _store = widget.store;
+    context.read<StoreBloc>().add(FetchMyStoreEvent(_store.storeId));
     context.read<ProductBloc>().add(LoadStoreProductsEvent(_store.storeId));
     _fetchFinancialMetrics();
     _initFCM();
@@ -144,6 +145,10 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
     if (mounted && metrics != null) {
       setState(() {
         _subsidyMetrics = metrics;
+        if (metrics['walletBalance'] != null) {
+          final liveBal = (metrics['walletBalance'] as num).toDouble();
+          _store = _store.copyWith(walletBalance: liveBal);
+        }
       });
     }
   }
@@ -784,9 +789,9 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    CustomText.body('Gross Sales Total', fontSize: 10.5, color: AppColors.grayFont),
+                                    CustomText.body('Net Product Sales', fontSize: 10.5, color: AppColors.grayFont),
                                     SizedBox(height: Responsive.h(2)),
-                                    CustomText.header('₹${_subsidyMetrics?['totalGrossSales'] ?? 0}.00', fontSize: 15, color: AppColors.black),
+                                    CustomText.header('₹${_subsidyMetrics?['netStoreEarnings'] ?? _subsidyMetrics?['totalGrossSales'] ?? 0}.00', fontSize: 15, color: AppColors.black),
                                   ],
                                 ),
                                 Column(
@@ -813,7 +818,7 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
                                   SizedBox(width: Responsive.w(6)),
                                   Expanded(
                                     child: Text(
-                                      'Gross Sales includes delivery charges paid to riders. Your wallet balance represents 100% net product sales revenue.',
+                                      'Settled: ${_subsidyMetrics?['deliveredOrdersCount'] ?? 0} Orders · Returns: ${_subsidyMetrics?['returnedOrdersCount'] ?? 0} Orders. Wallet represents 100% net earnings ready for DBT transfer.',
                                       style: const TextStyle(fontSize: 10.5, color: Color(0xFF334155), height: 1.3),
                                     ),
                                   ),

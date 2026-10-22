@@ -15,6 +15,7 @@ router.get('/rider/:riderId', orderController.getRiderDeliveries);
 
 // 3. Single Order Actions & State Transitions
 router.get('/:orderId', orderController.getOrderDetails);
+router.get('/:orderId/chat', orderController.getOrderChat);
 router.post('/:orderId/accept-rider', orderController.acceptOrder);
 router.patch('/:orderId/status', orderController.updateOrderStatus);
 

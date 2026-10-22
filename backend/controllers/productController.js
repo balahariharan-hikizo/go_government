@@ -45,7 +45,8 @@ exports.createProduct = async (req, res) => {
     const targetStock = req.body.stock !== undefined ? Number(req.body.stock) : (req.body.stockQuantity !== undefined ? Number(req.body.stockQuantity) : 0);
 
     if (!storeId || !targetTitle || price === undefined) {
-      return res.status(400).json({ success: false, error: 'Missing required fields: storeId, title (or name), and price are mandatory',
+      return res.status(400).json({
+        success: false, error: 'Missing required fields: storeId, title (or name), and price are mandatory',
       });
     }
 
@@ -268,7 +269,7 @@ exports.updateProduct = async (req, res) => {
     const updated = await Product.findOneAndUpdate(
       query,
       { $set: updateData },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     res.status(200).json({
@@ -293,7 +294,7 @@ exports.deleteProduct = async (req, res) => {
     const deleted = await Product.findOneAndUpdate(
       query,
       { $set: { isDeleted: true, isAvailable: false, deletedAt: new Date() } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!deleted) {
       return res.status(404).json({ success: false, error: 'Product not found' });

@@ -50,6 +50,8 @@ class SocketService {
   Stream<Map<String, dynamic>> get onRiderLocation =>
       _riderLocationController.stream;
 
+  String? _currentSubscribedOrderId;
+
   /// Send chat message to rider via WebSocket
   void sendChatMessage(Map<String, dynamic> message) {
     _socket?.emit('chat:send', message);
@@ -57,23 +59,35 @@ class SocketService {
 
   /// Listen to a specific order status update
   void subscribeToOrder(String orderId) {
+    if (orderId.isEmpty) return;
+    _currentSubscribedOrderId = orderId;
+
+    _socket?.off('order:$orderId:status_update');
     _socket?.on('order:$orderId:status_update', (data) {
       debugPrint('⚡ [Socket.io] Order $orderId status update received: $data');
       if (data is Map) {
         _orderStatusController.add(Map<String, dynamic>.from(data));
       }
     });
+
+    _socket?.off('order:$orderId:rider_location');
     _socket?.on('order:$orderId:rider_location', (data) {
       if (data is Map) {
         _riderLocationController.add(Map<String, dynamic>.from(data));
       }
     });
+
+    _socket?.off('chat:$orderId');
     _socket?.on('chat:$orderId', (data) {
-      debugPrint('⚡ [Socket.io] Chat message received for order $orderId');
+      debugPrint('⚡ [Socket.io] Chat message received for order $orderId: $data');
       if (data is Map) {
         _chatMessageController.add(Map<String, dynamic>.from(data));
       }
     });
+  }
+
+  void unsubscribeFromChat(String orderId) {
+    // Left empty or no-op so tracking screen doesn't lose live chat events
   }
 
   /// Initialize and connect to the backend WebSocket server
@@ -98,6 +112,9 @@ class SocketService {
       _socket?.onConnect((_) {
         _isConnected = true;
         debugPrint('⚡ [SocketService] Connected successfully to $origin (Socket ID: ${_socket?.id})');
+        if (_currentSubscribedOrderId != null) {
+          subscribeToOrder(_currentSubscribedOrderId!);
+        }
       });
 
       _socket?.onDisconnect((_) {

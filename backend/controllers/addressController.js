@@ -13,7 +13,9 @@ exports.getAddresses = async (req, res) => {
     const addresses = await Address.find({
       userId,
       isDeleted: { $ne: true },
-    }).sort({ isDefault: -1, createdAt: -1 });
+    })
+      .sort({ isDefault: -1, createdAt: -1 })
+      .lean();
 
     res.status(200).json({
       success: true,

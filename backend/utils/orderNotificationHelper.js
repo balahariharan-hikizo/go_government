@@ -151,7 +151,7 @@ function sendOrderStatusUpdateAlerts(order, app) {
       io.to('riders').emit('order:dispatch_cancelled', { orderId });
     }
 
-    if (status === 'delivered') {
+    if (status === 'delivered' || status === 'cancelled') {
       const riderId = order.deliveryAgent?.riderId;
       if (riderId) {
         const riderRegistry = app.get('riderRegistry');

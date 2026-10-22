@@ -140,6 +140,9 @@ class DeliveryOrder {
   bool get isReversePickup =>
       status == 'return_pickup_pending' ||
       status == 'return_pickup_assigned' ||
+      status == 'returning_to_store' ||
+      status == 'returned_to_store' ||
+      status == 'returned' ||
       (returnDetails != null && returnDetails!['returnType'] == 'citizen_request');
 
   // Pure Order Model: Rider payout directly matches order deliveryCharge (Minimum ₹35)

@@ -14,6 +14,7 @@ import '../../utils/responsive_helper.dart';
 import '../../widget/common_background.dart';
 import '../../widget/custom_text.dart';
 import '../../hive/hive_service.dart';
+import 'customer_chat_screen.dart';
 
 class ActiveDeliveryScreen extends StatefulWidget {
   final DeliveryOrder order;
@@ -27,6 +28,9 @@ class ActiveDeliveryScreen extends StatefulWidget {
 class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
   late DeliveryOrder _order;
   StreamSubscription? _socketSub;
+  StreamSubscription? _chatSub;
+  int _unreadCustomerChatCount = 0;
+  int _totalCitizenMsgs = 0;
   bool _isPopping = false;
 
   @override
@@ -41,11 +45,50 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
         context.read<DeliveryBloc>().add(LoadDeliveriesEvent());
       }
     });
+
+    // Ensure socket is subscribed to live chat for this order
+    if (_order.orderId.isNotEmpty) {
+      RiderSocketService().subscribeToChat(_order.orderId);
+    }
+
+    // Fetch initial chat history to compute persistent unread count
+    _fetchInitialChatHistory();
+
+    // Listen for real-time messages from customer to show unread indicator badge
+    _chatSub = RiderSocketService().onChatMessage.listen((data) {
+      if (!mounted) return;
+      final incomingId = data['orderId']?.toString();
+      final senderRole = data['senderRole']?.toString();
+      debugPrint('⚡ [ActiveDeliveryScreen] onChatMessage received: $incomingId, senderRole: $senderRole');
+      if (incomingId == _order.orderId && senderRole == 'citizen') {
+        setState(() {
+          _totalCitizenMsgs++;
+          _unreadCustomerChatCount++;
+        });
+      }
+    });
+  }
+
+  Future<void> _fetchInitialChatHistory() async {
+    if (_order.orderId.isEmpty) return;
+    try {
+      final history = await RiderApiService.fetchOrderChat(_order.orderId);
+      if (mounted && history.isNotEmpty) {
+        final citizenMsgs = history.where((m) => m['senderRole'] == 'citizen').length;
+        _totalCitizenMsgs = citizenMsgs;
+        final readCount = HiveService.getLastReadChatCount(_order.orderId);
+        final unread = (citizenMsgs > readCount) ? (citizenMsgs - readCount) : 0;
+        setState(() {
+          _unreadCustomerChatCount = unread;
+        });
+      }
+    } catch (_) {}
   }
 
   @override
   void dispose() {
     _socketSub?.cancel();
+    _chatSub?.cancel();
     super.dispose();
   }
 
@@ -219,13 +262,24 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                   _buildProgressTracker(),
                   SizedBox(height: Responsive.h(20)),
 
-                  // STORE PICKUP CARD
-                  _buildStorePickupCard(),
-                  SizedBox(height: Responsive.h(16)),
+                  // DYNAMIC CARD ORDER (Reverse Pickup goes to Customer FIRST, then Store SECOND)
+                  if (_order.isReversePickup) ...[
+                    // STEP 1: CUSTOMER DOORSTEP PICKUP CARD
+                    _buildCustomerDropCard(),
+                    SizedBox(height: Responsive.h(16)),
 
-                  // CUSTOMER DROP CARD
-                  _buildCustomerDropCard(),
-                  SizedBox(height: Responsive.h(16)),
+                    // STEP 2: STORE RETURN CARD
+                    _buildStorePickupCard(),
+                    SizedBox(height: Responsive.h(16)),
+                  ] else ...[
+                    // STEP 1: STORE PICKUP CARD
+                    _buildStorePickupCard(),
+                    SizedBox(height: Responsive.h(16)),
+
+                    // STEP 2: CUSTOMER DROP CARD
+                    _buildCustomerDropCard(),
+                    SizedBox(height: Responsive.h(16)),
+                  ],
 
                   // ORDER ITEMS CHECKLIST
                   _buildItemsCard(),
@@ -263,21 +317,21 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
         ),
         child: Row(
           children: [
-            _stepNode(1, 'Assigned', true, isAssigned),
+            _stepNode(1, 'Assigned', true, false),
+            Expanded(
+              child: Container(
+                height: 3,
+                color: isReturning ? const Color(0xFFE65100) : const Color(0xFF7B1FA2),
+              ),
+            ),
+            _stepNode(2, 'Customer Pickup', true, isAssigned),
             Expanded(
               child: Container(
                 height: 3,
                 color: isReturning ? const Color(0xFFE65100) : AppColors.lightGray,
               ),
             ),
-            _stepNode(2, 'Customer Pickup', isReturning, isReturning),
-            Expanded(
-              child: Container(
-                height: 3,
-                color: AppColors.lightGray,
-              ),
-            ),
-            _stepNode(3, 'Store Restock', false, false),
+            _stepNode(3, 'Store Return', isReturning, isReturning),
           ],
         ),
       );
@@ -342,15 +396,16 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
   }
 
   // --------------------------------------------------------------------------
-  // Store Pickup Card
+  // Store Pickup / Return Card
   // --------------------------------------------------------------------------
   Widget _buildStorePickupCard() {
+    final isRev = _order.isReversePickup;
     return Container(
       padding: EdgeInsets.all(Responsive.w(16)),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(Responsive.w(16)),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: isRev ? const Color(0xFFFFB74D) : AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -360,17 +415,27 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
               Container(
                 padding: EdgeInsets.all(Responsive.w(8)),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
+                  color: isRev
+                      ? const Color(0xFFE65100).withValues(alpha: 0.1)
+                      : AppColors.primary.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.storefront_rounded, color: AppColors.primary, size: 20),
+                child: Icon(
+                  isRev ? Icons.assignment_return_rounded : Icons.storefront_rounded,
+                  color: isRev ? const Color(0xFFE65100) : AppColors.primary,
+                  size: 20,
+                ),
               ),
               SizedBox(width: Responsive.w(10)),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CustomText.caption('STEP 1: PICKUP FROM STORE', color: AppColors.primary, fontWeight: FontWeight.bold),
+                    CustomText.caption(
+                      isRev ? 'STEP 2: RETURN TO STORE' : 'STEP 1: PICKUP FROM STORE',
+                      color: isRev ? const Color(0xFFE65100) : AppColors.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
                     CustomText.title(_order.storeName, fontSize: Responsive.sp(15), fontWeight: FontWeight.bold),
                   ],
                 ),
@@ -395,9 +460,12 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                     );
                   },
                   icon: const Icon(Icons.directions_outlined, size: 18, color: Colors.white),
-                  label: const Text('Navigate to Store', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  label: Text(
+                    isRev ? 'Navigate Back to Store' : 'Navigate to Store',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: isRev ? const Color(0xFFE65100) : AppColors.primary,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(10))),
                   ),
                 ),
@@ -408,7 +476,7 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                   onPressed: () {
                     NavigationLauncher.callPhoneNumber(_order.storePhone);
                   },
-                  icon: const Icon(Icons.phone, color: AppColors.primary),
+                  icon: Icon(Icons.phone, color: isRev ? const Color(0xFFE65100) : AppColors.primary),
                   tooltip: 'Call Store',
                 ),
               ],
@@ -420,15 +488,16 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
   }
 
   // --------------------------------------------------------------------------
-  // Customer Drop Card
+  // Customer Drop / Pickup Card
   // --------------------------------------------------------------------------
   Widget _buildCustomerDropCard() {
+    final isRev = _order.isReversePickup;
     return Container(
       padding: EdgeInsets.all(Responsive.w(16)),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(Responsive.w(16)),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: isRev ? const Color(0xFFCE93D8) : AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -438,17 +507,27 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
               Container(
                 padding: EdgeInsets.all(Responsive.w(8)),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.1),
+                  color: isRev
+                      ? const Color(0xFF7B1FA2).withValues(alpha: 0.1)
+                      : AppColors.success.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.location_on_rounded, color: AppColors.success, size: 20),
+                child: Icon(
+                  isRev ? Icons.person_pin_circle_rounded : Icons.location_on_rounded,
+                  color: isRev ? const Color(0xFF7B1FA2) : AppColors.success,
+                  size: 20,
+                ),
               ),
               SizedBox(width: Responsive.w(10)),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CustomText.caption('STEP 2: DELIVER TO CITIZEN', color: AppColors.success, fontWeight: FontWeight.bold),
+                    CustomText.caption(
+                      isRev ? 'STEP 1: COLLECT FROM CITIZEN' : 'STEP 2: DELIVER TO CITIZEN',
+                      color: isRev ? const Color(0xFF7B1FA2) : AppColors.success,
+                      fontWeight: FontWeight.bold,
+                    ),
                     CustomText.title(_order.receiverName, fontSize: Responsive.sp(15), fontWeight: FontWeight.bold),
                   ],
                 ),
@@ -475,27 +554,98 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                     NavigationLauncher.openGoogleMapsDirections(
                       _order.dropLat,
                       _order.dropLng,
-                      label: 'Citizen Delivery Location',
+                      label: isRev ? 'Citizen Doorstep Pickup' : 'Citizen Delivery Location',
                     );
                   },
                   icon: const Icon(Icons.navigation_rounded, size: 18, color: Colors.white),
-                  label: const Text('Navigate to Customer', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  label: Text(
+                    isRev ? 'Navigate to Customer Doorstep' : 'Navigate to Customer',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.success,
+                    backgroundColor: isRev ? const Color(0xFF7B1FA2) : AppColors.success,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(10))),
                   ),
                 ),
               ),
-              if (_order.receiverPhone.isNotEmpty) ...[
-                SizedBox(width: Responsive.w(8)),
-                IconButton.filledTonal(
-                  onPressed: () {
+              SizedBox(width: Responsive.w(8)),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton.filledTonal(
+                    onPressed: () {
+                      setState(() {
+                        _unreadCustomerChatCount = 0;
+                      });
+                      if (_order.orderId.isNotEmpty) {
+                        HiveService.setLastReadChatCount(_order.orderId, _totalCitizenMsgs);
+                      }
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (ctx) => CustomerChatScreen(
+                            orderId: _order.orderId,
+                            customerName: _order.receiverName,
+                            customerPhone: _order.receiverPhone,
+                          ),
+                        ),
+                      ).then((_) {
+                        if (mounted) {
+                          setState(() => _unreadCustomerChatCount = 0);
+                          if (_order.orderId.isNotEmpty) {
+                            HiveService.setLastReadChatCount(_order.orderId, _totalCitizenMsgs);
+                          }
+                        }
+                      });
+                    },
+                    icon: Icon(Icons.chat_bubble_outline_rounded, color: isRev ? const Color(0xFF7B1FA2) : AppColors.success),
+                    tooltip: 'Chat with Customer',
+                  ),
+                  if (_unreadCustomerChatCount > 0)
+                    Positioned(
+                      top: -2,
+                      right: -2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.redAccent.withValues(alpha: 0.5),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          '$_unreadCustomerChatCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              SizedBox(width: Responsive.w(8)),
+              IconButton.filledTonal(
+                onPressed: () {
+                  if (_order.receiverPhone.isNotEmpty) {
                     NavigationLauncher.callPhoneNumber(_order.receiverPhone);
-                  },
-                  icon: const Icon(Icons.phone, color: AppColors.success),
-                  tooltip: 'Call Customer',
-                ),
-              ],
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Customer phone number not available for this order.'),
+                        backgroundColor: Color(0xFFE65100),
+                      ),
+                    );
+                  }
+                },
+                icon: Icon(Icons.phone, color: isRev ? const Color(0xFF7B1FA2) : AppColors.success),
+                tooltip: 'Call Customer',
+              ),
             ],
           ),
         ],

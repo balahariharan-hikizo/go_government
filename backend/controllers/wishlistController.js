@@ -97,7 +97,7 @@ exports.syncWishlist = async (req, res) => {
     const wishlist = await Wishlist.findOneAndUpdate(
       { userId },
       { items: formattedItems },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     const favoriteIds = wishlist.items.map((item) => item.productId);

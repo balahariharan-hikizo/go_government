@@ -86,6 +86,48 @@ class StoreModel {
     );
   }
 
+  StoreModel copyWith({
+    String? storeId,
+    String? name,
+    String? ownerName,
+    String? phone,
+    String? email,
+    String? category,
+    String? address,
+    String? pincode,
+    double? lat,
+    double? lng,
+    String? storeImage,
+    BankDetailsModel? bankDetails,
+    String? status,
+    String? rejectionReason,
+    Map<String, String>? timings,
+    bool? isOnline,
+    double? rating,
+    double? walletBalance,
+  }) {
+    return StoreModel(
+      storeId: storeId ?? this.storeId,
+      name: name ?? this.name,
+      ownerName: ownerName ?? this.ownerName,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+      category: category ?? this.category,
+      address: address ?? this.address,
+      pincode: pincode ?? this.pincode,
+      lat: lat ?? this.lat,
+      lng: lng ?? this.lng,
+      storeImage: storeImage ?? this.storeImage,
+      bankDetails: bankDetails ?? this.bankDetails,
+      status: status ?? this.status,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
+      timings: timings ?? this.timings,
+      isOnline: isOnline ?? this.isOnline,
+      rating: rating ?? this.rating,
+      walletBalance: walletBalance ?? this.walletBalance,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'storeId': storeId,

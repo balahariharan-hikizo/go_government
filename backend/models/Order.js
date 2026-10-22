@@ -101,6 +101,18 @@ const OrderSchema = new mongoose.Schema(
       rejectionReason: { type: String, default: '' },
       restocked: { type: Boolean, default: false },
     },
+
+    // Real-time Chat Messages between Citizen and Rider
+    chatMessages: [
+      {
+        id: { type: String, required: true },
+        senderRole: { type: String, enum: ['citizen', 'rider'], required: true },
+        senderName: { type: String, default: '' },
+        text: { type: String, required: true },
+        time: { type: String, default: '' },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   {
     timestamps: true,

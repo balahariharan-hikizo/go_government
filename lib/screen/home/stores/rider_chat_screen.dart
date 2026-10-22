@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../utils/app_colors.dart';
 import '../../../utils/responsive_helper.dart';
 import '../../../bloc/rider_chat/rider_chat_bloc.dart';
 import '../../../bloc/rider_chat/rider_chat_event.dart';
 import '../../../bloc/rider_chat/rider_chat_state.dart';
+import '../../../hive/hive_service.dart';
 
 class RiderChatScreen extends StatefulWidget {
+  final String orderId;
   final String riderName;
+  final String riderPhone;
 
   const RiderChatScreen({
     super.key,
+    this.orderId = '',
     required this.riderName,
+    this.riderPhone = '',
   });
 
   @override
@@ -24,6 +30,14 @@ class _RiderChatScreenState extends State<RiderChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.orderId.isNotEmpty) {
+      context.read<RiderChatBloc>().add(InitChatEvent(widget.orderId));
+    }
+  }
+
+  @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
@@ -33,7 +47,18 @@ class _RiderChatScreenState extends State<RiderChatScreen> {
   void _sendMessage(BuildContext context) {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
-    context.read<RiderChatBloc>().add(SendChatMessageEvent(text));
+
+    final citizenName = HiveService.userName.isNotEmpty
+        ? HiveService.userName
+        : 'Citizen';
+
+    context.read<RiderChatBloc>().add(
+          SendChatMessageEvent(
+            text,
+            orderId: widget.orderId,
+            senderName: citizenName,
+          ),
+        );
     _messageController.clear();
   }
 
@@ -136,29 +161,40 @@ class _RiderChatScreenState extends State<RiderChatScreen> {
                               ),
                             ),
                             SizedBox(height: Responsive.h(2)),
-                            Text(
-                              '20k+ orders delivered',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.85),
-                                fontSize: Responsive.sp(11),
-                              ),
-                            ),
+                            // Text(
+                            //   '20k+ orders delivered',
+                            //   style: TextStyle(
+                            //     color: Colors.white.withValues(alpha: 0.85),
+                            //     fontSize: Responsive.sp(11),
+                            //   ),
+                            // ),
                           ],
                         ),
                       ),
 
                       // Phone call button
-                      Container(
-                        width: Responsive.w(38),
-                        height: Responsive.w(38),
-                        decoration: BoxDecoration(
-                          color: AppColors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.call,
-                          color: AppColors.primary,
-                          size: Responsive.w(18),
+                      GestureDetector(
+                        onTap: () async {
+                          if (widget.riderPhone.isNotEmpty) {
+                            final cleaned = widget.riderPhone.replaceAll(RegExp(r'[^\d+]'), '');
+                            final uri = Uri.parse('tel:$cleaned');
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri);
+                            }
+                          }
+                        },
+                        child: Container(
+                          width: Responsive.w(38),
+                          height: Responsive.w(38),
+                          decoration: BoxDecoration(
+                            color: AppColors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.call,
+                            color: AppColors.primary,
+                            size: Responsive.w(18),
+                          ),
                         ),
                       ),
                     ],

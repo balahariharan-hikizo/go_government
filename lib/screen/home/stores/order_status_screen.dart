@@ -23,6 +23,7 @@ import '../../../bloc/address/address_event.dart';
 import '../../../bloc/profile/profile_bloc.dart';
 import '../../../bloc/transaction/transaction_bloc.dart';
 import '../../../bloc/transaction/transaction_event.dart';
+import '../../../hive/hive_service.dart';
 
 class OrderStatusScreen extends StatefulWidget {
   final String storeType;
@@ -51,6 +52,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
   Map<String, dynamic>? _serverOrderData;
   StreamSubscription? _socketSub;
   StreamSubscription? _riderLocationSub;
+  StreamSubscription? _chatMessageSub;
+  int _unreadChatCount = 0;
+  int _totalRiderMsgs = 0;
   Timer? _pollTimer;
   double? _riderLat;
   double? _riderLng;
@@ -132,6 +136,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
       }
     });
 
+    // Listen for live messages from rider to show unread indicator badge
+    _chatMessageSub = SocketService().onChatMessage.listen((chatData) {
+      if (!mounted) return;
+      final incomingId = chatData['orderId']?.toString();
+      final senderRole = chatData['senderRole']?.toString();
+      if ((incomingId == _orderId || _orderId.isEmpty) && senderRole == 'rider') {
+        setState(() {
+          _totalRiderMsgs++;
+          _unreadChatCount++;
+        });
+      }
+    });
+
     // 4-second lightweight polling fallback while order is active
     _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       if (!mounted) return;
@@ -148,6 +165,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     _pollTimer?.cancel();
     _socketSub?.cancel();
     _riderLocationSub?.cancel();
+    _chatMessageSub?.cancel();
     super.dispose();
   }
 
@@ -157,6 +175,18 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
       final order = await OrderApiService.fetchOrderDetails(_orderId);
       if (order != null && mounted) {
         _applyOrderUpdate(order);
+      }
+
+      // Check persistent chat history for true unread count
+      final history = await OrderApiService.fetchOrderChat(_orderId);
+      if (mounted && history.isNotEmpty) {
+        final riderMsgs = history.where((m) => m['senderRole'] == 'rider').length;
+        _totalRiderMsgs = riderMsgs;
+        final readCount = HiveService.getLastReadChatCount(_orderId);
+        final unread = (riderMsgs > readCount) ? (riderMsgs - readCount) : 0;
+        setState(() {
+          _unreadChatCount = unread;
+        });
       }
     } catch (_) {}
   }
@@ -1618,37 +1648,155 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
           ),
           SizedBox(height: Responsive.h(12)),
 
-          // Message option commented out for now - Call option adapted to full-width
-          /*
+          // Dual Action Buttons: Message Rider + Call Rider
           Row(
             children: [
+              // Message Button
               Expanded(
                 child: GestureDetector(
                   onTap: () {
+                    setState(() {
+                      _unreadChatCount = 0;
+                    });
+                    if (_orderId.isNotEmpty) {
+                      HiveService.setLastReadChatCount(_orderId, _totalRiderMsgs);
+                    }
                     Navigator.of(context).pushNamed(
                       RouteConstants.riderChat,
-                      arguments: driverName,
-                    );
+                      arguments: {
+                        'orderId': _orderId,
+                        'riderName': driverName,
+                        'riderPhone': driverPhone,
+                      },
+                    ).then((_) {
+                      if (mounted) {
+                        setState(() => _unreadChatCount = 0);
+                        if (_orderId.isNotEmpty) {
+                          HiveService.setLastReadChatCount(_orderId, _totalRiderMsgs);
+                        }
+                      }
+                    });
+                  },
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        height: Responsive.h(40),
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(Responsive.w(20)),
+                          border: Border.all(color: Colors.green.shade400, width: 1.2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.green.shade800.withValues(alpha: 0.06),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              color: Colors.green.shade800,
+                              size: Responsive.w(16),
+                            ),
+                            SizedBox(width: Responsive.w(6)),
+                            CustomText.title(
+                              'Message',
+                              color: Colors.green.shade800,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_unreadChatCount > 0)
+                        Positioned(
+                          top: -3,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent,
+                              borderRadius: BorderRadius.circular(10),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.redAccent.withValues(alpha: 0.5),
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              '$_unreadChatCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(width: Responsive.w(10)),
+              // Call Button
+              Expanded(
+                child: GestureDetector(
+                  onTap: () async {
+                    if (driverPhone.isNotEmpty) {
+                      final cleaned = driverPhone.replaceAll(
+                        RegExp(r'[^\d+]'),
+                        '',
+                      );
+                      final uri = Uri.parse('tel:$cleaned');
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri);
+                        return;
+                      }
+                    }
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            driverPhone.isNotEmpty
+                                ? 'Contacting $driverName at $driverPhone...'
+                                : 'Connecting to $driverName...',
+                          ),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
                   },
                   child: Container(
-                    height: Responsive.h(38),
+                    height: Responsive.h(40),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(Responsive.w(19)),
-                      border: Border.all(color: Colors.green.shade300),
+                      color: Colors.green.shade800,
+                      borderRadius: BorderRadius.circular(Responsive.w(20)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.green.shade800.withValues(alpha: 0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.chat_bubble_outline,
-                          color: AppColors.primary,
-                          size: Responsive.w(14),
+                        const Icon(
+                          Icons.phone_in_talk_rounded,
+                          color: Colors.white,
+                          size: 16,
                         ),
                         SizedBox(width: Responsive.w(6)),
                         CustomText.title(
-                          'Message',
-                          color: AppColors.primary,
+                          'Call Partner',
+                          color: Colors.white,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
@@ -1657,73 +1805,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                   ),
                 ),
               ),
-              SizedBox(width: Responsive.w(12)),
             ],
-          ),
-          */
-
-          // Call Delivery Partner Action Button
-          GestureDetector(
-            onTap: () async {
-              if (driverPhone.isNotEmpty) {
-                final cleaned = driverPhone.replaceAll(
-                  RegExp(r'[^\d+]'),
-                  '',
-                );
-                final uri = Uri.parse('tel:$cleaned');
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri);
-                  return;
-                }
-              }
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      driverPhone.isNotEmpty
-                          ? 'Contacting $driverName at $driverPhone...'
-                          : 'Connecting to $driverName...',
-                    ),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
-            },
-            child: Container(
-              width: double.infinity,
-              height: Responsive.h(40),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(Responsive.w(20)),
-                border: Border.all(color: Colors.green.shade400, width: 1.2),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.green.shade800.withValues(alpha: 0.06),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.phone_in_talk_rounded,
-                    color: Colors.green.shade800,
-                    size: Responsive.w(16),
-                  ),
-                  SizedBox(width: Responsive.w(8)),
-                  CustomText.title(
-                    driverPhone.isNotEmpty
-                        ? 'Call Delivery Partner ($driverPhone)'
-                        : 'Call Delivery Partner',
-                    color: Colors.green.shade800,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),

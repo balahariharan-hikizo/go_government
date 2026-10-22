@@ -312,6 +312,31 @@ class RiderApiService {
   }
 
   // --------------------------------------------------------------------------
+  // 8AA. Fetch Order Chat History (GET /orders/:orderId/chat)
+  // --------------------------------------------------------------------------
+  static Future<List<Map<String, dynamic>>> fetchOrderChat(String orderId) async {
+    final url = '${ApiClient.baseUrl}/orders/$orderId/chat';
+    try {
+      ApiClient.logRequest('GET', url);
+      final response = await http
+          .get(Uri.parse(url), headers: ApiClient.defaultHeaders)
+          .timeout(const Duration(seconds: 8));
+
+      ApiClient.logResponse('GET', url, response.statusCode, response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map && decoded['data'] is List) {
+          return List<Map<String, dynamic>>.from(decoded['data']);
+        }
+      }
+      return [];
+    } catch (e) {
+      ApiClient.logError('GET', url, e);
+      return [];
+    }
+  }
+
+  // --------------------------------------------------------------------------
   // 8A. Toggle Online / Offline Duty Status (API 8.5)
   // --------------------------------------------------------------------------
   static Future<bool> toggleOnlineStatus({

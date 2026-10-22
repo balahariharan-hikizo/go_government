@@ -212,7 +212,7 @@ exports.clearCart = async (req, res) => {
       return res.status(400).json({ success: false, message: 'userId is required' });
     }
 
-    await Cart.findOneAndUpdate({ userId }, { items: [] }, { upsert: true, new: true });
+    await Cart.findOneAndUpdate({ userId }, { items: [] }, { upsert: true, returnDocument: 'after' });
 
     return res.status(200).json({
       success: true,
@@ -247,7 +247,7 @@ exports.syncCart = async (req, res) => {
     const cart = await Cart.findOneAndUpdate(
       { userId },
       { items: formattedItems },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     const totalCount = cart.items.reduce((sum, item) => sum + (item.quantity || 0), 0);

@@ -131,7 +131,7 @@ async function markAsRead(req, res) {
     const notification = await Notification.findOneAndUpdate(
       filter,
       { isRead: true },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!notification) {

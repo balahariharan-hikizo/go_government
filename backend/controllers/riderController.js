@@ -175,7 +175,7 @@ exports.updateProfile = async (req, res) => {
           ...(drivingLicenseDoc && { drivingLicenseDoc }),
         },
       },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!updatedRider) {
@@ -205,7 +205,7 @@ exports.toggleOnline = async (req, res) => {
     const rider = await Rider.findOneAndUpdate(
       { riderId },
       { $set: { isOnline: Boolean(isOnline) } },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!rider) {
@@ -374,7 +374,7 @@ exports.logout = async (req, res) => {
     const rider = await Rider.findOneAndUpdate(
       query,
       { $set: { fcmToken: '', isOnline: false } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     // Clear registry if rider was registered

@@ -202,8 +202,25 @@ class AppRouter {
         );
 
       case RouteConstants.riderChat:
-        final riderName = settings.arguments is String ? settings.arguments as String : 'Rider';
-        return _buildSmoothRoute(RiderChatScreen(riderName: riderName), settings);
+        String orderId = '';
+        String riderName = 'Delivery Partner';
+        String riderPhone = '';
+        if (settings.arguments is Map) {
+          final args = settings.arguments as Map<String, dynamic>;
+          orderId = args['orderId']?.toString() ?? '';
+          riderName = args['riderName']?.toString() ?? 'Delivery Partner';
+          riderPhone = args['riderPhone']?.toString() ?? '';
+        } else if (settings.arguments is String) {
+          riderName = settings.arguments as String;
+        }
+        return _buildSmoothRoute(
+          RiderChatScreen(
+            orderId: orderId,
+            riderName: riderName,
+            riderPhone: riderPhone,
+          ),
+          settings,
+        );
 
       // Complaints
       case RouteConstants.complaint:

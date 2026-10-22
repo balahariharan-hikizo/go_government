@@ -221,6 +221,25 @@ async function sendToStoreOrderStatus(fcmToken, title, body, orderId) {
   });
 }
 
+/**
+ * Send push notification when a new chat message arrives between Citizen and Rider.
+ */
+async function sendChatMessageAlert(fcmToken, { title, body, orderId, senderRole }) {
+  return sendToToken(fcmToken, {
+    title,
+    body,
+    channelId: 'chat_alerts',
+    sound: 'default',
+    priority: 'high',
+    data: {
+      type: 'chat_message',
+      orderId: orderId || '',
+      senderRole: senderRole || '',
+      click_action: 'FLUTTER_NOTIFICATION_CLICK',
+    },
+  });
+}
+  
 module.exports = {
   isReady: () => fcmMessaging !== null,
   sendToToken,
@@ -229,4 +248,5 @@ module.exports = {
   sendToStoreReturnAlert,
   sendToStoreOrderStatus,
   sendToCitizenOrderStatus,
+  sendChatMessageAlert,
 };

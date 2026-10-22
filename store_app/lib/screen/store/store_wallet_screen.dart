@@ -218,12 +218,13 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
     final currentBalance = (rawBalance is num) ? rawBalance.toDouble() : (widget.store.walletBalance.toDouble());
 
     final summary = _walletData?['storeSummary'] as Map<String, dynamic>? ?? {};
-    final totalRevenue = (summary['totalRevenue'] as num?)?.toDouble() ?? 0.0;
-    final grossCustomerSales = (summary['grossCustomerSales'] as num?)?.toDouble() ?? (totalRevenue > 0 ? totalRevenue : currentBalance);
+    final netProductEarnings = (summary['netProductEarnings'] as num?)?.toDouble() ?? 0.0;
+    final totalRevenue = netProductEarnings;
+    final grossCustomerSales = (summary['grossCustomerSales'] as num?)?.toDouble() ?? 0.0;
     final riderDeliveryCharges = (summary['riderDeliveryCharges'] as num?)?.toDouble() ?? 0.0;
-    final netProductEarnings = (summary['netProductEarnings'] as num?)?.toDouble() ?? (totalRevenue > 0 ? totalRevenue : currentBalance);
     final deliveredOrders = (summary['deliveredOrdersCount'] as num?)?.toInt() ?? 0;
-    final itemsSold = (summary['totalItemsSold'] as num?)?.toInt() ?? 0;
+    final returnedOrders = (summary['returnedOrdersCount'] as num?)?.toInt() ?? 0;
+    final totalRefunds = (summary['totalRefunds'] as num?)?.toDouble() ?? 0.0;
 
     final rawTxList = (_walletData?['transactions'] as List?) ?? [];
     final allTransactions = rawTxList.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
@@ -271,7 +272,7 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
                   SizedBox(height: Responsive.h(16)),
 
                   // 2. STORE SALES & PERFORMANCE METRICS (3-COLUMN KPI)
-                  _buildPerformanceKpiRow(totalRevenue, deliveredOrders, itemsSold),
+                  _buildPerformanceKpiRow(totalRevenue, deliveredOrders, returnedOrders),
                   SizedBox(height: Responsive.h(16)),
 
                   // 3. SETTLEMENT & REVENUE ACCOUNTING BREAKDOWN CARD
@@ -279,6 +280,7 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
                     grossSales: grossCustomerSales,
                     riderFees: riderDeliveryCharges,
                     netEarnings: netProductEarnings,
+                    totalRefunds: totalRefunds,
                   ),
                   SizedBox(height: Responsive.h(16)),
 
@@ -315,7 +317,7 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
                         SizedBox(width: Responsive.w(8)),
                         _buildFilterChip('Sales Credits', 'credit'),
                         SizedBox(width: Responsive.w(8)),
-                        _buildFilterChip('Payouts / Debits', 'debit'),
+                        _buildFilterChip('Returns & Debits', 'debit'),
                       ],
                     ),
                   ),
@@ -513,12 +515,12 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
     );
   }
 
-  Widget _buildPerformanceKpiRow(double totalRevenue, int deliveredOrders, int itemsSold) {
+  Widget _buildPerformanceKpiRow(double totalRevenue, int deliveredOrders, int returnedOrders) {
     return Row(
       children: [
         Expanded(
           child: _buildKpiCard(
-            title: 'Gross Revenue',
+            title: 'Net Sales',
             value: '₹${totalRevenue.toInt()}',
             icon: Icons.trending_up_rounded,
             iconColor: const Color(0xFF16A34A),
@@ -528,7 +530,7 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
         SizedBox(width: Responsive.w(10)),
         Expanded(
           child: _buildKpiCard(
-            title: 'Orders Settled',
+            title: 'Settled Orders',
             value: '$deliveredOrders',
             icon: Icons.check_circle_rounded,
             iconColor: const Color(0xFF2563EB),
@@ -538,11 +540,11 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
         SizedBox(width: Responsive.w(10)),
         Expanded(
           child: _buildKpiCard(
-            title: 'Items Sold',
-            value: '$itemsSold',
-            icon: Icons.shopping_bag_rounded,
-            iconColor: const Color(0xFF8B5CF6),
-            bgColor: const Color(0xFFF5F3FF),
+            title: 'Returns Handled',
+            value: '$returnedOrders',
+            icon: Icons.assignment_return_rounded,
+            iconColor: const Color(0xFFE65100),
+            bgColor: const Color(0xFFFFF3E0),
           ),
         ),
       ],
@@ -725,7 +727,7 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
                   children: [
                     Flexible(
                       child: Text(
-                        orderId.isNotEmpty ? 'Order #$orderId' : title,
+                        title.isNotEmpty ? title : (orderId.isNotEmpty ? 'Order #$orderId' : 'Wallet Transaction'),
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.black),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -739,7 +741,20 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
                           color: const Color(0xFFE8F5E9),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text('SETTLED', style: TextStyle(fontSize: 8, color: Color(0xFF16A34A), fontWeight: FontWeight.bold)),
+                        child: const Text('CREDIT', style: TextStyle(fontSize: 8, color: Color(0xFF16A34A), fontWeight: FontWeight.bold)),
+                      ),
+                    ] else ...[
+                      SizedBox(width: Responsive.w(4)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF3E0),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          title.toLowerCase().contains('return') ? 'RETURN' : 'DEBIT',
+                          style: const TextStyle(fontSize: 8, color: Color(0xFFE65100), fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ],
                   ],
@@ -804,6 +819,7 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
     required double grossSales,
     required double riderFees,
     required double netEarnings,
+    double totalRefunds = 0.0,
   }) {
     return Container(
       padding: EdgeInsets.all(Responsive.w(16)),
@@ -847,7 +863,7 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
           ),
           SizedBox(height: Responsive.h(12)),
           _buildAccountingRow(
-            label: 'Gross Customer Billing (Citizens Paid)',
+            label: 'Delivered Customer Billing (Citizens Paid)',
             value: '₹${grossSales.toStringAsFixed(2)}',
             valueColor: AppColors.black,
             icon: Icons.add_circle_outline_rounded,
@@ -861,15 +877,25 @@ class _StoreWalletScreenState extends State<StoreWalletScreen> {
             icon: Icons.remove_circle_outline_rounded,
             iconColor: Colors.red.shade600,
           ),
+          if (totalRefunds > 0) ...[
+            SizedBox(height: Responsive.h(8)),
+            _buildAccountingRow(
+              label: 'Customer Returns Restocked & Refunded',
+              value: '₹${totalRefunds.toStringAsFixed(2)}',
+              valueColor: const Color(0xFFE65100),
+              icon: Icons.assignment_return_rounded,
+              iconColor: const Color(0xFFE65100),
+            ),
+          ],
           SizedBox(height: Responsive.h(10)),
           const Divider(height: 1),
           SizedBox(height: Responsive.h(10)),
           _buildAccountingRow(
-            label: 'Net Store Product Revenue (Live Balance)',
+            label: 'Net Store Product Sales',
             value: '₹${netEarnings.toStringAsFixed(2)}',
             valueColor: const Color(0xFF16A34A),
             isBold: true,
-            icon: Icons.account_balance_wallet_rounded,
+            icon: Icons.shopping_bag_rounded,
             iconColor: const Color(0xFF16A34A),
           ),
           SizedBox(height: Responsive.h(12)),

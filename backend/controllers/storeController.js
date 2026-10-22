@@ -361,7 +361,7 @@ exports.toggleOnline = async (req, res) => {
     const updatedStore = await Store.findOneAndUpdate(
       { storeId },
       { $set: { isOnline: Boolean(isOnline) } },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
     if (!updatedStore) {
       return res.status(404).json({ success: false, error: 'Store not found' });
@@ -385,7 +385,7 @@ exports.reviewStore = async (req, res) => {
       const updatedStore = await Store.findOneAndUpdate(
         { storeId },
         { $set: { isOnline: Boolean(isOnline) } },
-        { new: true, runValidators: true }
+        { returnDocument: 'after', runValidators: true }
       );
       if (!updatedStore) return res.status(404).json({ success: false, error: 'Store not found' });
       return res.status(200).json({ success: true, store: updatedStore });
@@ -411,7 +411,7 @@ exports.reviewStore = async (req, res) => {
     const updatedStore = await Store.findOneAndUpdate(
       { storeId },
       { $set: updateFields },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!updatedStore) {
@@ -476,7 +476,7 @@ exports.updateProfile = async (req, res) => {
     const updatedStore = await Store.findOneAndUpdate(
       { storeId },
       { $set: updates },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!updatedStore) {
@@ -511,7 +511,7 @@ exports.updateFcmToken = async (req, res) => {
     else if (phone) query.phone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
     else return res.status(400).json({ success: false, error: 'storeId or phone is required' });
 
-    await Store.findOneAndUpdate(query, { $set: { fcmToken: fcmToken.trim() } }, { new: true, runValidators: true });
+    await Store.findOneAndUpdate(query, { $set: { fcmToken: fcmToken.trim() } }, { returnDocument: 'after', runValidators: true });
 
     res.status(200).json({ success: true, message: 'Store FCM token updated' });
   } catch (error) {
@@ -538,7 +538,7 @@ exports.logout = async (req, res) => {
     const store = await Store.findOneAndUpdate(
       query,
       { $set: { fcmToken: '', isOnline: false } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!store) {

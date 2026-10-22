@@ -68,12 +68,17 @@ exports.getWalletDetails = async (req, res) => {
     if (role === 'store_owner') {
       const Order = require('../models/Order');
       const storeId = account?.storeId || accountId;
-      const orders = await Order.find({ storeId, status: 'delivered' }).select('grandTotal deliveryCharge items orderId createdAt');
+      const [deliveredOrders, returnedOrders, activeOrders] = await Promise.all([
+        Order.find({ storeId, status: 'delivered' }).select('grandTotal deliveryCharge items orderId createdAt'),
+        Order.find({ storeId, status: { $in: ['returned_to_store', 'returning_to_store', 'return_pickup_pending', 'return_pickup_assigned'] } }).select('grandTotal deliveryCharge returnDetails orderId createdAt'),
+        Order.find({ storeId, status: { $in: ['placed', 'preparing', 'ready_for_pickup', 'accepted', 'out_for_delivery'] } }).select('grandTotal orderId'),
+      ]);
+
       let grossCustomerSales = 0;
       let riderDeliveryCharges = 0;
       let netProductEarnings = 0;
       let totalItemsSold = 0;
-      for (const o of orders) {
+      for (const o of deliveredOrders) {
         const grandTotal = Number(o.grandTotal) || 0;
         const deliveryCharge = Number(o.deliveryCharge) || 0;
         grossCustomerSales += grandTotal;
@@ -85,12 +90,22 @@ exports.getWalletDetails = async (req, res) => {
           }
         }
       }
+
+      let totalRefunds = 0;
+      for (const ro of returnedOrders) {
+        totalRefunds += (Number(ro.returnDetails?.refundAmount) || (Number(ro.grandTotal) || 0));
+      }
+
       storeSummary = {
+        walletBalance: balance,
         grossCustomerSales: Math.round(grossCustomerSales),
         riderDeliveryCharges: Math.round(riderDeliveryCharges),
         netProductEarnings: Math.round(netProductEarnings),
         totalRevenue: Math.round(netProductEarnings),
-        deliveredOrdersCount: orders.length,
+        deliveredOrdersCount: deliveredOrders.length,
+        returnedOrdersCount: returnedOrders.length,
+        activeOrdersCount: activeOrders.length,
+        totalRefunds: Math.round(totalRefunds),
         totalItemsSold,
         bankDetails: account?.bankDetails || {},
       };
@@ -130,7 +145,7 @@ exports.topupWallet = async (req, res) => {
     const updatedUser = await User.findOneAndUpdate(
       { $or: [{ userId }, { phone: userId }] },
       { $inc: { walletBalance: numAmount } },
-      { new: true, upsert: true }
+      { returnDocument: 'after', upsert: true }
     );
 
     const txId = await getNextSequence('walletTxId', 'TXN_TOP_', 5);
@@ -190,7 +205,7 @@ exports.deductWallet = async (req, res) => {
         walletBalance: { $gte: numAmount },
       },
       { $inc: { walletBalance: -numAmount } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updatedUser) {
@@ -255,7 +270,7 @@ exports.refundWallet = async (req, res) => {
     const updatedUser = await User.findOneAndUpdate(
       { $or: [{ userId }, { phone: userId }] },
       { $inc: { walletBalance: numAmount } },
-      { new: true, upsert: true }
+      { returnDocument: 'after', upsert: true }
     );
 
     const txId = await getNextSequence('walletTxId', 'TXN_REF_', 5);
@@ -321,7 +336,7 @@ exports.redeemCoins = async (req, res) => {
           walletBalance: cashAmount,
         },
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updatedUser) {
@@ -383,7 +398,7 @@ exports.addCoins = async (req, res) => {
     const updatedUser = await User.findOneAndUpdate(
       { $or: [{ userId }, { phone: userId }] },
       { $inc: { coinsBalance: numCoins } },
-      { new: true, upsert: true }
+      { returnDocument: 'after', upsert: true }
     );
 
     const txId = await getNextSequence('walletTxId', 'TXN_COIN_ADD_', 5);

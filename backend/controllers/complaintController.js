@@ -183,7 +183,7 @@ exports.createComplaint = async (req, res) => {
     const complaint = await Complaint.findOneAndUpdate(
       { complaintId: data.complaintId },
       { $set: data },
-      { new: true, upsert: true, runValidators: true }
+      { returnDocument: 'after', upsert: true, runValidators: true }
     );
 
     const formattedComplaint = formatComplaint(complaint, req);
@@ -300,7 +300,7 @@ exports.addComment = async (req, res) => {
     const updated = await Complaint.findOneAndUpdate(
       { complaintId },
       { $push: { comments: newComment } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updated) {
@@ -376,7 +376,7 @@ exports.updateStatus = async (req, res) => {
         },
         $push: { comments: adminComment },
       },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!updated) {

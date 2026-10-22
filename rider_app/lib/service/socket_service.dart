@@ -23,6 +23,8 @@ class RiderSocketService {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _orderDispatchCancelledController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _chatMessageController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onOrderAvailable =>
       _orderAvailableController.stream;
@@ -34,6 +36,26 @@ class RiderSocketService {
       _orderDispatchController.stream;
   Stream<Map<String, dynamic>> get onOrderDispatchCancelled =>
       _orderDispatchCancelledController.stream;
+  Stream<Map<String, dynamic>> get onChatMessage =>
+      _chatMessageController.stream;
+
+  String? _currentChatOrderId;
+
+  void subscribeToChat(String orderId) {
+    if (orderId.isEmpty) return;
+    _currentChatOrderId = orderId;
+    _socket?.off('chat:$orderId');
+    _socket?.on('chat:$orderId', (data) {
+      debugPrint('⚡ [RiderSocketService] Chat message received for order $orderId: $data');
+      if (data is Map) {
+        _chatMessageController.add(Map<String, dynamic>.from(data));
+      }
+    });
+  }
+
+  void unsubscribeFromChat(String orderId) {
+    // Left empty or no-op so active_delivery_screen doesn't lose live chat events
+  }
 
   void init() {
     if (_socket != null) {
@@ -65,6 +87,9 @@ class RiderSocketService {
             ? HiveService.userId
             : (HiveService.userPhone.isNotEmpty ? HiveService.userPhone : 'rider');
         _socket?.emit('join:rider', riderId);
+        if (_currentChatOrderId != null) {
+          subscribeToChat(_currentChatOrderId!);
+        }
       });
 
       _socket?.onDisconnect((_) {

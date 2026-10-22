@@ -140,7 +140,7 @@ exports.updateProfile = async (req, res) => {
           ...(profileImage && { profileImage }),
         },
       },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!updatedUser) {
@@ -302,7 +302,7 @@ exports.updateFcmToken = async (req, res) => {
     const user = await User.findOneAndUpdate(
       query,
       { $set: { fcmToken: fcmToken.trim() } },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     res.status(200).json({
