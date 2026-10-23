@@ -8,6 +8,26 @@ const fcmService = require('../services/fcmService');
 const { getNextSequence } = require('../utils/sequenceGenerator');
 const { createNotification } = require('./notificationController');
 const { sendOrderAssignedAlerts, sendOrderStatusUpdateAlerts } = require('../utils/orderNotificationHelper');
+const {
+  calculateOrderTotals,
+  resolveStoreCoordinates,
+  processOrderPayment,
+  decrementProductStock,
+  dispatchOrderAlerts,
+} = require('../utils/orderCreationHelper');
+const {
+  restockOrderItems,
+  settleReturnFinances,
+  releaseRider,
+  dispatchReturnConfirmedAlerts,
+  processStoreReverseFee,
+  dispatchReversePickupAlerts,
+} = require('../utils/orderReturnHelper');
+const {
+  handleOrderCancellation,
+  handleOrderDeliveredSettlement,
+} = require('../utils/orderStatusHelper');
+
 
 // 1. CREATE NEW ORDER (Citizen Placement)
 exports.createOrder = async (req, res) => {
@@ -17,12 +37,6 @@ exports.createOrder = async (req, res) => {
       storeId,
       storeName,
       items,
-      itemTotal,
-      deliveryCharge = 0,
-      handlingCharge = 2,
-      couponDiscount = 0,
-      coinsDiscount = 0,
-      grandTotal,
       paymentMethod = 'Cash on Delivery',
       deliveryAddress,
       storeDetails,
@@ -35,119 +49,44 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // Server-Side Total Calculations
-    const computedItemTotal = items.reduce((sum, item) => {
-      const price = Number(item.price) || 0;
-      const quantity = Number(item.quantity || item.qty || 1);
-      return sum + (price * quantity);
-    }, 0);
+    // 1. Server-side totals & parallel store/sequence resolution
+    const totals = calculateOrderTotals(req.body);
 
-    const finalItemTotal = (itemTotal !== undefined && !isNaN(Number(itemTotal)) && Number(itemTotal) >= 0)
-      ? Number(itemTotal)
-      : computedItemTotal;
-
-    const numDeliveryCharge = Number(deliveryCharge) || 0;
-    const numHandlingCharge = Number(handlingCharge) || 2;
-    const numCouponDiscount = Number(couponDiscount) || 0;
-    const numCoinsDiscount = Number(coinsDiscount) || 0;
-
-    const computedGrandTotal = Math.max(0, finalItemTotal - numCouponDiscount - numCoinsDiscount) + numDeliveryCharge + numHandlingCharge;
-    const finalGrandTotal = (grandTotal !== undefined && !isNaN(Number(grandTotal)))
-      ? Number(grandTotal)
-      : computedGrandTotal;
-
-    const orderId = await getNextSequence('orderId', 'ORD_', 5);
-
-    // Fetch Store Details & Coordinates
-    let resolvedStoreDetails = storeDetails || {};
-    const storeDoc = await Store.findOne({ storeId });
-    if (storeDoc) {
-      const realLat = (storeDoc.location && storeDoc.location.lat !== undefined)
-        ? Number(storeDoc.location.lat)
-        : (storeDoc.latitude || 0.0);
-      const realLng = (storeDoc.location && storeDoc.location.lng !== undefined)
-        ? Number(storeDoc.location.lng)
-        : (storeDoc.longitude || 0.0);
-
-      resolvedStoreDetails = {
-        storeId: storeDoc.storeId,
-        name: (storeDoc.name && storeDoc.name.trim().length > 0)
-          ? storeDoc.name.trim()
-          : (resolvedStoreDetails.name && !['Bangalore Horticulture', 'Apothecary Pharmacy'].includes(resolvedStoreDetails.name)
-              ? resolvedStoreDetails.name
-              : 'Store Order'),
-        address: (storeDoc.address && storeDoc.address.trim().length > 0) ? storeDoc.address : (resolvedStoreDetails.address || ''),
-        latitude: realLat,
-        longitude: realLng,
-        phone: storeDoc.phone || resolvedStoreDetails.phone || '',
-      };
-    } else {
-      resolvedStoreDetails.latitude = resolvedStoreDetails.latitude || 0.0;
-      resolvedStoreDetails.longitude = resolvedStoreDetails.longitude || 0.0;
-    }
-
-    const isWallet = paymentMethod && paymentMethod.toLowerCase().includes('wallet');
-    const numGrandTotal = Number(finalGrandTotal);
-
-    // Wallet balance deduction if selected
-    if (isWallet) {
-      const updatedUser = await User.findOneAndUpdate(
-        {
-          $or: [{ userId }, { phone: userId }],
-          walletBalance: { $gte: numGrandTotal },
-        },
-        { $inc: { walletBalance: -numGrandTotal } },
-        { returnDocument: 'after' }
-      );
-
-      if (!updatedUser) {
-        const currentUser = await User.findOne({ $or: [{ userId }, { phone: userId }] });
-        const curBal = currentUser ? currentUser.walletBalance || 0 : 0;
-        return res.status(400).json({
-          success: false,
-          code: 'INSUFFICIENT_WALLET_BALANCE',
-          message: `Insufficient wallet balance. Total: ₹${numGrandTotal}, Available: ₹${curBal}`,
-          walletBalance: curBal,
-        });
-      }
-
-      // Record wallet debit transaction
-      const now = new Date();
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const dateStr = `${months[now.getMonth()]} ${now.getDate()} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-
-      const walletTx = new WalletTransaction({
-        transactionId: await getNextSequence('walletTxId', 'TXN_PAY_', 5),
-        userId: updatedUser.userId,
-        amount: -numGrandTotal,
-        type: 'debit',
-        category: 'order_payment',
-        paymentMethod: 'Wallet Account',
-        orderId: orderId,
-        title: resolvedStoreDetails.name || 'Store Order',
-        subtitle: `Paid for order #${orderId} · ${dateStr}`,
-        balanceAfter: updatedUser.walletBalance,
-        status: 'success',
-      });
-      await walletTx.save();
-    }
+    const [resolvedStoreDetails, orderId] = await Promise.all([
+      resolveStoreCoordinates(storeId, storeDetails),
+      getNextSequence('orderId', 'ORD_', 5),
+    ]);
 
     const finalStoreName = (storeName && storeName.trim().length > 0)
       ? storeName.trim()
-      : (resolvedStoreDetails.name || (storeDoc && storeDoc.name) || 'Store');
+      : (resolvedStoreDetails.name || 'Store Order');
 
+    // 2. Process wallet / non-wallet payment transaction
+    const payment = await processOrderPayment({
+      userId,
+      orderId,
+      amount: totals.grandTotal,
+      paymentMethod,
+      storeName: finalStoreName,
+    });
+
+    if (!payment.success) {
+      return res.status(400).json(payment.errorResponse);
+    }
+
+    // 3. Persist new order
     const newOrder = new Order({
       orderId,
       userId,
       storeId,
       storeName: finalStoreName,
       items,
-      itemTotal: finalItemTotal,
-      deliveryCharge: numDeliveryCharge,
-      handlingCharge: numHandlingCharge,
-      couponDiscount: numCouponDiscount,
-      coinsDiscount: numCoinsDiscount,
-      grandTotal: finalGrandTotal,
+      itemTotal: totals.itemTotal,
+      deliveryCharge: totals.deliveryCharge,
+      handlingCharge: totals.handlingCharge,
+      couponDiscount: totals.couponDiscount,
+      coinsDiscount: totals.coinsDiscount,
+      grandTotal: totals.grandTotal,
       paymentMethod,
       paymentStatus: paymentMethod.toLowerCase().includes('cash') ? 'pending' : 'paid',
       deliveryAddress: deliveryAddress || { address: 'Default Delivery Address' },
@@ -157,107 +96,23 @@ exports.createOrder = async (req, res) => {
 
     await newOrder.save();
 
-    // Trigger In-App Notification for Citizen
+    // 4. In-App Notification to Citizen
     createNotification({
       userId,
       title: 'Order Placed Successfully',
-      message: `Your order #${orderId} has been placed at ${finalStoreName} (₹${finalGrandTotal}).`,
+      message: `Your order #${orderId} has been placed at ${finalStoreName} (₹${totals.grandTotal}).`,
       type: 'order',
       referenceId: orderId,
-      metadata: { storeName: finalStoreName, grandTotal: finalGrandTotal },
+      metadata: { storeName: finalStoreName, grandTotal: totals.grandTotal },
     }).catch((e) => console.warn('Notification error:', e.message));
 
-    // Decrement stock atomically (both base product and variant)
-    for (const item of items) {
-      const pId = item.productId || item.id;
-      const vId = item.variantId;
-      const qty = Number(item.quantity || item.qty || 1);
-      if (pId && qty > 0) {
-        if (vId) {
-          await Product.updateOne(
-            { productId: pId, 'variants.variantId': vId },
-            { $inc: { 'variants.$.stock': -qty, stock: -qty } }
-          ).catch((err) => console.warn(`⚠️ [Inventory] Could not decrement variant stock for ${pId}:${vId}:`, err.message));
-        } else {
-          await Product.updateOne(
-            { productId: pId },
-            { $inc: { stock: -qty } }
-          ).catch((err) => console.warn(`⚠️ [Inventory] Could not decrement stock for product ${pId}:`, err.message));
-        }
-      }
-    }
-
-    // Record non-wallet ledger entry
-    if (!isWallet) {
-      const now = new Date();
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const dateStr = `${months[now.getMonth()]} ${now.getDate()} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-
-      const userDoc = await User.findOne({ userId }).select('walletBalance');
-      const curWalletBal = userDoc?.walletBalance || 0;
-
-      const walletTx = new WalletTransaction({
-        transactionId: await getNextSequence('walletTxId', 'TXN_PAY_', 5),
-        userId,
-        amount: -numGrandTotal,
-        type: 'debit',
-        category: 'order_payment',
-        paymentMethod: paymentMethod,
-        orderId,
-        title: resolvedStoreDetails.name || 'Store Order',
-        subtitle: `Paid for order #${orderId} · ${dateStr}`,
-        balanceAfter: curWalletBal,
-        status: paymentMethod.toLowerCase().includes('cash') ? 'pending' : 'success',
-      });
-      await walletTx.save();
-    }
+    // 5. Parallel stock decrement
+    await decrementProductStock(items);
 
     console.log(`📦 [Order Placed] Order ID: ${orderId} by User: ${userId} for Store: ${storeId}`);
 
-    // Real-time Socket.io Notification to Merchant & Immediate Rider Dispatch (Option 1)
-    const io = req.app.get('io');
-    if (io) {
-      const orderPayload = newOrder.toObject ? newOrder.toObject() : newOrder;
-      io.to(`store:${storeId}`).emit(`store:${storeId}:new_order`, orderPayload);
-      io.emit(`store:${storeId}:new_order`, orderPayload);
-      console.log(`📡 [Socket.io] Emitted single targeted new_order for store: ${storeId} (Order: ${orderId})`);
-
-      // ⚡ Immediate Parallel Rider Dispatch on Order Placement
-      io.emit('order:available', orderPayload);
-      io.to('riders').emit('order:available', orderPayload);
-
-      const dispatchOrder = req.app.get('dispatchOrder');
-      const storeLat = resolvedStoreDetails.latitude || 0;
-      const storeLng = resolvedStoreDetails.longitude || 0;
-      if (dispatchOrder && (storeLat !== 0 || storeLng !== 0)) {
-        dispatchOrder(io, orderPayload, storeLat, storeLng, 1, []);
-      } else {
-        const payload = { ...orderPayload, dispatchRound: 3, countdownSecs: 30 };
-        const registry = req.app.get('riderRegistry');
-        if (registry) {
-          for (const [rId, info] of registry.entries()) {
-            if (info.isOnline && !info.isBusy && info.socketId) {
-              io.to(info.socketId).emit('order:dispatch', payload);
-            }
-          }
-        }
-      }
-    }
-
-    // Send FCM Push to Store
-    Store.findOne({ storeId })
-      .select('fcmToken phone')
-      .then(async (storeDoc) => {
-        let token = storeDoc?.fcmToken;
-        if (!token && storeDoc?.phone) {
-          const owner = await User.findOne({ phone: storeDoc.phone }).select('fcmToken');
-          token = owner?.fcmToken;
-        }
-        if (token) {
-          fcmService.sendToStoreNewOrder(token, newOrder);
-        }
-      })
-      .catch((err) => console.error('Error sending store FCM:', err.message));
+    // 6. Socket broadcast, nearest rider dispatch & store FCM alert
+    dispatchOrderAlerts(req.app, newOrder, resolvedStoreDetails);
 
     return res.status(201).json({
       success: true,
@@ -369,7 +224,7 @@ exports.getUserOrders = async (req, res) => {
     let queryUsers = [userId];
     const userDoc = await User.findOne({
       $or: [{ userId }, { phone: userId }],
-    });
+    }).select('userId phone').lean();
     if (userDoc) {
       if (userDoc.userId && !queryUsers.includes(userDoc.userId)) queryUsers.push(userDoc.userId);
       if (userDoc.phone && !queryUsers.includes(userDoc.phone)) queryUsers.push(userDoc.phone);
@@ -495,7 +350,7 @@ exports.getRiderDeliveries = async (req, res) => {
     let queryRiders = [riderId];
     const riderDoc = await Rider.findOne({
       $or: [{ riderId }, { phone: riderId }],
-    });
+    }).select('riderId phone').lean();
     if (riderDoc) {
       if (riderDoc.riderId && !queryRiders.includes(riderDoc.riderId)) queryRiders.push(riderDoc.riderId);
       if (riderDoc.phone && !queryRiders.includes(riderDoc.phone)) queryRiders.push(riderDoc.phone);
@@ -666,22 +521,12 @@ exports.updateOrderStatus = async (req, res) => {
       });
     }
 
-    const updateFields = { status };
-    if (status === 'delivered') {
-      updateFields.deliveredAt = new Date();
-      updateFields.paymentStatus = 'paid';
-    }
-
     const existing = await Order.findOne({ orderId });
     if (!existing) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    const now = new Date();
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const dateStr = `${months[now.getMonth()]} ${now.getDate()} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-
-    // Order cancellation handling
+    // Order cancellation validation
     if (status === 'cancelled') {
       const nonCancellable = ['delivered', 'return_requested', 'return_pickup_pending', 'return_pickup_assigned', 'returning_to_store', 'returned_to_store'];
       if (nonCancellable.includes(existing.status)) {
@@ -692,116 +537,20 @@ exports.updateOrderStatus = async (req, res) => {
       }
     }
 
-    if (status === 'cancelled' && existing.status !== 'cancelled') {
-      // 1. Restore product inventory
-      for (const item of (existing.items || [])) {
-        const pId = item.productId || item.id;
-        const qty = Number(item.quantity || item.qty || 1);
-        if (pId && qty > 0) {
-          await Product.updateOne({ productId: pId }, { $inc: { stock: qty } }).catch(() => {});
-        }
-      }
-
-      // 2. Refund citizen wallet
-      const wasWallet = existing.paymentMethod && existing.paymentMethod.toLowerCase().includes('wallet');
-      if (wasWallet && existing.paymentStatus === 'paid') {
-        const refundAmt = Number(existing.grandTotal) || 0;
-        if (refundAmt > 0) {
-          const refundedUser = await User.findOneAndUpdate(
-            { $or: [{ userId: existing.userId }, { phone: existing.userId }] },
-            { $inc: { walletBalance: refundAmt } },
-            { returnDocument: 'after' }
-          );
-
-          if (refundedUser) {
-            const refundTx = new WalletTransaction({
-              transactionId: await getNextSequence('walletTxId', 'TXN_REF_', 5),
-              userId: refundedUser.userId,
-              amount: refundAmt,
-              type: 'credit',
-              category: 'order_refund',
-              paymentMethod: 'Wallet Refund',
-              orderId: existing.orderId,
-              title: 'Order Refund',
-              subtitle: `Refund for cancelled order #${existing.orderId} · ${dateStr}`,
-              balanceAfter: refundedUser.walletBalance,
-              status: 'success',
-            });
-            await refundTx.save();
-            updateFields.paymentStatus = 'refunded';
-            console.log(`💳 [Auto Refund] Refunded ₹${refundAmt} to user ${refundedUser.userId}`);
-          }
-        }
-      }
+    const updateFields = { status };
+    if (status === 'delivered') {
+      updateFields.deliveredAt = new Date();
+      updateFields.paymentStatus = 'paid';
     }
 
-    // Order delivered payouts
+    // 1. Order cancellation restock & citizen wallet refund
+    if (status === 'cancelled' && existing.status !== 'cancelled') {
+      await handleOrderCancellation(existing, updateFields);
+    }
+
+    // 2. Order delivered payouts & store net sales settlement
     if (status === 'delivered' && existing.status !== 'delivered') {
-      const standardDeliveryFee = 35;
-      const customerDeliveryCharge = Number(existing.deliveryCharge) || 0;
-      // Way 2: If customer got Free Delivery (₹0), rider is guaranteed ₹35 sponsored by store high-value sale
-      const riderFee = customerDeliveryCharge > 0 ? customerDeliveryCharge : standardDeliveryFee;
-
-      // 1. Rider Payout (Always guaranteed at least ₹35)
-      const riderId = existing.deliveryAgent?.riderId;
-      if (riderId && riderFee > 0) {
-        const updatedRider = await Rider.findOneAndUpdate(
-          { $or: [{ riderId: riderId }, { phone: riderId }] },
-          { $inc: { walletBalance: riderFee } },
-          { returnDocument: 'after' }
-        );
-
-        if (updatedRider) {
-          const riderTx = new WalletTransaction({
-            transactionId: await getNextSequence('walletTxId', 'TXN_RDR_', 5),
-            userId: updatedRider.riderId,
-            amount: riderFee,
-            type: 'credit',
-            category: 'rider_payout',
-            paymentMethod: customerDeliveryCharge > 0 ? 'Customer Delivery Fee' : 'Store Sponsored Delivery Fee',
-            orderId: existing.orderId,
-            title: 'Delivery Task Earnings',
-            subtitle: `Earned ₹${riderFee} for delivering order #${existing.orderId} · ${dateStr}`,
-            balanceAfter: updatedRider.walletBalance,
-            status: 'success',
-          });
-          await riderTx.save();
-          console.log(`🚴 [Rider Payout] Credited ₹${riderFee} to rider ${updatedRider.riderId}`);
-        }
-      }
-
-      // 2. Store Settlement (Way 2: Net of delivery fee if free delivery or customer delivery fee)
-      if (existing.storeId) {
-        const grandTotal = Number(existing.grandTotal) || 0;
-        const deliveryDeduction = customerDeliveryCharge > 0 ? customerDeliveryCharge : standardDeliveryFee;
-        const storeAmount = Math.max(0, grandTotal - deliveryDeduction);
-
-        if (storeAmount > 0) {
-          const updatedStore = await Store.findOneAndUpdate(
-            { storeId: existing.storeId },
-            { $inc: { walletBalance: storeAmount } },
-            { returnDocument: 'after' }
-          );
-
-          if (updatedStore) {
-            const storeTx = new WalletTransaction({
-              transactionId: await getNextSequence('walletTxId', 'TXN_SETTLE_', 5),
-              userId: updatedStore.storeId,
-              amount: storeAmount,
-              type: 'credit',
-              category: 'store_settlement',
-              paymentMethod: 'Store Settlement',
-              orderId: existing.orderId,
-              title: `Order #${existing.orderId} · Sales Credit`,
-              subtitle: `Product sales credited to store wallet · ${dateStr}`,
-              balanceAfter: updatedStore.walletBalance || 0,
-              status: 'success',
-            });
-            await storeTx.save();
-            console.log(`🏪 [Store Settlement] Credited ₹${storeAmount} to store ${updatedStore.storeId}`);
-          }
-        }
-      }
+      await handleOrderDeliveredSettlement(existing);
     }
 
     const order = await Order.findOneAndUpdate(
@@ -939,193 +688,23 @@ exports.storeConfirmReturn = async (req, res) => {
     order.returnDetails.receivedAt = new Date();
     order.returnDetails.notes = notes || order.returnDetails.notes || '';
 
-    // 1. Restock product catalog inventory
-    if (Array.isArray(order.items)) {
-      for (const item of order.items) {
-        const pId = item.productId || item.id;
-        const qty = Number(item.quantity || item.qty || 1);
-        if (pId && qty > 0) {
-          await Product.updateOne({ productId: pId }, { $inc: { stock: qty } }).catch(() => {});
-        }
-      }
-      order.returnDetails.restocked = true;
-    }
+    // 1. Parallel inventory restock
+    await restockOrderItems(order.items);
+    order.returnDetails.restocked = true;
 
-    // 2. Financial Settlement on Return Confirmation
-    const deliveryFee = Number(order.deliveryCharge) || 0;
-    const isDoorstepReturn = order.returnDetails?.returnType === 'rider_doorstep' || order.returnDetails?.initiatedBy === 'rider';
+    // 2. Financial Settlement (Citizen refund, Rider payout, Store clawback)
+    const { refundTxId } = await settleReturnFinances(order);
 
-    // For doorstep return, citizen is refunded product cost (delivery fee is retained to pay rider for the completed trip)
-    let refundAmt = Number(order.grandTotal) || 0;
-    if (isDoorstepReturn && deliveryFee > 0) {
-      refundAmt = Math.max(0, refundAmt - deliveryFee);
-    }
-
-    const wasWallet = order.paymentMethod && order.paymentMethod.toLowerCase().includes('wallet');
-    const wasPaid = order.paymentStatus === 'paid';
-    let refundTxId = '';
-
-    const now = new Date();
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const dateStr = `${months[now.getMonth()]} ${now.getDate()} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-
-    if ((wasWallet || wasPaid) && order.paymentStatus !== 'refunded') {
-      if (refundAmt > 0) {
-        const refundedUser = await User.findOneAndUpdate(
-          { $or: [{ userId: order.userId }, { phone: order.userId }] },
-          { $inc: { walletBalance: refundAmt } },
-          { returnDocument: 'after' }
-        );
-
-        if (refundedUser) {
-          refundTxId = await getNextSequence('walletTxId', 'TXN_REF_', 5);
-          const refundTx = new WalletTransaction({
-            transactionId: refundTxId,
-            userId: refundedUser.userId,
-            amount: refundAmt,
-            type: 'credit',
-            category: 'order_refund',
-            paymentMethod: 'Wallet Refund',
-            orderId: order.orderId,
-            title: 'Order Return Refund',
-            subtitle: `Return refund (items cost) for order #${order.orderId} · ${dateStr}`,
-            balanceAfter: refundedUser.walletBalance,
-            status: 'success',
-          });
-          await refundTx.save();
-          order.paymentStatus = 'refunded';
-          order.returnDetails.refundAmount = refundAmt;
-          order.returnDetails.refundTransactionId = refundTxId;
-          console.log(`💳 [Return Auto-Refund] ₹${refundAmt} refunded to user ${refundedUser.userId} (Tx: ${refundTxId})`);
-        }
-      }
-    }
-
-    // 3. Compensate Rider for the Return Trip (Doorstep Return or Reverse Citizen Return)
+    // 3. Free up rider in registry & database
     const riderId = order.deliveryAgent?.riderId;
-    const reverseDeliveryFee = Number(order.returnDetails?.reverseDeliveryFee) || 0;
-    let riderPayoutAmt = 0;
-    let payoutTitle = '';
-    let payoutSubtitle = '';
-
-    if (riderId && isDoorstepReturn && deliveryFee > 0) {
-      riderPayoutAmt = deliveryFee;
-      payoutTitle = 'Return Trip Payout';
-      payoutSubtitle = `Trip delivery payout for return order #${order.orderId} · ${dateStr}`;
-    } else if (riderId && reverseDeliveryFee > 0) {
-      riderPayoutAmt = reverseDeliveryFee;
-      payoutTitle = 'Reverse Return Trip Payout';
-      payoutSubtitle = `Reverse pickup delivery fee for return #${order.orderId} · ${dateStr}`;
-    }
-
-    if (riderId && riderPayoutAmt > 0) {
-      const updatedRider = await Rider.findOneAndUpdate(
-        { $or: [{ riderId }, { phone: riderId }] },
-        { $inc: { walletBalance: riderPayoutAmt } },
-        { returnDocument: 'after' }
-      );
-      if (updatedRider) {
-        const riderTxId = await getNextSequence('walletTxId', 'TXN_PAYOUT_', 5);
-        const riderTx = new WalletTransaction({
-          transactionId: riderTxId,
-          userId: updatedRider.riderId || riderId,
-          amount: riderPayoutAmt,
-          type: 'credit',
-          category: 'delivery_payout',
-          paymentMethod: isDoorstepReturn ? 'Return Trip Fee' : 'Reverse Pickup Fee',
-          orderId: order.orderId,
-          title: payoutTitle,
-          subtitle: payoutSubtitle,
-          balanceAfter: updatedRider.walletBalance,
-          status: 'success',
-        });
-        await riderTx.save();
-        order.returnDetails.riderPayout = riderPayoutAmt;
-        console.log(`🛵 [Rider Return Payout] Credited ₹${riderPayoutAmt} to rider ${riderId} (Tx: ${riderTxId})`);
-      }
-    }
-
-    // 4. Adjust Store Wallet for returned & restocked items (Customer refunded)
-    if (!isDoorstepReturn && order.storeId && refundAmt > 0) {
-      const storeProductAmt = Math.max(0, (Number(order.grandTotal) || 0) - deliveryFee);
-      if (storeProductAmt > 0) {
-        const updatedStore = await Store.findOneAndUpdate(
-          { storeId: order.storeId },
-          { $inc: { walletBalance: -storeProductAmt } },
-          { returnDocument: 'after' }
-        );
-        if (updatedStore) {
-          const storeReturnTx = new WalletTransaction({
-            transactionId: await getNextSequence('walletTxId', 'TXN_RET_STORE_', 5),
-            userId: updatedStore.storeId,
-            amount: storeProductAmt,
-            type: 'debit',
-            category: 'order_return',
-            paymentMethod: 'Store Wallet',
-            orderId: order.orderId,
-            title: `Order #${order.orderId} · Return Refund`,
-            subtitle: `Items restocked to inventory · Citizen refunded · ${dateStr}`,
-            balanceAfter: updatedStore.walletBalance,
-            status: 'success',
-          });
-          await storeReturnTx.save();
-          console.log(`🏪 [Store Return Debited] Debited ₹${storeProductAmt} from store ${order.storeId} for restocked order ${order.orderId}`);
-        }
-      }
-    }
-
-    // 5. Free up rider in registry & Database
     if (riderId) {
-      const registry = req.app.get('riderRegistry');
-      if (registry && registry.has(riderId)) {
-        registry.get(riderId).isBusy = false;
-      }
-      await Rider.updateOne({ riderId }, { $set: { isBusy: false } });
+      await releaseRider(req.app, riderId);
     }
 
     await order.save();
 
-    const io = req.app.get('io');
-    if (io) {
-      const orderPayload = order.toObject ? order.toObject() : order;
-      io.emit(`order:${orderId}:status_update`, orderPayload);
-      io.emit('order:status_update', orderPayload);
-      io.emit('order:status_updated', orderPayload);
-      io.to(`store:${order.storeId}`).emit('order:returned', orderPayload);
-      if (riderId) io.to(`rider:${riderId}`).emit('order:returned', orderPayload);
-    }
-
-    console.log(`✅📦 [Return Confirmed] Store ${storeId} verified return for order ${orderId}`);
-
-    // High-Priority Citizen FCM Push on Return Confirmation
-    User.findOne({ $or: [{ userId: order.userId }, { phone: order.userId }] })
-      .select('fcmToken')
-      .then((citizen) => {
-        if (citizen?.fcmToken) {
-          fcmService.sendToCitizenOrderStatus(
-            citizen.fcmToken,
-            '📦 Return Received & Refunded',
-            `Your return for order #${orderId} was confirmed by the store. ₹${order.returnDetails?.refundAmount || order.grandTotal} has been refunded to your wallet.`,
-            orderId
-          );
-        }
-      })
-      .catch((err) => console.warn('Citizen return confirm FCM error:', err.message));
-
-    // In-App Notification to Citizen
-    if (order.userId) {
-      const refundMsg = (order.paymentStatus === 'refunded')
-        ? `Refund of ₹${order.grandTotal} has been credited to your wallet.`
-        : 'Items have been restocked.';
-      createNotification({
-        userId: order.userId,
-        title: 'Return Completed & Refunded',
-        message: `Your returned order #${orderId} has been confirmed by ${order.storeName || 'the store'}. ${refundMsg}`,
-        type: 'order',
-        referenceId: orderId,
-        metadata: { status: order.status, refundAmount: order.returnDetails.refundAmount, refundTxId },
-      }).catch((e) => console.warn('Notification error:', e.message));
-    }
+    // 4. Multi-party Socket broadcast, citizen push & in-app notification
+    dispatchReturnConfirmedAlerts(req.app, order, refundTxId);
 
     return res.status(200).json({
       success: true,
@@ -1269,33 +848,7 @@ exports.storeReviewCitizenReturn = async (req, res) => {
       };
 
       // 1. Deduct reverse delivery fee from Store Wallet
-      const now = new Date();
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const dateStr = `${months[now.getMonth()]} ${now.getDate()} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-
-      const updatedStore = await Store.findOneAndUpdate(
-        { storeId: order.storeId },
-        { $inc: { walletBalance: -reverseFee } },
-        { returnDocument: 'after' }
-      );
-
-      if (updatedStore) {
-        const storeDebitTx = new WalletTransaction({
-          transactionId: await getNextSequence('walletTxId', 'TXN_DEBIT_', 5),
-          userId: updatedStore.storeId,
-          amount: reverseFee,
-          type: 'debit',
-          category: 'return_delivery_fee',
-          paymentMethod: 'Store Wallet',
-          orderId: order.orderId,
-          title: `Order #${order.orderId} · Return Pickup Fee`,
-          subtitle: `Rider logistics charge for reverse return · ${dateStr}`,
-          balanceAfter: updatedStore.walletBalance,
-          status: 'success',
-        });
-        await storeDebitTx.save();
-        console.log(`🏪 [Reverse Return Fee] Debited ₹${reverseFee} from store ${order.storeId}`);
-      }
+      await processStoreReverseFee(order.storeId, order.orderId);
     } else {
       order.status = 'return_rejected';
       order.returnDetails.rejectionReason = rejectionReason || 'Store rejected return request';
@@ -1311,64 +864,7 @@ exports.storeReviewCitizenReturn = async (req, res) => {
       io.emit(`order:${orderId}:status_update`, orderPayload);
 
       if (action === 'approve') {
-        io.emit('order:available', orderPayload);
-        io.to('riders').emit('order:available', orderPayload);
-
-        // Targeted reverse pickup dispatch alert to online, non-busy delivery partners
-        const dispatchPayload = {
-          ...orderPayload,
-          dispatchRound: 3,
-          countdownSecs: 30,
-          isReversePickup: true,
-          deliveryFee: 35,
-          deliveryCharge: 35,
-        };
-
-        const notifiedTokens = new Set();
-        const registry = req.app.get('riderRegistry');
-        if (registry) {
-          for (const [rId, info] of registry.entries()) {
-            if (info.isOnline && !info.isBusy) {
-              if (info.socketId) {
-                io.to(info.socketId).emit('order:dispatch', dispatchPayload);
-              }
-              io.to(`rider:${rId}`).emit('order:dispatch', dispatchPayload);
-            }
-          }
-        }
-
-        // Broadcast FCM wake-up push alert to all online, non-busy riders
-        // (Forces Android/iOS to wake screen and bring Rider App to foreground even if idle or backgrounded)
-        Rider.find({ isOnline: true, isBusy: { $ne: true }, fcmToken: { $ne: '' } })
-          .select('fcmToken riderId phone')
-          .then(async (riders) => {
-            for (const r of riders) {
-              if (r.fcmToken && !notifiedTokens.has(r.fcmToken)) {
-                notifiedTokens.add(r.fcmToken);
-                fcmService.sendToRiderOrderAlert(r.fcmToken, dispatchPayload);
-              }
-            }
-
-            // Also check User collection for riders in registry whose FCM token might be on User
-            if (registry) {
-              for (const [rId, info] of registry.entries()) {
-                if (info.isOnline && !info.isBusy) {
-                  try {
-                    const uDoc = await User.findOne({
-                      $or: [{ userId: rId }, { phone: rId }],
-                      fcmToken: { $exists: true, $ne: '' },
-                    }).select('fcmToken');
-                    if (uDoc?.fcmToken && !notifiedTokens.has(uDoc.fcmToken)) {
-                      notifiedTokens.add(uDoc.fcmToken);
-                      fcmService.sendToRiderOrderAlert(uDoc.fcmToken, dispatchPayload);
-                    }
-                  } catch (_) {}
-                }
-              }
-            }
-            console.log(`📡 [Return Dispatch] Sent wake-up push to ${notifiedTokens.size} online riders for order ${orderId}`);
-          })
-          .catch((err) => console.error('Error broadcasting return dispatch rider FCM:', err.message));
+        dispatchReversePickupAlerts(req.app, order);
       }
     }
 

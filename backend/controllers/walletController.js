@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Rider = require('../models/Rider');
 const Store = require('../models/Store');
+const Order = require('../models/Order');
 const WalletTransaction = require('../models/WalletTransaction');
 const { getNextSequence } = require('../utils/sequenceGenerator');
 
@@ -15,29 +16,29 @@ exports.getWalletDetails = async (req, res) => {
 
     // Prioritize prefix / role hint
     if (requestedRole === 'store' || (userId && userId.startsWith('STORE_'))) {
-      account = await Store.findOne({ $or: [{ storeId: userId }, { phone: userId }] });
+      account = await Store.findOne({ $or: [{ storeId: userId }, { phone: userId }] }).lean();
       if (account) role = 'store_owner';
     } else if (requestedRole === 'rider' || (userId && userId.startsWith('RIDER_'))) {
-      account = await Rider.findOne({ $or: [{ riderId: userId }, { phone: userId }] });
+      account = await Rider.findOne({ $or: [{ riderId: userId }, { phone: userId }] }).lean();
       if (account) role = 'rider';
     }
 
     if (!account) {
-      account = await User.findOne({ $or: [{ userId }, { phone: userId }] });
+      account = await User.findOne({ $or: [{ userId }, { phone: userId }] }).lean();
       if (account) {
         role = 'citizen';
       }
     }
 
     if (!account) {
-      account = await Rider.findOne({ $or: [{ riderId: userId }, { phone: userId }] });
+      account = await Rider.findOne({ $or: [{ riderId: userId }, { phone: userId }] }).lean();
       if (account) {
         role = 'rider';
       }
     }
 
     if (!account) {
-      account = await Store.findOne({ $or: [{ storeId: userId }, { phone: userId }] });
+      account = await Store.findOne({ $or: [{ storeId: userId }, { phone: userId }] }).lean();
       if (account) {
         role = 'store_owner';
       }
@@ -66,12 +67,11 @@ exports.getWalletDetails = async (req, res) => {
     // Enhanced metrics for store_owner
     let storeSummary = null;
     if (role === 'store_owner') {
-      const Order = require('../models/Order');
       const storeId = account?.storeId || accountId;
       const [deliveredOrders, returnedOrders, activeOrders] = await Promise.all([
-        Order.find({ storeId, status: 'delivered' }).select('grandTotal deliveryCharge items orderId createdAt'),
-        Order.find({ storeId, status: { $in: ['returned_to_store', 'returning_to_store', 'return_pickup_pending', 'return_pickup_assigned'] } }).select('grandTotal deliveryCharge returnDetails orderId createdAt'),
-        Order.find({ storeId, status: { $in: ['placed', 'preparing', 'ready_for_pickup', 'accepted', 'out_for_delivery'] } }).select('grandTotal orderId'),
+        Order.find({ storeId, status: 'delivered' }).select('grandTotal deliveryCharge items orderId createdAt').lean(),
+        Order.find({ storeId, status: { $in: ['returned_to_store', 'returning_to_store', 'return_pickup_pending', 'return_pickup_assigned'] } }).select('grandTotal deliveryCharge returnDetails orderId createdAt').lean(),
+        Order.find({ storeId, status: { $in: ['placed', 'preparing', 'ready_for_pickup', 'accepted', 'out_for_delivery'] } }).select('grandTotal orderId').lean(),
       ]);
 
       let grossCustomerSales = 0;

@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Notification = require('../models/Notification');
 const Complaint = require('../models/Complaint');
 const Order = require('../models/Order');
@@ -42,11 +43,11 @@ async function getNotificationsByUser(req, res) {
     if (!notifications || notifications.length === 0) {
       const backfillList = [];
 
-      // 1. Check existing complaints
-      const userComplaints = await Complaint.find({ userId })
-        .sort({ createdAt: -1 })
-        .limit(5)
-        .lean();
+      // 1. Fetch complaints & orders in parallel
+      const [userComplaints, userOrders] = await Promise.all([
+        Complaint.find({ userId }).sort({ createdAt: -1 }).limit(5).lean(),
+        Order.find({ userId }).sort({ createdAt: -1 }).limit(5).lean(),
+      ]);
 
       for (let i = 0; i < userComplaints.length; i++) {
         const comp = userComplaints[i];
@@ -61,12 +62,6 @@ async function getNotificationsByUser(req, res) {
           isRead: false,
         });
       }
-
-      // 2. Check existing orders
-      const userOrders = await Order.find({ userId })
-        .sort({ createdAt: -1 })
-        .limit(5)
-        .lean();
 
       for (let j = 0; j < userOrders.length; j++) {
         const ord = userOrders[j];
@@ -116,7 +111,6 @@ async function getNotificationsByUser(req, res) {
   }
 }
 
-const mongoose = require('mongoose');
 
 /**
  * Mark a single notification as read.

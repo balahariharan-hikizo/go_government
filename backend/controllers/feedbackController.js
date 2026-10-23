@@ -87,7 +87,7 @@ exports.getAllFeedback = async (req, res) => {
 // 3. GET FEEDBACK STATS
 exports.getStats = async (req, res) => {
   try {
-    const all = await Feedback.find();
+    const all = await Feedback.find().select('rating type').lean();
 
     const total = all.length;
     let totalScore = 0;

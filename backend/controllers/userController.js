@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const { getNextSequence } = require('../utils/sequenceGenerator');
+const { sanitizePhone, generateOtp } = require('../utils/commonHelper');
 
 // 1. SEND OTP (Citizen / General User)
 exports.sendOtp = async (req, res) => {
@@ -10,39 +11,27 @@ exports.sendOtp = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Phone number is required' });
     }
 
-    const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
+    const cleanPhone = sanitizePhone(phone);
+    const { otp, otpExpires } = generateOtp(5);
 
-    // Auto-generate random 4-digit OTP (1000 to 9999)
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes validity
 
-    // Check if user already exists
-    let user = await User.findOne({ phone: cleanPhone });
+    // Fast path: existing user (95%+ traffic) - Single atomic DB call
+    let user = await User.findOneAndUpdate(
+      { phone: cleanPhone },
+      { $set: { otp, otpExpires } },
+      { returnDocument: 'after' }
+    );
+
     if (!user) {
+      // New user registration flow
       const userId = await getNextSequence('userId', 'USER_', 5);
-      try {
-        user = await User.create({
-          phone: cleanPhone,
-          userId,
-          role: 'citizen',
-          otp,
-          otpExpires,
-        });
-      } catch (err) {
-        if (err.code === 11000) {
-          user = await User.findOneAndUpdate(
-            { phone: cleanPhone },
-            { $set: { otp, otpExpires } },
-            { returnDocument: 'after' }
-          );
-        } else {
-          throw err;
-        }
-      }
-    } else {
-      user.otp = otp;
-      user.otpExpires = otpExpires;
-      await user.save();
+      user = await User.create({
+        phone: cleanPhone,
+        userId,
+        role: 'citizen',
+        otp,
+        otpExpires,
+      });
     }
 
     console.log(`📱 [Citizen OTP] Sent to ${cleanPhone}: ${otp}`);
@@ -61,32 +50,29 @@ exports.sendOtp = async (req, res) => {
 // 2. VERIFY OTP
 exports.verifyOtp = async (req, res) => {
   try {
-    const { phone, otp, } = req.body;
+    const { phone, otp } = req.body;
 
     if (!phone || !otp) {
       return res.status(400).json({ success: false, error: 'Phone and OTP are required' });
     }
 
-    const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
-    const user = await User.findOne({ phone: cleanPhone });
+    const cleanPhone = sanitizePhone(phone);
+    const cleanOtp = otp.toString().trim();
+
+    // 1. FAST PATH: Single atomic query to verify and clear OTP in 1 DB call
+    const user = await User.findOneAndUpdate(
+      {
+        phone: cleanPhone,
+        otp: cleanOtp,
+        otpExpires: { $gte: new Date() },
+      },
+      { $set: { otp: '' } },
+      { returnDocument: 'after' }
+    );
 
     if (!user) {
-      return res.status(404).json({ success: false, error: 'User not found. Please request OTP first.' });
+      return res.status(400).json({ success: false, error: 'Invalid or expired OTP code. Please enter the correct OTP.' });
     }
-
-    // Check expiration
-    if (user.otpExpires && new Date() > user.otpExpires) {
-      return res.status(400).json({ success: false, error: 'OTP has expired. Please request a new one.' });
-    }
-
-    // Verify OTP code
-    if (user.otp !== otp.toString().trim()) {
-      return res.status(400).json({ success: false, error: 'Invalid OTP code. Please enter the correct OTP.' });
-    }
-
-    // Clear OTP after successful verification
-    user.otp = '';
-    await user.save();
 
     const hasProfile = Boolean(user.userName && user.userName.trim().length > 0);
     const isNewUser = !hasProfile;
@@ -172,41 +158,47 @@ exports.sendPhoneUpdateOtp = async (req, res) => {
       ? currentPhone.toString().trim().replace(/[^0-9]/g, '').slice(-10)
       : null;
 
-    let user = null;
-    if (userId) {
-      user = await User.findOne({ userId });
-      if (!user) {
-        return res.status(404).json({ success: false, error: 'User account not found for this userId' });
-      }
-      if (cleanCurrentPhone && user.phone !== cleanCurrentPhone) {
-        return res.status(400).json({ success: false, error: 'Current phone number does not match this user account' });
-      }
-    } else if (cleanCurrentPhone) {
-      user = await User.findOne({ phone: cleanCurrentPhone });
-      if (!user) {
-        return res.status(404).json({ success: false, error: 'User account not found for this phone number' });
-      }
-    } else {
+    const userQuery = userId
+      ? { userId }
+      : (cleanCurrentPhone ? { phone: cleanCurrentPhone } : null);
+
+    if (!userQuery) {
       return res.status(400).json({ success: false, error: 'userId or currentPhone is required to identify the user' });
     }
 
-    const existing = await User.findOne({
-      phone: cleanNewPhone,
-      userId: { $ne: user.userId },
-    });
+    // Parallel DB lookups: fetch user and check if newPhone is already registered
+    const [user, existing] = await Promise.all([
+      User.findOne(userQuery),
+      User.findOne({ phone: cleanNewPhone }),
+    ]);
 
-    if (existing) {
-      return res.status(400).json({ success: false, error: 'This phone number is already registered with another account.',
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User account not found' });
+    }
+    if (cleanCurrentPhone && user.phone !== cleanCurrentPhone) {
+      return res.status(400).json({ success: false, error: 'Current phone number does not match this user account' });
+    }
+
+    if (existing && existing.userId !== user.userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'This phone number is already registered with another account.',
       });
     }
 
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
     const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
 
-    user.pendingPhone = cleanNewPhone;
-    user.pendingPhoneOtp = otp;
-    user.pendingPhoneOtpExpires = otpExpires;
-    await user.save();
+    await User.updateOne(
+      { userId: user.userId },
+      {
+        $set: {
+          pendingPhone: cleanNewPhone,
+          pendingPhoneOtp: otp,
+          pendingPhoneOtpExpires: otpExpires,
+        },
+      }
+    );
 
     console.log(`📲 [Citizen Phone Update OTP] for ${cleanNewPhone}: ${otp}`);
 
@@ -234,50 +226,45 @@ exports.verifyPhoneUpdateOtp = async (req, res) => {
     const cleanCurrentPhone = currentPhone
       ? currentPhone.toString().trim().replace(/[^0-9]/g, '').slice(-10)
       : null;
+    const cleanOtp = otp.toString().trim();
 
-    let user = null;
-    if (userId) {
-      user = await User.findOne({ userId });
-      if (!user) {
-        return res.status(404).json({ success: false, error: 'User account not found for this userId' });
-      }
-      if (cleanCurrentPhone && user.phone !== cleanCurrentPhone) {
-        return res.status(400).json({ success: false, error: 'Current phone number does not match this user account' });
-      }
-    } else if (cleanCurrentPhone) {
-      user = await User.findOne({ phone: cleanCurrentPhone });
-      if (!user) {
-        return res.status(404).json({ success: false, error: 'User account not found for this phone number' });
-      }
-    } else {
+    const userQuery = userId
+      ? { userId }
+      : (cleanCurrentPhone ? { phone: cleanCurrentPhone } : null);
+
+    if (!userQuery) {
       return res.status(400).json({ success: false, error: 'userId or currentPhone is required to identify the user' });
     }
 
-    if (user.pendingPhone !== cleanNewPhone) {
-      return res.status(400).json({ success: false, error: 'Phone number mismatch. Please request OTP again.' });
+    // 1. FAST PATH: Single atomic query to verify pending OTP and update phone
+    const updatedUser = await User.findOneAndUpdate(
+      {
+        ...userQuery,
+        pendingPhone: cleanNewPhone,
+        pendingPhoneOtp: cleanOtp,
+        pendingPhoneOtpExpires: { $gte: new Date() },
+      },
+      {
+        $set: {
+          phone: cleanNewPhone,
+          pendingPhone: '',
+          pendingPhoneOtp: '',
+          pendingPhoneOtpExpires: null,
+        },
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (!updatedUser) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired OTP code. Please request OTP again.' });
     }
 
-    if (user.pendingPhoneOtpExpires && new Date() > user.pendingPhoneOtpExpires) {
-      return res.status(400).json({ success: false, error: 'OTP has expired. Please request a new one.' });
-    }
-
-    if (user.pendingPhoneOtp !== otp.toString().trim()) {
-      return res.status(400).json({ success: false, error: 'Invalid OTP code. Please enter the correct OTP.' });
-    }
-
-    user.phone = cleanNewPhone;
-    user.pendingPhone = '';
-    user.pendingPhoneOtp = '';
-    user.pendingPhoneOtpExpires = null;
-    await user.save();
-
-    console.log(`✅ Citizen phone updated: user ${user.userId} -> ${cleanNewPhone}`);
-
+    console.log(`✅ Citizen phone updated: user ${updatedUser.userId} -> ${cleanNewPhone}`);
     res.status(200).json({
       success: true,
       message: 'Phone number updated successfully',
       phone: cleanNewPhone,
-      user: user,
+      user: updatedUser,
     });
   } catch (error) {
     console.error('Error verifying phone update OTP:', error);

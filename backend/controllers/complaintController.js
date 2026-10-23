@@ -59,14 +59,16 @@ function formatComplaint(doc, req) {
   return obj;
 }
 
-// 0. GET COMPLAINT STATS (Admin Web)
+// 1. GET COMPLAINT STATS (Admin Web)
 exports.getStats = async (req, res) => {
   try {
-    const total = await Complaint.countDocuments();
-    const underReview = await Complaint.countDocuments({ status: { $regex: /^under review$/i } });
-    const inProgress = await Complaint.countDocuments({ status: { $regex: /^in progress$/i } });
-    const resolved = await Complaint.countDocuments({ status: { $regex: /^resolved$/i } });
-    const rejected = await Complaint.countDocuments({ status: { $regex: /^rejected$/i } });
+    const [total, underReview, inProgress, resolved, rejected] = await Promise.all([
+      Complaint.countDocuments(),
+      Complaint.countDocuments({ status: { $regex: /^under review$/i } }),
+      Complaint.countDocuments({ status: { $regex: /^in progress$/i } }),
+      Complaint.countDocuments({ status: { $regex: /^resolved$/i } }),
+      Complaint.countDocuments({ status: { $regex: /^rejected$/i } }),
+    ]);
 
     res.status(200).json({
       success: true,
@@ -84,7 +86,7 @@ exports.getStats = async (req, res) => {
   }
 };
 
-// 1. GET ALL COMPLAINTS
+// 2. GET ALL COMPLAINTS
 exports.getAllComplaints = async (req, res) => {
   try {
     const { status } = req.query;
@@ -105,7 +107,7 @@ exports.getAllComplaints = async (req, res) => {
   }
 };
 
-// 2. GET SINGLE COMPLAINT
+// 3. GET SINGLE COMPLAINT
 exports.getComplaintById = async (req, res) => {
   try {
     const complaint = await Complaint.findOne({ complaintId: req.params.complaintId });
@@ -122,7 +124,7 @@ exports.getComplaintById = async (req, res) => {
   }
 };
 
-// 3. GET COMPLAINTS BY USER ID
+// 4. GET COMPLAINTS BY USER ID
 exports.getUserComplaints = async (req, res) => {
   try {
     const userComplaints = await Complaint.find({ userId: req.params.userId }).sort({ createdAt: -1 });
@@ -138,7 +140,7 @@ exports.getUserComplaints = async (req, res) => {
   }
 };
 
-// 4. SUBMIT A NEW COMPLAINT
+// 5. SUBMIT A NEW COMPLAINT
 exports.createComplaint = async (req, res) => {
   try {
     const data = req.body;
@@ -213,7 +215,7 @@ exports.createComplaint = async (req, res) => {
   }
 };
 
-// 5. TOGGLE LIKE
+// 6. TOGGLE LIKE 
 exports.toggleLike = async (req, res) => {
   try {
     const { complaintId } = req.params;
@@ -271,7 +273,7 @@ exports.toggleLike = async (req, res) => {
   }
 };
 
-// 6. ADD COMMENT
+// 7. ADD COMMENT
 exports.addComment = async (req, res) => {
   try {
     const { complaintId } = req.params;
@@ -332,7 +334,7 @@ exports.addComment = async (req, res) => {
   }
 };
 
-// 7. UPDATE COMPLAINT STATUS
+// 8. UPDATE COMPLAINT STATUS
 exports.updateStatus = async (req, res) => {
   try {
     const { complaintId } = req.params;

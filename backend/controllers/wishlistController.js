@@ -8,20 +8,29 @@ exports.getWishlist = async (req, res) => {
       return res.status(400).json({ success: false, message: 'userId is required' });
     }
 
-    let wishlist = await Wishlist.findOne({ userId });
+    const wishlist = await Wishlist.findOne({ userId }).lean();
     if (!wishlist) {
-      wishlist = await Wishlist.create({ userId, items: [] });
+      return res.status(200).json({
+        success: true,
+        data: {
+          userId,
+          items: [],
+          favoriteIds: [],
+          totalCount: 0,
+        },
+      });
     }
 
-    const favoriteIds = wishlist.items.map((item) => item.productId);
+    const items = wishlist.items || [];
+    const favoriteIds = items.map((item) => item.productId);
 
     return res.status(200).json({
       success: true,
       data: {
         userId: wishlist.userId,
-        items: wishlist.items,
+        items,
         favoriteIds,
-        totalCount: wishlist.items.length,
+        totalCount: items.length,
       },
     });
   } catch (error) {

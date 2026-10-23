@@ -145,5 +145,10 @@ OrderSchema.set('toObject', {
   virtuals: true,
 });
 
+// Compound Indexes for fast sorting and history lookups
+OrderSchema.index({ userId: 1, createdAt: -1 });
+OrderSchema.index({ storeId: 1, createdAt: -1 });
+OrderSchema.index({ 'deliveryAgent.riderId': 1, createdAt: -1 });
 
 module.exports = mongoose.model('Order', OrderSchema);
+

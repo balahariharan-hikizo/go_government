@@ -1,5 +1,6 @@
 const Rider = require('../models/Rider');
 const { getNextSequence } = require('../utils/sequenceGenerator');
+const { sanitizePhone, generateOtp } = require('../utils/commonHelper');
 
 // 1. SEND RIDER OTP
 exports.sendOtp = async (req, res) => {
@@ -10,37 +11,26 @@ exports.sendOtp = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Phone number is required' });
     }
 
-    const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
+    const cleanPhone = sanitizePhone(phone);
+    const { otp, otpExpires } = generateOtp(5);
 
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
 
-    let rider = await Rider.findOne({ phone: cleanPhone });
+    // Fast path: existing rider (95%+ traffic) - Single atomic DB call
+    let rider = await Rider.findOneAndUpdate(
+      { phone: cleanPhone },
+      { $set: { otp, otpExpires } },
+      { returnDocument: 'after' }
+    );
+
     if (!rider) {
       const riderId = await getNextSequence('riderId', 'RDR_', 5);
-      try {
-        rider = await Rider.create({
-          phone: cleanPhone,
-          riderId,
-          role: 'rider',
-          otp,
-          otpExpires,
-        });
-      } catch (err) {
-        if (err.code === 11000) {
-          rider = await Rider.findOneAndUpdate(
-            { phone: cleanPhone },
-            { $set: { otp, otpExpires } },
-            { returnDocument: 'after' }
-          );
-        } else {
-          throw err;
-        }
-      }
-    } else {
-      rider.otp = otp;
-      rider.otpExpires = otpExpires;
-      await rider.save();
+      rider = await Rider.create({
+        phone: cleanPhone,
+        riderId,
+        role: 'rider',
+        otp,
+        otpExpires,
+      });
     }
 
     console.log(`🛵 [Rider OTP] Sent to ${cleanPhone}: ${otp}`);
@@ -65,24 +55,23 @@ exports.verifyOtp = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Phone and OTP are required' });
     }
 
-    const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
-    const rider = await Rider.findOne({ phone: cleanPhone });
+    const cleanPhone = sanitizePhone(phone);
+    const cleanOtp = otp.toString().trim();
+
+    // Single atomic query: verify and clear OTP in 1 DB call
+    const rider = await Rider.findOneAndUpdate(
+      {
+        phone: cleanPhone,
+        otp: cleanOtp,
+        otpExpires: { $gte: new Date() },
+      },
+      { $set: { otp: '' } },
+      { returnDocument: 'after' }
+    );
 
     if (!rider) {
-      return res.status(404).json({ success: false, error: 'Rider not found. Please request OTP first.' });
+      return res.status(400).json({ success: false, error: 'Invalid or expired OTP code. Please enter the correct OTP.' });
     }
-
-    if (rider.otpExpires && new Date() > rider.otpExpires) {
-      return res.status(400).json({ success: false, error: 'OTP has expired. Please request a new one.' });
-    }
-
-    if (rider.otp !== otp.toString().trim()) {
-      return res.status(400).json({ success: false, error: 'Invalid OTP code. Please enter the correct OTP.' });
-    }
-
-    // Clear OTP
-    rider.otp = '';
-    await rider.save();
 
     const hasProfile = Boolean(rider.name && rider.name.trim().length > 0 && rider.vehicleNumber && rider.vehicleNumber.trim().length > 0);
     const isNewRider = !hasProfile;

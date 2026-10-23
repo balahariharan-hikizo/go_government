@@ -1,5 +1,6 @@
 const Store = require('../models/Store');
 const { getNextSequence } = require('../utils/sequenceGenerator');
+const { sanitizePhone, generateOtp } = require('../utils/commonHelper');
 
 // In-memory cache for new store merchant registration OTPs: phone -> { otp, otpExpires }
 const pendingRegistrationOtps = new Map();
@@ -13,13 +14,16 @@ exports.sendOtp = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Phone number is required' });
     }
 
-    const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
+    const cleanPhone = sanitizePhone(phone);
+    const { otp, otpExpires } = generateOtp(5);
 
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 min validity
 
-    // Check if store already exists with this phone
-    let store = await Store.findOne({ phone: cleanPhone });
+    // Atomically update OTP for existing store or detect if new registration is needed
+    const store = await Store.findOneAndUpdate(
+      { phone: cleanPhone },
+      { $set: { otp, otpExpires } },
+      { returnDocument: 'after' }
+    );
 
     if (!store) {
       // Store does NOT exist yet - store OTP in memory map for new registration
@@ -36,13 +40,9 @@ exports.sendOtp = async (req, res) => {
       });
     }
 
-    store.otp = otp;
-    store.otpExpires = otpExpires;
-    await store.save();
-
     console.log(`🏪 [Store OTP] Sent to ${cleanPhone}: ${otp}`);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       isRegistered: true,
       message: `OTP sent successfully to Store ${cleanPhone}`,
@@ -64,7 +64,7 @@ exports.verifyOtp = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Phone and OTP are required' });
     }
 
-    const cleanPhone = phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
+    const cleanPhone = sanitizePhone(phone);
     const store = await Store.findOne({ phone: cleanPhone });
 
     if (!store) {
@@ -108,9 +108,9 @@ exports.verifyOtp = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid OTP code. Please enter the correct OTP.' });
     }
 
-    // Clear OTP
-    store.otp = '';
-    await store.save();
+    // Atomically clear OTP
+    Store.updateOne({ _id: store._id }, { $set: { otp: '' } }).catch((e) => console.warn('Store OTP clear error:', e.message));
+
 
     res.status(200).json({
       success: true,
@@ -315,10 +315,12 @@ exports.getAllStores = async (req, res) => {
     const filter = {};
     if (status) filter.status = status;
 
-    const stores = await Store.find(filter).sort({ createdAt: -1 });
-    const pendingCount = await Store.countDocuments({ status: 'pending' });
-    const approvedCount = await Store.countDocuments({ status: 'approved' });
-    const rejectedCount = await Store.countDocuments({ status: 'rejected' });
+    const [stores, pendingCount, approvedCount, rejectedCount] = await Promise.all([
+      Store.find(filter).sort({ createdAt: -1 }),
+      Store.countDocuments({ status: 'pending' }),
+      Store.countDocuments({ status: 'approved' }),
+      Store.countDocuments({ status: 'rejected' }),
+    ]);
 
     res.status(200).json({
       success: true,

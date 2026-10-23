@@ -212,11 +212,6 @@ exports.updateProduct = async (req, res) => {
     const isObjectId = mongoose.Types.ObjectId.isValid(productId);
     const query = isObjectId ? { $or: [{ productId }, { _id: productId }] } : { productId };
 
-    const existing = await Product.findOne(query);
-    if (!existing) {
-      return res.status(404).json({ success: false, error: 'Product not found' });
-    }
-
     const updateData = { ...req.body };
 
     if (updateData.name && !updateData.title) {
@@ -226,35 +221,33 @@ exports.updateProduct = async (req, res) => {
       updateData.stock = Number(updateData.stockQuantity);
     }
 
-    // Discount re-calculation if price changed
-    if (updateData.price !== undefined || updateData.originalPrice !== undefined) {
-      const p = updateData.price !== undefined ? Number(updateData.price) : existing.price;
-      const op = updateData.originalPrice !== undefined ? Number(updateData.originalPrice) : existing.originalPrice;
-      updateData.discountPercentage = calculateDiscount(p, op);
+    // Discount calculation if prices provided
+    if (updateData.price !== undefined && updateData.originalPrice !== undefined) {
+      updateData.discountPercentage = calculateDiscount(updateData.price, updateData.originalPrice);
     }
 
-    // Synchronize images
+    // Synchronize images if provided
     if (Array.isArray(updateData.images)) {
       updateData.images = updateData.images.map((img) => img.toString().trim()).filter(Boolean);
       if (updateData.images.length > 0 && !updateData.image) {
         updateData.image = updateData.images[0];
       }
-    } else if (updateData.image && (!existing.images || existing.images.length === 0)) {
+    } else if (updateData.image) {
       updateData.images = [updateData.image];
     }
 
-    // Reformat variants if passed
+    // Reformat variants if provided
     if (Array.isArray(updateData.variants)) {
       updateData.hasVariants = updateData.variants.length > 0;
       updateData.variants = updateData.variants.map((v, idx) => {
-        const vPrice = Number(v.price || updateData.price || existing.price);
+        const vPrice = Number(v.price || updateData.price || 0);
         const vOrig = v.originalPrice !== undefined ? Number(v.originalPrice) : 0;
         const vUnit = v.unit || v.weight || '1 Units';
         const vStock = v.stock !== undefined ? Number(v.stock) : (v.stockQuantity !== undefined ? Number(v.stockQuantity) : 10);
         return {
-          variantId: (v.variantId && v.variantId.startsWith(`${existing.productId}_V`))
+          variantId: (v.variantId && v.variantId.includes('_V'))
             ? v.variantId
-            : `${existing.productId}_V${idx + 1}`,
+            : `${productId}_V${idx + 1}`,
           unit: vUnit,
           price: vPrice,
           originalPrice: vOrig,
@@ -266,11 +259,16 @@ exports.updateProduct = async (req, res) => {
       });
     }
 
+    // Single Atomic DB Call: updates and returns the updated product
     const updated = await Product.findOneAndUpdate(
       query,
       { $set: updateData },
       { returnDocument: 'after', runValidators: true }
     );
+
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Product not found' });
+    }
 
     res.status(200).json({
       success: true,
