@@ -155,21 +155,31 @@ function dispatchReturnConfirmedAlerts(app, order, refundTxId) {
 
   console.log(`✅📦 [Return Confirmed] Store ${order.storeId} verified return for order ${orderId}`);
 
-  // High-Priority Citizen FCM Push on Return Confirmation
-  User.findOne({ $or: [{ userId: order.userId }, { phone: order.userId }] })
-    .select('fcmToken')
-    .lean()
-    .then((citizen) => {
-      if (citizen?.fcmToken) {
-        fcmService.sendToCitizenOrderStatus(
-          citizen.fcmToken,
-          '📦 Return Received & Refunded',
-          `Your return for order #${orderId} was confirmed by the store. ₹${order.returnDetails?.refundAmount || order.grandTotal} has been refunded to your wallet.`,
-          orderId
-        );
-      }
-    })
-    .catch((err) => console.warn('Citizen return confirm FCM error:', err.message));
+  // High-Priority Citizen FCM Push on Return Confirmation (Zero DB call if citizen token populated)
+  const citizenToken = order.citizen?.fcmToken;
+  if (citizenToken) {
+    fcmService.sendToCitizenOrderStatus(
+      citizenToken,
+      '📦 Return Received & Refunded',
+      `Your return for order #${orderId} was confirmed by the store. ₹${order.returnDetails?.refundAmount || order.grandTotal} has been refunded to your wallet.`,
+      orderId
+    ).catch((err) => console.warn('Citizen return confirm FCM error:', err.message));
+  } else {
+    User.findOne({ $or: [{ userId: order.userId }, { phone: order.userId }] })
+      .select('fcmToken')
+      .lean()
+      .then((citizen) => {
+        if (citizen?.fcmToken) {
+          fcmService.sendToCitizenOrderStatus(
+            citizen.fcmToken,
+            '📦 Return Received & Refunded',
+            `Your return for order #${orderId} was confirmed by the store. ₹${order.returnDetails?.refundAmount || order.grandTotal} has been refunded to your wallet.`,
+            orderId
+          );
+        }
+      })
+      .catch((err) => console.warn('Citizen return confirm FCM error:', err.message));
+  }
 
   // In-App Notification to Citizen
   if (order.userId) {
@@ -248,6 +258,7 @@ function dispatchReversePickupAlerts(app, order) {
   // Broadcast FCM wake-up push alert to all online, non-busy riders
   Rider.find({ isOnline: true, isBusy: { $ne: true }, fcmToken: { $ne: '' } })
     .select('fcmToken riderId phone')
+    .lean()
     .then(async (riders) => {
       for (const r of riders) {
         if (r.fcmToken && !notifiedTokens.has(r.fcmToken)) {
@@ -256,20 +267,29 @@ function dispatchReversePickupAlerts(app, order) {
         }
       }
 
+      // Single optimized query for any remaining online registry riders instead of N queries in a loop
       if (registry) {
+        const pendingRiderIds = [];
         for (const [rId, info] of registry.entries()) {
           if (info.isOnline && !info.isBusy) {
-            try {
-              const uDoc = await User.findOne({
-                $or: [{ userId: rId }, { phone: rId }],
-                fcmToken: { $exists: true, $ne: '' },
-              }).select('fcmToken');
+            pendingRiderIds.push(rId);
+          }
+        }
+
+        if (pendingRiderIds.length > 0) {
+          try {
+            const userDocs = await User.find({
+              $or: [{ userId: { $in: pendingRiderIds } }, { phone: { $in: pendingRiderIds } }],
+              fcmToken: { $exists: true, $ne: '' },
+            }).select('fcmToken').lean();
+
+            for (const uDoc of userDocs) {
               if (uDoc?.fcmToken && !notifiedTokens.has(uDoc.fcmToken)) {
                 notifiedTokens.add(uDoc.fcmToken);
                 fcmService.sendToRiderOrderAlert(uDoc.fcmToken, dispatchPayload);
               }
-            } catch (_) {}
-          }
+            }
+          } catch (_) {}
         }
       }
       console.log(`📡 [Return Dispatch] Sent wake-up push to ${notifiedTokens.size} online riders for order ${orderId}`);

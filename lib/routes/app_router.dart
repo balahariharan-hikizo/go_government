@@ -135,6 +135,7 @@ class AppRouter {
             title: args['title'] as String? ?? 'Products',
             products: (args['products'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [],
             storeType: args['storeType'] as String? ?? 'medical',
+            categories: (args['categories'] as List<dynamic>?)?.cast<Map<String, dynamic>>(),
           ),
           settings,
         );

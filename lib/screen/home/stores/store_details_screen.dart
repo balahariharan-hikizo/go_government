@@ -17,6 +17,7 @@ import '../../../widget/common_wishlist_button.dart';
 import '../../../widget/common_directions_button.dart';
 import '../../../services/translation_service.dart';
 import '../../../network/api_client.dart';
+import '../../../network/category_api_service.dart';
 import '../../../utils/call_launcher.dart';
 
 class StoreDetailsScreen extends StatefulWidget {
@@ -46,6 +47,7 @@ class StoreDetailsScreen extends StatefulWidget {
 class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
   String _currentStorePhone = '';
   String _selectedCategory = 'All';
+  List<Map<String, dynamic>> _storeCategories = [];
 
   @override
   void initState() {
@@ -54,6 +56,10 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
 
     if (_currentStorePhone.isEmpty && widget.storeId.isNotEmpty) {
       _fetchStoreContact();
+    }
+
+    if (widget.storeId.isNotEmpty) {
+      _fetchStoreCategories();
     }
 
     // Dispatch a fetch directions event with real store address
@@ -89,6 +95,21 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
     } catch (_) {}
   }
 
+  Future<void> _fetchStoreCategories() async {
+    try {
+      final cats = await CategoryApiService.fetchCategoriesByStore(widget.storeId);
+      if (mounted) {
+        setState(() {
+          _storeCategories = cats;
+          if (_selectedCategory != 'All' &&
+              !cats.any((c) => (c['name']?.toString().toLowerCase().trim() ?? '') == _selectedCategory.toLowerCase().trim())) {
+            _selectedCategory = 'All';
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
   String _searchQuery = '';
 
   late final VoidCallback _cartListener;
@@ -112,15 +133,25 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
     final List<Map<String, dynamic>> allProducts =
         (productState is ProductLoaded) ? productState.products : [];
 
-    // Extract unique categories from products
-    final Set<String> categoriesSet = {'All'};
-    for (final p in allProducts) {
-      final cat = p['category']?.toString().trim() ?? '';
-      if (cat.isNotEmpty) {
-        categoriesSet.add(cat);
+    // Build rich category items: Start with 'All'
+    final List<Map<String, dynamic>> categoryItems = [
+      {'name': 'All', 'icon': '', 'productCount': allProducts.length}
+    ];
+
+    if (_storeCategories.isNotEmpty) {
+      // Use Store Categories from Category Master API (filtered by productCount > 0)
+      for (final cat in _storeCategories) {
+        final name = cat['name']?.toString().trim() ?? '';
+        final count = cat['productCount'] is num ? (cat['productCount'] as num).toInt() : 0;
+        if (name.isNotEmpty && count > 0) {
+          categoryItems.add({
+            'name': name,
+            'icon': cat['icon']?.toString().trim() ?? '',
+            'productCount': count,
+          });
+        }
       }
     }
-    final List<String> availableCategories = categoriesSet.toList();
 
     final filteredProducts = allProducts.where((p) {
       final name = p['title'].toString().toLowerCase();
@@ -202,17 +233,19 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                       SizedBox(height: Responsive.h(14)),
 
                       // Category Filter Chips
-                      if (availableCategories.length > 1) ...[
+                      if (categoryItems.length > 1) ...[
                         SizedBox(
                           height: Responsive.h(38),
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             physics: const BouncingScrollPhysics(),
-                            itemCount: availableCategories.length,
+                            itemCount: categoryItems.length,
                             separatorBuilder: (context, index) => SizedBox(width: Responsive.w(8)),
                             itemBuilder: (context, index) {
-                              final cat = availableCategories[index];
-                              final isSelected = _selectedCategory == cat;
+                              final item = categoryItems[index];
+                              final cat = item['name'] as String;
+                              final icon = item['icon'] as String? ?? '';
+                              final isSelected = _selectedCategory.toLowerCase() == cat.toLowerCase();
                               return GestureDetector(
                                 onTap: () {
                                   setState(() => _selectedCategory = cat);
@@ -220,7 +253,7 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
                                   padding: EdgeInsets.symmetric(
-                                    horizontal: Responsive.w(16),
+                                    horizontal: Responsive.w(14),
                                     vertical: Responsive.h(8),
                                   ),
                                   decoration: BoxDecoration(
@@ -241,11 +274,20 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                                         : [],
                                   ),
                                   child: Center(
-                                    child: CustomText.title(
-                                      cat,
-                                      fontSize: 13,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                      color: isSelected ? Colors.white : AppColors.black,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (icon.isNotEmpty) ...[
+                                          Text(icon, style: const TextStyle(fontSize: 13)),
+                                          SizedBox(width: Responsive.w(5)),
+                                        ],
+                                        CustomText.title(
+                                          cat,
+                                          fontSize: 13,
+                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                          color: isSelected ? Colors.white : AppColors.black,
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -278,6 +320,7 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                                   'title': 'All Items',
                                   'products': allProducts,
                                   'storeType': widget.storeType,
+                                  'categories': categoryItems,
                                 },
                               );
                             },
@@ -542,7 +585,7 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
   Widget _buildProductCardImage(String? imagePath, String storeType) {
     Widget buildPlaceholder() {
       return Container(
-        height: Responsive.h(90),
+        height: Responsive.h(85),
         width: double.infinity,
         decoration: BoxDecoration(
           color: Colors.grey.shade50,
@@ -631,43 +674,7 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
       padding: EdgeInsets.all(Responsive.w(10)),
       child: Stack(
         children: [
-          // 1. Stock & Heart Info
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Stock alert badge
-                  if (product['stockBadge'] != null)
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: Responsive.w(6),
-                        vertical: Responsive.h(3),
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8F5E9),
-                        borderRadius: BorderRadius.circular(Responsive.w(6)),
-                      ),
-                      child: CustomText.title(
-                        product['stockBadge'],
-                        color: const Color(0xFF4CAF50),
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    )
-                  else
-                    const Spacer(),
-
-                  // Favorite toggle
-                  CommonWishlistButton(product: product),
-                ],
-              ),
-              const Spacer(),
-            ],
-          ),
-
-          // 2. Product Visual & Details
+          // 1. Product Visual & Details (Base layer)
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -684,7 +691,7 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(height: Responsive.h(12)),
+                    SizedBox(height: Responsive.h(16)),
                     // Centered Product image
                     Center(
                       child: _buildProductCardImage(product['image'], widget.storeType),
@@ -824,6 +831,41 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                   ),
                 ),
             ],
+          ),
+
+          // 2. Stock Badge & Heart Icon (Foreground layer - always rendered on top)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Stock alert badge
+                if (product['stockBadge'] != null)
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: Responsive.w(6),
+                      vertical: Responsive.h(3),
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(Responsive.w(6)),
+                    ),
+                    child: CustomText.title(
+                      product['stockBadge'],
+                      color: const Color(0xFF4CAF50),
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                else
+                  const SizedBox.shrink(),
+
+                // Favorite toggle
+                CommonWishlistButton(product: product),
+              ],
+            ),
           ),
         ],
       ),

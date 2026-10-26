@@ -13,12 +13,14 @@ class AllProductsScreen extends StatefulWidget {
   final String title;
   final List<Map<String, dynamic>> products;
   final String storeType;
+  final List<Map<String, dynamic>>? categories;
 
   const AllProductsScreen({
     super.key,
     required this.title,
     required this.products,
     required this.storeType,
+    this.categories,
   });
 
   @override
@@ -55,15 +57,22 @@ class _AllProductsScreenState extends State<AllProductsScreen> {
   Widget build(BuildContext context) {
     final int totalCartCount = CartManager.instance.totalCartCount;
 
-    // Extract unique categories
-    final Set<String> categoriesSet = {'All'};
-    for (final p in widget.products) {
-      final cat = p['category']?.toString().trim() ?? '';
-      if (cat.isNotEmpty) {
-        categoriesSet.add(cat);
+    // Build category items from passed store categories or fallback to product categories
+    final List<Map<String, dynamic>> categoryItems = [];
+
+    if (widget.categories != null && widget.categories!.isNotEmpty) {
+      categoryItems.addAll(widget.categories!);
+    } else {
+      categoryItems.add({'name': 'All', 'icon': '', 'productCount': widget.products.length});
+      final Set<String> seen = {};
+      for (final p in widget.products) {
+        final cat = p['category']?.toString().trim() ?? '';
+        if (cat.isNotEmpty && !seen.contains(cat.toLowerCase())) {
+          seen.add(cat.toLowerCase());
+          categoryItems.add({'name': cat, 'icon': '', 'productCount': 0});
+        }
       }
     }
-    final List<String> availableCategories = categoriesSet.toList();
 
     final filteredProducts = widget.products.where((p) {
       final name = p['title'].toString().toLowerCase();
@@ -137,18 +146,20 @@ class _AllProductsScreenState extends State<AllProductsScreen> {
                         ),
                       ),
                       // Category Filter Chips
-                      if (availableCategories.length > 1) ...[
+                      if (categoryItems.length > 1) ...[
                         SizedBox(height: Responsive.h(14)),
                         SizedBox(
                           height: Responsive.h(38),
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             physics: const BouncingScrollPhysics(),
-                            itemCount: availableCategories.length,
-                            separatorBuilder: (_, __) => SizedBox(width: Responsive.w(8)),
+                            itemCount: categoryItems.length,
+                            separatorBuilder: (context, index) => SizedBox(width: Responsive.w(8)),
                             itemBuilder: (context, index) {
-                              final cat = availableCategories[index];
-                              final isSelected = _selectedCategory == cat;
+                              final item = categoryItems[index];
+                              final cat = item['name'] as String;
+                              final icon = item['icon'] as String? ?? '';
+                              final isSelected = _selectedCategory.toLowerCase() == cat.toLowerCase();
                               return GestureDetector(
                                 onTap: () {
                                   setState(() => _selectedCategory = cat);
@@ -156,7 +167,7 @@ class _AllProductsScreenState extends State<AllProductsScreen> {
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
                                   padding: EdgeInsets.symmetric(
-                                    horizontal: Responsive.w(16),
+                                    horizontal: Responsive.w(14),
                                     vertical: Responsive.h(8),
                                   ),
                                   decoration: BoxDecoration(
@@ -177,11 +188,20 @@ class _AllProductsScreenState extends State<AllProductsScreen> {
                                         : [],
                                   ),
                                   child: Center(
-                                    child: CustomText.title(
-                                      cat,
-                                      fontSize: 13,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                      color: isSelected ? Colors.white : AppColors.black,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (icon.isNotEmpty) ...[
+                                          Text(icon, style: const TextStyle(fontSize: 13)),
+                                          SizedBox(width: Responsive.w(5)),
+                                        ],
+                                        CustomText.title(
+                                          cat,
+                                          fontSize: 13,
+                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                          color: isSelected ? Colors.white : AppColors.black,
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -286,7 +306,7 @@ class _AllProductsScreenState extends State<AllProductsScreen> {
   Widget _buildProductCardImage(String? imagePath, String storeType) {
     Widget buildPlaceholder() {
       return Container(
-        height: Responsive.h(90),
+        height: Responsive.h(85),
         width: double.infinity,
         decoration: BoxDecoration(
           color: Colors.grey.shade50,
@@ -369,40 +389,7 @@ class _AllProductsScreenState extends State<AllProductsScreen> {
       padding: EdgeInsets.all(Responsive.w(10)),
       child: Stack(
         children: [
-          // Heart icon + Badge
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (product['stockBadge'] != null)
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: Responsive.w(6),
-                        vertical: Responsive.h(3),
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8F5E9),
-                        borderRadius: BorderRadius.circular(Responsive.w(6)),
-                      ),
-                      child: CustomText.title(
-                        product['stockBadge'],
-                        color: const Color(0xFF4CAF50),
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    )
-                  else
-                    const Spacer(),
-                  CommonWishlistButton(product: product),
-                ],
-              ),
-              const Spacer(),
-            ],
-          ),
-
-          // Main details
+          // 1. Main details (Base layer)
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -419,7 +406,7 @@ class _AllProductsScreenState extends State<AllProductsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(height: Responsive.h(12)),
+                    SizedBox(height: Responsive.h(16)),
                     Center(
                       child: _buildProductCardImage(product['image'], widget.storeType),
                     ),
@@ -540,6 +527,38 @@ class _AllProductsScreenState extends State<AllProductsScreen> {
                   ),
                 ),
             ],
+          ),
+
+          // 2. Stock Badge & Heart Icon (Foreground layer - always rendered on top)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (product['stockBadge'] != null)
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: Responsive.w(6),
+                      vertical: Responsive.h(3),
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(Responsive.w(6)),
+                    ),
+                    child: CustomText.title(
+                      product['stockBadge'],
+                      color: const Color(0xFF4CAF50),
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                else
+                  const SizedBox.shrink(),
+                CommonWishlistButton(product: product),
+              ],
+            ),
           ),
         ],
       ),

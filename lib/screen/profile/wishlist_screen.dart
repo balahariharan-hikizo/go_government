@@ -219,7 +219,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
   Widget _buildWishlistImage(String? imagePath) {
     Widget buildPlaceholder() {
       return Container(
-        height: Responsive.h(90),
+        height: Responsive.h(85),
         width: double.infinity,
         decoration: BoxDecoration(
           color: Colors.grey.shade50,
@@ -302,40 +302,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
       padding: EdgeInsets.all(Responsive.w(10)),
       child: Stack(
         children: [
-          // Heart icon + Stock Alert
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (product['stockBadge'] != null)
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: Responsive.w(6),
-                        vertical: Responsive.h(3),
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8F5E9),
-                        borderRadius: BorderRadius.circular(Responsive.w(6)),
-                      ),
-                      child: CustomText.title(
-                        product['stockBadge'],
-                        color: const Color(0xFF4CAF50),
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    )
-                  else
-                    const Spacer(),
-                  CommonWishlistButton(product: product),
-                ],
-              ),
-              const Spacer(),
-            ],
-          ),
-
-          // Main details & Cart action
+          // 1. Main details & Cart action (Base layer)
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -352,7 +319,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(height: Responsive.h(12)),
+                    SizedBox(height: Responsive.h(16)),
                     Center(
                       child: _buildWishlistImage(product['image']),
                     ),
@@ -428,6 +395,38 @@ class _WishlistScreenState extends State<WishlistScreen> {
                   ),
                 ),
             ],
+          ),
+
+          // 2. Stock Badge & Heart Icon (Foreground layer - always rendered on top)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (product['stockBadge'] != null)
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: Responsive.w(6),
+                      vertical: Responsive.h(3),
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(Responsive.w(6)),
+                    ),
+                    child: CustomText.title(
+                      product['stockBadge'],
+                      color: const Color(0xFF4CAF50),
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                else
+                  const SizedBox.shrink(),
+                CommonWishlistButton(product: product),
+              ],
+            ),
           ),
         ],
       ),

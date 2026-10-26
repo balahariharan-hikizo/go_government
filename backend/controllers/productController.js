@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const Store = require('../models/Store');
+const Category = require('../models/Category');
 const { getNextSequence } = require('../utils/sequenceGenerator');
 
 // Helper to compute discount badge string
@@ -142,9 +143,38 @@ exports.getProductsByStore = async (req, res) => {
     const { category, search } = req.query;
 
     const query = { storeId, isDeleted: { $ne: true } };
-    if (category && category !== 'all') {
+
+    // Check if store has configured categories in Category master
+    const allStoreCategories = await Category.find({
+      storeId: { $in: [storeId, 'global'] },
+      isDeleted: { $ne: true },
+    }).select('name isActive').lean();
+
+    if (allStoreCategories.length > 0) {
+      const activeCats = allStoreCategories.filter((c) => c.isActive);
+      const activeNames = activeCats.map((c) => new RegExp(`^${c.name.trim()}$`, 'i'));
+
+      if (category && category !== 'all') {
+        const isRequestedActive = activeCats.some(
+          (c) => c.name.trim().toLowerCase() === category.trim().toLowerCase()
+        );
+        if (!isRequestedActive) {
+          query._id = null; // Requested category is inactive, return empty
+        } else {
+          query.category = new RegExp(`^${category}$`, 'i');
+        }
+      } else {
+        // If all categories are inactive, return empty
+        if (activeNames.length === 0) {
+          query._id = null;
+        } else {
+          query.category = { $in: activeNames };
+        }
+      }
+    } else if (category && category !== 'all') {
       query.category = new RegExp(`^${category}$`, 'i');
     }
+
     if (search && search.trim()) {
       query.$or = [
         { title: { $regex: search.trim(), $options: 'i' } },

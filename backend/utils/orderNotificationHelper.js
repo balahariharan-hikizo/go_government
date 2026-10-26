@@ -44,6 +44,7 @@ function sendOrderAssignedAlerts(order, app) {
     // Fallback if citizen was not populated
     User.findOne({ $or: [{ userId: order.userId }, { phone: order.userId }] })
       .select('fcmToken')
+      .lean()
       .then((citizen) => {
         if (citizen?.fcmToken) {
           fcmService.sendToCitizenOrderStatus(citizen.fcmToken, citizenTitle, citizenMessage, orderId);
@@ -67,6 +68,7 @@ function sendOrderAssignedAlerts(order, app) {
     } else {
       Store.findOne({ storeId: order.storeId })
         .select('fcmToken')
+        .lean()
         .then((storeDoc) => {
           if (storeDoc?.fcmToken) {
             fcmService.sendToStoreOrderStatus(storeDoc.fcmToken, storeTitle, storeMsg, orderId)
@@ -194,6 +196,7 @@ function sendOrderStatusUpdateAlerts(order, app) {
       } else if (order.userId) {
         User.findOne({ $or: [{ userId: order.userId }, { phone: order.userId }] })
           .select('fcmToken')
+          .lean()
           .then((citizen) => {
             if (citizen?.fcmToken) {
               fcmService.sendToCitizenOrderStatus(citizen.fcmToken, msgConfig.title, msgConfig.body, orderId);

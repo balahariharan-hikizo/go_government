@@ -1,8 +1,8 @@
 const Product = require('../models/Product');
 
 /**
- * Adjusts product inventory stock in parallel for order placement, cancellation, or returns.
- * Supports both top-level products and specific variant stock adjustments.
+ * Adjusts product inventory stock atomically in a single DB call using bulkWrite.
+ * Supports both top-level products and specific variant stock adjustments simultaneously.
  * 
  * @param {Array} items - list of items from the order
  * @param {'decrement'|'restock'} mode - 'decrement' to reduce stock, 'restock' to restore stock
@@ -12,31 +12,39 @@ async function adjustProductStock(items, mode = 'decrement') {
 
   const multiplier = mode === 'decrement' ? -1 : 1;
 
-  const stockUpdates = items.map((item) => {
-    const pId = item.productId || item.id;
-    const vId = item.variantId;
-    const qty = Number(item.quantity || item.qty || 1);
-    if (!pId || qty <= 0) return Promise.resolve();
+  const bulkOps = items
+    .map((item) => {
+      const pId = item.productId || item.id;
+      const vId = item.variantId;
+      const qty = Number(item.quantity || item.qty || 1);
+      if (!pId || qty <= 0) return null;
 
-    const delta = multiplier * qty;
+      const delta = multiplier * qty;
 
-    if (vId) {
-      // Direct match on 'variants.variantId' enables MongoDB's positional operator '$'
-      return Product.updateOne(
-        { productId: pId, 'variants.variantId': vId },
-        { $inc: { 'variants.$.stock': delta, stock: delta } }
-      ).catch((err) => console.warn(`⚠️ [Inventory] Variant stock error (${pId}:${vId}):`, err.message));
-    }
+      if (vId) {
+        // Direct match on 'variants.variantId' enables MongoDB positional operator '$'
+        return {
+          updateOne: {
+            filter: { productId: pId, 'variants.variantId': vId }, update: { $inc: { 'variants.$.stock': delta, stock: delta } },
+          },
+        };
+      }
 
-    return Product.updateOne(
-      { productId: pId },
-      { $inc: { stock: delta } }
-    ).catch((err) => console.warn(`⚠️ [Inventory] Stock error (${pId}):`, err.message));
-  });
+      return {
+        updateOne: {
+          filter: { productId: pId }, update: { $inc: { stock: delta } },
+        },
+      };
+    })
+    .filter(Boolean);
 
-  await Promise.all(stockUpdates);
+  if (bulkOps.length > 0) {
+    await Product.bulkWrite(bulkOps, { ordered: false })
+      .catch((err) => console.warn('⚠️ [Inventory] Bulk stock update error:', err.message));
+  }
 }
 
 module.exports = {
   adjustProductStock,
 };
+

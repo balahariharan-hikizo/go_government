@@ -5,7 +5,7 @@ const WalletTransaction = require('../models/WalletTransaction');
 const fcmService = require('../services/fcmService');
 const { getNextSequence } = require('./sequenceGenerator');
 const { adjustProductStock } = require('./inventoryHelper');
-
+const { formatTransactionDate } = require('./commonHelper');
 
 /**
  * 1. Server-Side Totals & Discounts Calculation
@@ -44,11 +44,14 @@ function calculateOrderTotals(body) {
 }
 
 /**
- * 2. Fetch Store Details, GPS Coordinates & Fallback Names
+ * 2. Fetch Store Details, GPS Coordinates & Fallback Names (with field projection)
  */
 async function resolveStoreCoordinates(storeId, clientDetails) {
   let resolved = clientDetails || {};
-  const storeDoc = await Store.findOne({ storeId }).lean();
+  const storeDoc = await Store.findOne({ storeId })
+    .select('storeId name address location latitude longitude phone fcmToken')
+    .lean();
+
   if (storeDoc) {
     const realLat = (storeDoc.location && storeDoc.location.lat !== undefined)
       ? Number(storeDoc.location.lat)
@@ -68,12 +71,14 @@ async function resolveStoreCoordinates(storeId, clientDetails) {
       latitude: realLat,
       longitude: realLng,
       phone: storeDoc.phone || resolved.phone || '',
+      fcmToken: storeDoc.fcmToken || '',
     };
   }
   return {
     ...resolved,
     latitude: resolved.latitude || 0.0,
     longitude: resolved.longitude || 0.0,
+    fcmToken: '',
   };
 }
 
@@ -83,10 +88,8 @@ async function resolveStoreCoordinates(storeId, clientDetails) {
 async function processOrderPayment({ userId, orderId, amount, paymentMethod, storeName }) {
   const isWallet = paymentMethod && paymentMethod.toLowerCase().includes('wallet');
   const numGrandTotal = Number(amount);
-
-  const now = new Date();
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const dateStr = `${months[now.getMonth()]} ${now.getDate()} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  let balanceAfter = 0;
+  let resolvedUserId = userId;
 
   if (isWallet) {
     const updatedUser = await User.findOneAndUpdate(
@@ -98,56 +101,46 @@ async function processOrderPayment({ userId, orderId, amount, paymentMethod, sto
       { returnDocument: 'after' }
     );
 
+    // ⚡ Pure single atomic DB call: zero redundant findOne queries even on error!
     if (!updatedUser) {
-      const currentUser = await User.findOne({ $or: [{ userId }, { phone: userId }] }).lean();
-      const curBal = currentUser ? currentUser.walletBalance || 0 : 0;
       return {
         success: false,
         errorResponse: {
           success: false,
           code: 'INSUFFICIENT_WALLET_BALANCE',
-          message: `Insufficient wallet balance. Total: ₹${numGrandTotal}, Available: ₹${curBal}`,
-          walletBalance: curBal,
+          message: `Insufficient wallet balance to place this order (Total: ₹${numGrandTotal})`,
         },
       };
     }
 
-    const txId = await getNextSequence('walletTxId', 'TXN_PAY_', 5);
-    const walletTx = new WalletTransaction({
-      transactionId: txId,
-      userId: updatedUser.userId,
-      amount: -numGrandTotal,
-      type: 'debit',
-      category: 'order_payment',
-      paymentMethod: 'Wallet Account',
-      orderId: orderId,
-      title: storeName || 'Store Order',
-      subtitle: `Paid for order #${orderId} · ${dateStr}`,
-      balanceAfter: updatedUser.walletBalance,
-      status: 'success',
-    });
-    await walletTx.save();
-    return { success: true };
+    balanceAfter = updatedUser.walletBalance || 0;
+    resolvedUserId = updatedUser.userId || userId;
+  } else {
+    // Non-wallet (COD / UPI / etc.)
+    const userDoc = await User.findOne({ $or: [{ userId }, { phone: userId }] }).select('userId walletBalance').lean();
+    balanceAfter = userDoc?.walletBalance || 0;
+    resolvedUserId = userDoc?.userId || userId;
   }
 
-  // Non-wallet (COD / UPI / etc.)
-  const userDoc = await User.findOne({ userId }).select('walletBalance').lean();
-  const curWalletBal = userDoc?.walletBalance || 0;
-
+  // ⚡ Generate sequence ONLY on successful validation (prevents wasted sequence increment on failed payments)
   const txId = await getNextSequence('walletTxId', 'TXN_PAY_', 5);
+  const dateStr = formatTransactionDate();
+
+  // Unified single ledger transaction save
   const walletTx = new WalletTransaction({
     transactionId: txId,
-    userId,
+    userId: resolvedUserId,
     amount: -numGrandTotal,
     type: 'debit',
     category: 'order_payment',
-    paymentMethod: paymentMethod || 'Cash on Delivery',
+    paymentMethod: isWallet ? 'Wallet Account' : (paymentMethod || 'Cash on Delivery'),
     orderId,
     title: storeName || 'Store Order',
     subtitle: `Paid for order #${orderId} · ${dateStr}`,
-    balanceAfter: curWalletBal,
-    status: paymentMethod?.toLowerCase().includes('cash') ? 'pending' : 'success',
+    balanceAfter,
+    status: isWallet ? 'success' : (paymentMethod?.toLowerCase().includes('cash') ? 'pending' : 'success'),
   });
+
   await walletTx.save();
   return { success: true };
 }
@@ -189,8 +182,8 @@ function dispatchOrderAlerts(app, order, storeDetails) {
     io.to('online_riders').emit('order:dispatch', dispatchPayload);
 
     const dispatchOrder = app.get('dispatchOrder');
-    const storeLat = storeDetails.latitude || 0;
-    const storeLng = storeDetails.longitude || 0;
+    const storeLat = storeDetails?.latitude || 0;
+    const storeLng = storeDetails?.longitude || 0;
     if (dispatchOrder && (storeLat !== 0 || storeLng !== 0)) {
       dispatchOrder(io, orderPayload, storeLat, storeLng, 1, []);
     } else {
@@ -206,20 +199,26 @@ function dispatchOrderAlerts(app, order, storeDetails) {
     }
   }
 
-  // Send FCM Push to Store
-  Store.findOne({ storeId })
-    .select('fcmToken phone')
-    .then(async (storeDoc) => {
-      let token = storeDoc?.fcmToken;
-      if (!token && storeDoc?.phone) {
-        const owner = await User.findOne({ phone: storeDoc.phone }).select('fcmToken').lean();
-        token = owner?.fcmToken;
-      }
-      if (token) {
-        fcmService.sendToStoreNewOrder(token, order);
-      }
-    })
-    .catch((err) => console.error('Error sending store FCM:', err.message));
+  // Send FCM Push to Store (Use token from storeDetails if available, else fallback lookup)
+  const storeFcmToken = storeDetails?.fcmToken;
+  if (storeFcmToken) {
+    fcmService.sendToStoreNewOrder(storeFcmToken, order);
+  } else {
+    Store.findOne({ storeId })
+      .select('fcmToken phone')
+      .lean()
+      .then(async (storeDoc) => {
+        let token = storeDoc?.fcmToken;
+        if (!token && storeDoc?.phone) {
+          const owner = await User.findOne({ phone: storeDoc.phone }).select('fcmToken').lean();
+          token = owner?.fcmToken;
+        }
+        if (token) {
+          fcmService.sendToStoreNewOrder(token, order);
+        }
+      })
+      .catch((err) => console.error('Error sending store FCM:', err.message));
+  }
 }
 
 module.exports = {
