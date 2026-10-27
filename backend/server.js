@@ -61,12 +61,29 @@ app.use(morgan('dev'));
 // Serve uploaded photos statically so Flutter can display them
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Serve Production Admin Web Portal directly from backend
+const adminWebPath = path.join(__dirname, '../admin_web/build/web');
+app.use('/admin', express.static(adminWebPath));
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(adminWebPath, 'index.html'));
+});
+app.get('/admin/{*path}', (req, res) => {
+  res.sendFile(path.join(adminWebPath, 'index.html'));
+});
+
 // Health Check Endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'online',
     message: 'GoGovernment Node.js Backend is running smoothly 🚀',
     timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/', (req, res) => {
+   res.status(200).json({
+    sucess: 'true',
+    message: 'Welcome to backend',
   });
 });
 

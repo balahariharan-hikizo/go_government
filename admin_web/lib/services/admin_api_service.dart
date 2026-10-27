@@ -3,31 +3,17 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class AdminApiService {
-  static const List<String> candidateBases = [
-    'http://localhost:5000',
-    'http://127.0.0.1:5000',
-    'http://192.168.1.11:5000',
-    'http://192.168.1.24:5000',
-    'http://192.168.1.12:5000',
-    
-  ];
-
-  static String _baseUrl = 'http://localhost:5000';
-
+  static String _baseUrl = 'http://192.168.1.11:5000';
 
   static String get baseUrl => _baseUrl;
 
   static Future<void> init() async {
-    for (final host in candidateBases) {
-      try {
-        final res = await http.get(Uri.parse('$host/health')).timeout(const Duration(milliseconds: 1200));
-        if (res.statusCode == 200) {
-          _baseUrl = host;
-          debugPrint('🏛️ [AdminApiService] Connected to: $_baseUrl');
-          return;
-        }
-      } catch (_) {}
-    }
+    try {
+      if (kIsWeb && Uri.base.host.isNotEmpty) {
+        _baseUrl = '${Uri.base.scheme}://${Uri.base.host}:5000';
+      }
+      debugPrint('🏛️ [AdminApiService] Base URL initialized to: $_baseUrl');
+    } catch (_) {}
   }
 
   // 1. Fetch All Stores with Stats

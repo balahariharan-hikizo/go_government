@@ -4,7 +4,7 @@ import 'screens/admin_dashboard_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await AdminApiService.init();
+  AdminApiService.init();
   runApp(const AdminWebApp());
 }
 
