@@ -32,6 +32,7 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
   int _unreadCustomerChatCount = 0;
   int _totalCitizenMsgs = 0;
   bool _isPopping = false;
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -573,14 +574,16 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                 clipBehavior: Clip.none,
                 children: [
                   IconButton.filledTonal(
-                    onPressed: () {
+                    onPressed: () async {
+                      if (_isNavigating) return;
+                      _isNavigating = true;
                       setState(() {
                         _unreadCustomerChatCount = 0;
                       });
                       if (_order.orderId.isNotEmpty) {
                         HiveService.setLastReadChatCount(_order.orderId, _totalCitizenMsgs);
                       }
-                      Navigator.push(
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (ctx) => CustomerChatScreen(
@@ -589,14 +592,14 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
                             customerPhone: _order.receiverPhone,
                           ),
                         ),
-                      ).then((_) {
-                        if (mounted) {
-                          setState(() => _unreadCustomerChatCount = 0);
-                          if (_order.orderId.isNotEmpty) {
-                            HiveService.setLastReadChatCount(_order.orderId, _totalCitizenMsgs);
-                          }
+                      );
+                      if (mounted) {
+                        _isNavigating = false;
+                        setState(() => _unreadCustomerChatCount = 0);
+                        if (_order.orderId.isNotEmpty) {
+                          HiveService.setLastReadChatCount(_order.orderId, _totalCitizenMsgs);
                         }
-                      });
+                      }
                     },
                     icon: Icon(Icons.chat_bubble_outline_rounded, color: isRev ? const Color(0xFF7B1FA2) : AppColors.success),
                     tooltip: 'Chat with Customer',

@@ -51,6 +51,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   double _cachedLng = 0;
   String? _lastNotifiedOrderId;
   int _lastNotifiedTime = 0;
+  bool _isNavigating = false;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -1569,8 +1570,11 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
               // Open Details Screen
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, RouteConstants.activeDelivery, arguments: order);
+                  onPressed: () async {
+                    if (_isNavigating) return;
+                    _isNavigating = true;
+                    await Navigator.pushNamed(context, RouteConstants.activeDelivery, arguments: order);
+                    if (mounted) _isNavigating = false;
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,

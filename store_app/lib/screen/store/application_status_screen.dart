@@ -31,6 +31,7 @@ class ApplicationStatusScreen extends StatefulWidget {
 
 class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
   late StoreModel _store;
+  bool _isChecking = false;
 
   @override
   void initState() {
@@ -45,6 +46,8 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
   }
 
   void _checkStatus() {
+    if (_isChecking) return;
+    setState(() => _isChecking = true);
     context.read<StoreBloc>().add(RefreshStoreStatusEvent(_store.storeId.isNotEmpty ? _store.storeId : _store.phone));
   }
 
@@ -94,8 +97,24 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
                   RouteConstants.storeDashboard,
                   arguments: {'store': _store},
                 );
-              } else if (_store.status != state.store.status) {
-                setState(() => _store = state.store);
+              } else {
+                if (mounted) {
+                  setState(() {
+                    _isChecking = false;
+                    _store = state.store;
+                  });
+                }
+              }
+            } else if (state is StoreError) {
+              if (mounted) {
+                setState(() => _isChecking = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: AppColors.error,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
               }
             }
           },
@@ -118,11 +137,22 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
           backgroundColor: AppColors.screenColor,
           elevation: 0,
           actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
-              tooltip: 'Refresh Status',
-              onPressed: _checkStatus,
-            ),
+            _isChecking
+                ? Padding(
+                    padding: EdgeInsets.symmetric(horizontal: Responsive.w(12)),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                      ),
+                    ),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
+                    tooltip: 'Refresh Status',
+                    onPressed: _checkStatus,
+                  ),
             IconButton(
               icon: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626)),
               tooltip: 'Logout',
@@ -307,14 +337,33 @@ class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
     return SizedBox(
       width: double.infinity,
       height: Responsive.h(50),
-      child: OutlinedButton.icon(
-        icon: const Icon(Icons.refresh_rounded, size: 18, color: AppColors.primary),
-        label: CustomText.title('Check Verification Status', fontSize: 14, color: AppColors.primary),
+      child: OutlinedButton(
         style: OutlinedButton.styleFrom(
           side: const BorderSide(color: AppColors.primary, width: 1.5),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Responsive.w(14))),
         ),
-        onPressed: _checkStatus,
+        onPressed: _isChecking ? null : _checkStatus,
+        child: _isChecking
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                  ),
+                  SizedBox(width: Responsive.w(10)),
+                  CustomText.title('Checking Status...', fontSize: 14, color: AppColors.primary),
+                ],
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.refresh_rounded, size: 18, color: AppColors.primary),
+                  SizedBox(width: Responsive.w(8)),
+                  CustomText.title('Check Verification Status', fontSize: 14, color: AppColors.primary),
+                ],
+              ),
       ),
     );
   }

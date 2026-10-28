@@ -156,4 +156,57 @@ class LocationService {
       city: city,
     );
   }
+
+  /// Search for places/localities by keyword using OpenStreetMap Nominatim
+  static Future<List<PlaceSearchResult>> searchPlaces(String query) async {
+    final clean = query.trim();
+    if (clean.length < 2) return [];
+
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(clean)}&format=json&addressdetails=1&limit=8&countrycodes=in',
+      );
+      final response = await http.get(
+        url,
+        headers: {'User-Agent': 'GoGovernmentStoreApp/1.0'},
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
+        return data.map((item) {
+          final displayName = item['display_name']?.toString() ?? '';
+          final parts = displayName.split(',');
+          final title = parts.isNotEmpty ? parts.first.trim() : displayName;
+          final subtitle = parts.length > 1 ? parts.sublist(1).join(',').trim() : '';
+          final lat = double.tryParse(item['lat']?.toString() ?? '') ?? 0.0;
+          final lon = double.tryParse(item['lon']?.toString() ?? '') ?? 0.0;
+
+          return PlaceSearchResult(
+            title: title,
+            subtitle: subtitle,
+            latitude: lat,
+            longitude: lon,
+          );
+        }).where((p) => p.latitude != 0.0 && p.longitude != 0.0).toList();
+      }
+    } catch (e) {
+      debugPrint('[LocationService] Search places error: $e');
+    }
+    return [];
+  }
 }
+
+class PlaceSearchResult {
+  final String title;
+  final String subtitle;
+  final double latitude;
+  final double longitude;
+
+  PlaceSearchResult({
+    required this.title,
+    required this.subtitle,
+    required this.latitude,
+    required this.longitude,
+  });
+}
+

@@ -85,8 +85,8 @@ async function getNotificationsByUser(req, res) {
         message: 'Your citizen services and civic grievance portal is ready.',
         type: 'general',
         referenceId: '',
-        createdAt: new Date(Date.now() - 86400000),
-        isRead: true,
+        createdAt: new Date(),
+        isRead: false,
       });
 
       if (backfillList.length > 0) {

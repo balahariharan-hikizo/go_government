@@ -122,12 +122,19 @@ class _StoreDetailDialogState extends State<StoreDetailDialog> {
     final status = s['status'] ?? 'pending';
     final storeImage = s['storeImage']?.toString() ?? '';
 
+    final screenW = MediaQuery.of(context).size.width;
+    final screenH = MediaQuery.of(context).size.height;
+    final isMobile = screenW < 700;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
-        width: 780,
-        constraints: const BoxConstraints(maxHeight: 700),
-        padding: const EdgeInsets.all(28),
+        width: isMobile ? screenW * 0.95 : 780,
+        constraints: BoxConstraints(
+          maxHeight: screenH * 0.9,
+          maxWidth: 780,
+        ),
+        padding: EdgeInsets.all(isMobile ? 16 : 28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -141,13 +148,27 @@ class _StoreDetailDialogState extends State<StoreDetailDialog> {
                     children: [
                       Row(
                         children: [
-                          Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: TextStyle(
+                                fontSize: isMobile ? 18 : 22,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF0F172A),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
                           _buildStatusBadge(status),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('Registration ID: $storeId • Category: $category', style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                      Text(
+                        'Registration ID: $storeId • Category: $category',
+                        style: TextStyle(fontSize: isMobile ? 11.5 : 13, color: Colors.grey.shade600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
                   ),
                 ),
@@ -165,54 +186,83 @@ class _StoreDetailDialogState extends State<StoreDetailDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Two-Column Grid: Metadata & Photos
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Col 1: Store Details
-                        Expanded(
-                          flex: 3,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _sectionTitle('Store & Merchant Information'),
-                              const SizedBox(height: 10),
-                              _detailRow('Owner Name', s['ownerName'] ?? 'N/A'),
-                              _detailRow('Mobile Phone', s['phone'] ?? 'N/A'),
-                              _detailRow('Email', s['email'] != null && s['email'].toString().isNotEmpty ? s['email'] : 'Not provided'),
-                              _detailRow('Address', s['address'] ?? 'N/A'),
-                              _detailRow('Pincode', s['pincode'] ?? 'N/A'),
-                              _detailRow('Working Hours', '${s['timings']?['open'] ?? '08:00 AM'} - ${s['timings']?['close'] ?? '08:30 PM'}'),
-                              if (s['location'] != null)
-                                _detailRow('GPS Pin', '${s['location']['lat']}, ${s['location']['lng']}'),
-                              const SizedBox(height: 12),
-                              _sectionTitle('Settlement Bank Details'),
-                              const SizedBox(height: 8),
-                              _detailRow('Bank Name', s['bankDetails']?['bankName'] ?? 'Not specified'),
-                              _detailRow('Account No', s['bankDetails']?['accountNumber'] ?? 'Not specified'),
-                              _detailRow('IFSC Code', s['bankDetails']?['ifscCode'] ?? 'Not specified'),
-                              _detailRow('Holder Name', s['bankDetails']?['accountHolderName'] ?? s['ownerName'] ?? 'N/A'),
-                              if (s['rejectionReason'] != null && s['rejectionReason'].toString().isNotEmpty)
-                                _detailRow('Rejection Note', s['rejectionReason'], isAlert: true),
-                            ],
+                    if (isMobile) ...[
+                      // Mobile: Stack Store Details and Photo vertically
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _sectionTitle('Store & Merchant Information'),
+                          const SizedBox(height: 10),
+                          _detailRow('Owner Name', s['ownerName'] ?? 'N/A'),
+                          _detailRow('Mobile Phone', s['phone'] ?? 'N/A'),
+                          _detailRow('Email', s['email'] != null && s['email'].toString().isNotEmpty ? s['email'] : 'Not provided'),
+                          _detailRow('Address', s['address'] ?? 'N/A'),
+                          _detailRow('Pincode', s['pincode'] ?? 'N/A'),
+                          _detailRow('Working Hours', '${s['timings']?['open'] ?? '08:00 AM'} - ${s['timings']?['close'] ?? '08:30 PM'}'),
+                          if (s['location'] != null)
+                            _detailRow('GPS Pin', '${s['location']['lat']}, ${s['location']['lng']}'),
+                          const SizedBox(height: 12),
+                          _sectionTitle('Settlement Bank Details'),
+                          const SizedBox(height: 8),
+                          _detailRow('Bank Name', s['bankDetails']?['bankName'] ?? 'Not specified'),
+                          _detailRow('Account No', s['bankDetails']?['accountNumber'] ?? 'Not specified'),
+                          _detailRow('IFSC Code', s['bankDetails']?['ifscCode'] ?? 'Not specified'),
+                          _detailRow('Holder Name', s['bankDetails']?['accountHolderName'] ?? s['ownerName'] ?? 'N/A'),
+                          if (s['rejectionReason'] != null && s['rejectionReason'].toString().isNotEmpty)
+                            _detailRow('Rejection Note', s['rejectionReason'], isAlert: true),
+                          const SizedBox(height: 16),
+                          _sectionTitle('Storefront Verification'),
+                          const SizedBox(height: 10),
+                          _buildDocCard('Storefront Photo', storeImage, Icons.storefront),
+                        ],
+                      ),
+                    ] else ...[
+                      // Desktop / Tablet: 2-Column Row
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _sectionTitle('Store & Merchant Information'),
+                                const SizedBox(height: 10),
+                                _detailRow('Owner Name', s['ownerName'] ?? 'N/A'),
+                                _detailRow('Mobile Phone', s['phone'] ?? 'N/A'),
+                                _detailRow('Email', s['email'] != null && s['email'].toString().isNotEmpty ? s['email'] : 'Not provided'),
+                                _detailRow('Address', s['address'] ?? 'N/A'),
+                                _detailRow('Pincode', s['pincode'] ?? 'N/A'),
+                                _detailRow('Working Hours', '${s['timings']?['open'] ?? '08:00 AM'} - ${s['timings']?['close'] ?? '08:30 PM'}'),
+                                if (s['location'] != null)
+                                  _detailRow('GPS Pin', '${s['location']['lat']}, ${s['location']['lng']}'),
+                                const SizedBox(height: 12),
+                                _sectionTitle('Settlement Bank Details'),
+                                const SizedBox(height: 8),
+                                _detailRow('Bank Name', s['bankDetails']?['bankName'] ?? 'Not specified'),
+                                _detailRow('Account No', s['bankDetails']?['accountNumber'] ?? 'Not specified'),
+                                _detailRow('IFSC Code', s['bankDetails']?['ifscCode'] ?? 'Not specified'),
+                                _detailRow('Holder Name', s['bankDetails']?['accountHolderName'] ?? s['ownerName'] ?? 'N/A'),
+                                if (s['rejectionReason'] != null && s['rejectionReason'].toString().isNotEmpty)
+                                  _detailRow('Rejection Note', s['rejectionReason'], isAlert: true),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 24),
-
-                        // Col 2: Storefront Photo
-                        Expanded(
-                          flex: 2,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _sectionTitle('Storefront Verification'),
-                              const SizedBox(height: 10),
-                              _buildDocCard('Storefront Photo', storeImage, Icons.storefront),
-                            ],
+                          const SizedBox(width: 24),
+                          Expanded(
+                            flex: 2,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _sectionTitle('Storefront Verification'),
+                                const SizedBox(height: 10),
+                                _buildDocCard('Storefront Photo', storeImage, Icons.storefront),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -221,32 +271,33 @@ class _StoreDetailDialogState extends State<StoreDetailDialog> {
             const Divider(height: 28),
 
             // Action Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 10,
+              runSpacing: 8,
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Close'),
                 ),
-                const SizedBox(width: 12),
                 if (status == 'pending' || status == 'rejected') ...[
                   OutlinedButton.icon(
                     icon: const Icon(Icons.cancel_outlined, color: Color(0xFFDC2626), size: 18),
                     label: const Text('Reject Application', style: TextStyle(color: Color(0xFFDC2626))),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Color(0xFFDC2626)),
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 18, vertical: isMobile ? 10 : 14),
                     ),
                     onPressed: _isLoading ? null : _showRejectPrompt,
                   ),
-                  const SizedBox(width: 12),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.check_circle_outline, size: 18),
                     label: const Text('Approve Store Outlet', style: TextStyle(fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF16A34A),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                      padding: EdgeInsets.symmetric(horizontal: isMobile ? 14 : 22, vertical: isMobile ? 10 : 14),
                     ),
                     onPressed: _isLoading ? null : _approveStore,
                   ),
@@ -257,7 +308,7 @@ class _StoreDetailDialogState extends State<StoreDetailDialog> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFDC2626),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 18, vertical: isMobile ? 10 : 14),
                     ),
                     onPressed: _isLoading ? null : _showRejectPrompt,
                   ),

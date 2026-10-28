@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/admin_api_service.dart';
+import '../utils/responsive.dart';
 import '../widgets/store_detail_dialog.dart';
 import '../widgets/complaint_detail_dialog.dart';
 import '../widgets/feedback_detail_dialog.dart';
@@ -287,8 +288,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = context.isDesktop;
+    final isMobile = context.isMobile;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF1F5F9),
+      drawer: isDesktop ? null : _buildMobileDrawer(),
       body: Column(
         children: [
           // Top Navigation Header
@@ -299,7 +304,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             child: _activeSection == 'monitoring'
                 ? const LiveMonitoringView()
                 : SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isMobile ? 14 : (context.isTablet ? 20 : 36),
+                      vertical: isMobile ? 16 : 24,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -387,9 +395,84 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Widget _buildTopNavbar() {
+    final isDesktop = context.isDesktop;
+    final isMobile = context.isMobile;
+
+    if (!isDesktop) {
+      return Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: const BoxDecoration(
+          color: Color(0xFF0F172A),
+          border: Border(bottom: BorderSide(color: Color(0xFF1E293B))),
+        ),
+        child: Row(
+          children: [
+            Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+                tooltip: 'Navigation Menu',
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.account_balance_rounded, color: Color(0xFF38BDF8), size: 18),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isMobile ? 'GoGov Admin' : 'GoGovernment Administration',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    _getSectionTitle(_activeSection),
+                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+              tooltip: 'Refresh',
+              onPressed: () {
+                if (_activeSection == 'complaints') {
+                  _loadComplaints();
+                } else if (_activeSection == 'stores') {
+                  _loadStores();
+                } else {
+                  _loadFeedback();
+                }
+              },
+            ),
+            const SizedBox(width: 4),
+            const CircleAvatar(
+              backgroundColor: Color(0xFF38BDF8),
+              radius: 16,
+              child: Text('AD', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 11)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final screenW = context.screenWidth;
+    final isCompactDesktop = screenW < 1350;
+
     return Container(
       height: 72,
-      padding: const EdgeInsets.symmetric(horizontal: 36),
+      padding: EdgeInsets.symmetric(horizontal: isCompactDesktop ? 18 : 36),
       decoration: const BoxDecoration(
         color: Color(0xFF0F172A),
         border: Border(bottom: BorderSide(color: Color(0xFF1E293B))),
@@ -404,19 +487,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             child: const Icon(Icons.account_balance_rounded, color: Color(0xFF38BDF8), size: 24),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Flexible(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'GoGovernment Administration Portal',
+                  'GoGovernment Portal',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  'Municipal Grievances, Merchants & Dispatch',
+                  'Grievances, Stores & Dispatch',
                   style: TextStyle(color: Colors.grey.shade400, fontSize: 11),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -424,52 +507,56 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
           ),
 
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
 
           // Segmented Switcher between Complaints, Stores, Feedback & Monitoring
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  _buildSectionButton(
-                    title: 'Citizen Complaints',
-                    icon: Icons.campaign_rounded,
-                    sectionKey: 'complaints',
-                    count: _complaintStats['total'] ?? 0,
-                  ),
-                  const SizedBox(width: 4),
-                  _buildSectionButton(
-                    title: 'Store Approvals',
-                    icon: Icons.storefront_rounded,
-                    sectionKey: 'stores',
-                    count: _storeStats['pending'] ?? 0,
-                  ),
-                  const SizedBox(width: 4),
-                  _buildSectionButton(
-                    title: 'Citizen Feedback',
-                    icon: Icons.rate_review_rounded,
-                    sectionKey: 'feedback',
-                    count: _feedbackStats['total'] ?? 0,
-                  ),
-                  const SizedBox(width: 4),
-                  _buildSectionButton(
-                    title: 'Live Dispatch & Riders',
-                    icon: Icons.radar_rounded,
-                    sectionKey: 'monitoring',
-                    count: 0,
-                  ),
-                ],
+          Flexible(
+            flex: 2,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildSectionButton(
+                      title: 'Citizen Complaints',
+                      icon: Icons.campaign_rounded,
+                      sectionKey: 'complaints',
+                      count: _complaintStats['total'] ?? 0,
+                    ),
+                    const SizedBox(width: 4),
+                    _buildSectionButton(
+                      title: 'Store Approvals',
+                      icon: Icons.storefront_rounded,
+                      sectionKey: 'stores',
+                      count: _storeStats['pending'] ?? 0,
+                    ),
+                    const SizedBox(width: 4),
+                    _buildSectionButton(
+                      title: 'Citizen Feedback',
+                      icon: Icons.rate_review_rounded,
+                      sectionKey: 'feedback',
+                      count: _feedbackStats['total'] ?? 0,
+                    ),
+                    const SizedBox(width: 4),
+                    _buildSectionButton(
+                      title: 'Live Dispatch',
+                      icon: Icons.radar_rounded,
+                      sectionKey: 'monitoring',
+                      count: 0,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
 
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
 
           ElevatedButton.icon(
             icon: const Icon(Icons.refresh_rounded, size: 16),
@@ -478,6 +565,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               backgroundColor: const Color(0xFF1E293B),
               foregroundColor: Colors.white,
               elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
             onPressed: () {
               if (_activeSection == 'complaints') {
@@ -489,23 +577,169 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               }
             },
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           const CircleAvatar(
             backgroundColor: Color(0xFF38BDF8),
-            radius: 18,
+            radius: 17,
             child: Text('AD', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 12)),
           ),
-          const SizedBox(width: 10),
-          const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Chief Officer', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-              Text('Municipal Corporation', style: TextStyle(color: Colors.grey, fontSize: 10)),
-            ],
-          ),
+          if (!isCompactDesktop) ...[
+            const SizedBox(width: 10),
+            const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Chief Officer', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                Text('Municipal Corporation', style: TextStyle(color: Colors.grey, fontSize: 10)),
+              ],
+            ),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _buildMobileDrawer() {
+    return Drawer(
+      backgroundColor: const Color(0xFF0F172A),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Color(0xFF1E293B))),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.account_balance_rounded, color: Color(0xFF38BDF8), size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('GoGovernment', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text('Chief Municipal Officer', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildDrawerTile('Citizen Complaints', Icons.campaign_rounded, 'complaints', _complaintStats['total'] ?? 0),
+            _buildDrawerTile('Store Approvals', Icons.storefront_rounded, 'stores', _storeStats['pending'] ?? 0),
+            _buildDrawerTile('Citizen Feedback', Icons.rate_review_rounded, 'feedback', _feedbackStats['total'] ?? 0),
+            _buildDrawerTile('Live Dispatch & Riders', Icons.radar_rounded, 'monitoring', 0),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.verified_user_rounded, color: Color(0xFF16A34A), size: 20),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text('Admin Portal Online\nMunicipal Operations Active', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerTile(String title, IconData icon, String sectionKey, int count) {
+    final isSelected = _activeSection == sectionKey;
+    return ListTile(
+      leading: Icon(icon, color: isSelected ? const Color(0xFF38BDF8) : Colors.grey.shade400, size: 22),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: isSelected ? Colors.white : Colors.grey.shade300,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          fontSize: 14,
+        ),
+      ),
+      trailing: count > 0
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF334155),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  color: isSelected ? const Color(0xFF0F172A) : Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+            )
+          : null,
+      selected: isSelected,
+      onTap: () {
+        setState(() => _activeSection = sectionKey);
+        Navigator.pop(context);
+      },
+    );
+  }
+
+  String _getSectionTitle(String key) {
+    switch (key) {
+      case 'stores':
+        return 'Store Approvals';
+      case 'feedback':
+        return 'Citizen Feedback';
+      case 'monitoring':
+        return 'Live Dispatch & Logistics';
+      case 'complaints':
+      default:
+        return 'Citizen Complaints';
+    }
+  }
+
+  Widget _buildResponsiveKpiGrid(List<Widget> cards) {
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        final maxW = constraints.maxWidth;
+        if (maxW <= 0) return const SizedBox.shrink();
+
+        int cols;
+        if (maxW >= 1200) {
+          cols = 4;
+        } else if (maxW >= 650) {
+          cols = 2;
+        } else {
+          cols = 1;
+        }
+
+        const double gap = 16.0;
+        final double cardW = cols == 1
+            ? maxW
+            : ((maxW - ((cols - 1) * gap)) / cols).clamp(100.0, maxW);
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: cards.map((c) => SizedBox(width: cardW, child: c)).toList(),
+        );
+      },
     );
   }
 
@@ -526,6 +760,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 16, color: isSelected ? Colors.white : const Color(0xFF94A3B8)),
             const SizedBox(width: 8),
@@ -560,130 +795,134 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // -------------------------------------------------------------
 
   Widget _buildComplaintStatsRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildKpiCard(
-            title: 'Under Review',
-            count: '${_complaintStats['underReview'] ?? 0}',
-            subtitle: 'New grievances pending action',
-            icon: Icons.error_outline_rounded,
-            color: const Color(0xFFDC2626),
-            bgColor: const Color(0xFFFEF2F2),
-            isAlert: (_complaintStats['underReview'] ?? 0) > 0,
-          ),
-        ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: _buildKpiCard(
-            title: 'In Progress',
-            count: '${_complaintStats['inProgress'] ?? 0}',
-            subtitle: 'Department crews dispatched',
-            icon: Icons.pending_rounded,
-            color: const Color(0xFFD97706),
-            bgColor: const Color(0xFFFFFBEB),
-          ),
-        ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: _buildKpiCard(
-            title: 'Resolved',
-            count: '${_complaintStats['resolved'] ?? 0}',
-            subtitle: 'Fixed and closed grievances',
-            icon: Icons.check_circle_outline_rounded,
-            color: const Color(0xFF16A34A),
-            bgColor: const Color(0xFFF0FDF4),
-          ),
-        ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: _buildKpiCard(
-            title: 'Total Grievances',
-            count: '${_complaintStats['total'] ?? 0}',
-            subtitle: 'All-time citizen reports',
-            icon: Icons.assignment_rounded,
-            color: const Color(0xFF2563EB),
-            bgColor: const Color(0xFFEFF6FF),
-          ),
-        ),
-      ],
-    );
+    return _buildResponsiveKpiGrid([
+      _buildKpiCard(
+        title: 'Under Review',
+        count: '${_complaintStats['underReview'] ?? 0}',
+        subtitle: 'New grievances pending action',
+        icon: Icons.error_outline_rounded,
+        color: const Color(0xFFDC2626),
+        bgColor: const Color(0xFFFEF2F2),
+        isAlert: (_complaintStats['underReview'] ?? 0) > 0,
+      ),
+      _buildKpiCard(
+        title: 'In Progress',
+        count: '${_complaintStats['inProgress'] ?? 0}',
+        subtitle: 'Department crews dispatched',
+        icon: Icons.pending_rounded,
+        color: const Color(0xFFD97706),
+        bgColor: const Color(0xFFFFFBEB),
+      ),
+      _buildKpiCard(
+        title: 'Resolved',
+        count: '${_complaintStats['resolved'] ?? 0}',
+        subtitle: 'Fixed and closed grievances',
+        icon: Icons.check_circle_outline_rounded,
+        color: const Color(0xFF16A34A),
+        bgColor: const Color(0xFFF0FDF4),
+      ),
+      _buildKpiCard(
+        title: 'Total Grievances',
+        count: '${_complaintStats['total'] ?? 0}',
+        subtitle: 'All-time citizen reports',
+        icon: Icons.assignment_rounded,
+        color: const Color(0xFF2563EB),
+        bgColor: const Color(0xFFEFF6FF),
+      ),
+    ]);
   }
 
   Widget _buildComplaintFilterBar() {
-    return Row(
-      children: [
-        _buildFilterTab(
-          label: 'All Grievances',
-          tabKey: 'all',
-          badgeCount: _complaintStats['total'] ?? 0,
-          activeColor: const Color(0xFF2563EB),
-          currentSelected: _selectedComplaintTab,
-          onTap: () => setState(() => _selectedComplaintTab = 'all'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: 'Under Review',
-          tabKey: 'Under Review',
-          badgeCount: _complaintStats['underReview'] ?? 0,
-          activeColor: const Color(0xFFDC2626),
-          currentSelected: _selectedComplaintTab,
-          onTap: () => setState(() => _selectedComplaintTab = 'Under Review'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: 'In Progress',
-          tabKey: 'In Progress',
-          badgeCount: _complaintStats['inProgress'] ?? 0,
-          activeColor: const Color(0xFFD97706),
-          currentSelected: _selectedComplaintTab,
-          onTap: () => setState(() => _selectedComplaintTab = 'In Progress'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: 'Resolved',
-          tabKey: 'Resolved',
-          badgeCount: _complaintStats['resolved'] ?? 0,
-          activeColor: const Color(0xFF16A34A),
-          currentSelected: _selectedComplaintTab,
-          onTap: () => setState(() => _selectedComplaintTab = 'Resolved'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: 'Rejected',
-          tabKey: 'Rejected',
-          badgeCount: _complaintStats['rejected'] ?? 0,
-          activeColor: const Color(0xFF64748B),
-          currentSelected: _selectedComplaintTab,
-          onTap: () => setState(() => _selectedComplaintTab = 'Rejected'),
-        ),
-        const Spacer(),
+    final tabs = [
+      _buildFilterTab(
+        label: 'All Grievances',
+        tabKey: 'all',
+        badgeCount: _complaintStats['total'] ?? 0,
+        activeColor: const Color(0xFF2563EB),
+        currentSelected: _selectedComplaintTab,
+        onTap: () => setState(() => _selectedComplaintTab = 'all'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: 'Under Review',
+        tabKey: 'Under Review',
+        badgeCount: _complaintStats['underReview'] ?? 0,
+        activeColor: const Color(0xFFDC2626),
+        currentSelected: _selectedComplaintTab,
+        onTap: () => setState(() => _selectedComplaintTab = 'Under Review'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: 'In Progress',
+        tabKey: 'In Progress',
+        badgeCount: _complaintStats['inProgress'] ?? 0,
+        activeColor: const Color(0xFFD97706),
+        currentSelected: _selectedComplaintTab,
+        onTap: () => setState(() => _selectedComplaintTab = 'In Progress'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: 'Resolved',
+        tabKey: 'Resolved',
+        badgeCount: _complaintStats['resolved'] ?? 0,
+        activeColor: const Color(0xFF16A34A),
+        currentSelected: _selectedComplaintTab,
+        onTap: () => setState(() => _selectedComplaintTab = 'Resolved'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: 'Rejected',
+        tabKey: 'Rejected',
+        badgeCount: _complaintStats['rejected'] ?? 0,
+        activeColor: const Color(0xFF64748B),
+        currentSelected: _selectedComplaintTab,
+        onTap: () => setState(() => _selectedComplaintTab = 'Rejected'),
+      ),
+    ];
 
-        // Search Field
-        SizedBox(
-          width: 320,
-          height: 42,
-          child: TextField(
-            controller: _complaintSearchController,
-            onChanged: (v) => setState(() => _complaintSearchQuery = v.trim()),
-            decoration: InputDecoration(
-              hintText: 'Search by ID, citizen, category, address...',
-              hintStyle: const TextStyle(fontSize: 13),
-              prefixIcon: const Icon(Icons.search, size: 20),
-              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-              filled: true,
-              fillColor: const Color(0xFFF8FAFC),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-            ),
+    final searchField = SizedBox(
+      height: 42,
+      child: TextField(
+        controller: _complaintSearchController,
+        onChanged: (v) => setState(() => _complaintSearchQuery = v.trim()),
+        decoration: InputDecoration(
+          hintText: 'Search by ID, citizen, category, address...',
+          hintStyle: const TextStyle(fontSize: 13),
+          prefixIcon: const Icon(Icons.search, size: 20),
+          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+          filled: true,
+          fillColor: const Color(0xFFF8FAFC),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade300),
           ),
         ),
+      ),
+    );
+
+    if (context.isDesktop) {
+      return Row(
+        children: [
+          ...tabs,
+          const Spacer(),
+          SizedBox(width: 320, child: searchField),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: tabs),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(width: double.infinity, child: searchField),
       ],
     );
   }
@@ -696,7 +935,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: Table(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 950),
+            child: Table(
           columnWidths: const {
             0: FlexColumnWidth(1.8), // ID & Date
             1: FlexColumnWidth(1.8), // Citizen Info
@@ -936,129 +1179,135 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 
   // -------------------------------------------------------------
   // STORES SECTION
   // -------------------------------------------------------------
 
   Widget _buildStoreStatsRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildKpiCard(
-            title: 'Pending Verification',
-            count: '${_storeStats['pending'] ?? 0}',
-            subtitle: 'Stores awaiting review',
-            icon: Icons.pending_actions_rounded,
-            color: const Color(0xFFD97706),
-            bgColor: const Color(0xFFFFFBEB),
-            isAlert: (_storeStats['pending'] ?? 0) > 0,
-          ),
-        ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: _buildKpiCard(
-            title: 'Approved Outlets',
-            count: '${_storeStats['approved'] ?? 0}',
-            subtitle: 'Live on citizen app',
-            icon: Icons.check_circle_outline_rounded,
-            color: const Color(0xFF16A34A),
-            bgColor: const Color(0xFFF0FDF4),
-          ),
-        ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: _buildKpiCard(
-            title: 'Rejected Applications',
-            count: '${_storeStats['rejected'] ?? 0}',
-            subtitle: 'Returned for corrections',
-            icon: Icons.highlight_off_rounded,
-            color: const Color(0xFFDC2626),
-            bgColor: const Color(0xFFFEF2F2),
-          ),
-        ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: _buildKpiCard(
-            title: 'Total Applications',
-            count: '${_storeStats['total'] ?? 0}',
-            subtitle: 'All-time registrations',
-            icon: Icons.storefront_rounded,
-            color: const Color(0xFF2563EB),
-            bgColor: const Color(0xFFEFF6FF),
-          ),
-        ),
-      ],
-    );
+    return _buildResponsiveKpiGrid([
+      _buildKpiCard(
+        title: 'Pending Verification',
+        count: '${_storeStats['pending'] ?? 0}',
+        subtitle: 'Stores awaiting review',
+        icon: Icons.pending_actions_rounded,
+        color: const Color(0xFFD97706),
+        bgColor: const Color(0xFFFFFBEB),
+        isAlert: (_storeStats['pending'] ?? 0) > 0,
+      ),
+      _buildKpiCard(
+        title: 'Approved Outlets',
+        count: '${_storeStats['approved'] ?? 0}',
+        subtitle: 'Live on citizen app',
+        icon: Icons.check_circle_outline_rounded,
+        color: const Color(0xFF16A34A),
+        bgColor: const Color(0xFFF0FDF4),
+      ),
+      _buildKpiCard(
+        title: 'Rejected Applications',
+        count: '${_storeStats['rejected'] ?? 0}',
+        subtitle: 'Returned for corrections',
+        icon: Icons.highlight_off_rounded,
+        color: const Color(0xFFDC2626),
+        bgColor: const Color(0xFFFEF2F2),
+      ),
+      _buildKpiCard(
+        title: 'Total Applications',
+        count: '${_storeStats['total'] ?? 0}',
+        subtitle: 'All-time registrations',
+        icon: Icons.storefront_rounded,
+        color: const Color(0xFF2563EB),
+        bgColor: const Color(0xFFEFF6FF),
+      ),
+    ]);
   }
 
   Widget _buildStoreFilterBar() {
-    return Row(
-      children: [
-        _buildFilterTab(
-          label: 'Pending Verification',
-          tabKey: 'pending',
-          badgeCount: _storeStats['pending'] ?? 0,
-          activeColor: const Color(0xFFD97706),
-          currentSelected: _selectedStoreTab,
-          onTap: () => setState(() => _selectedStoreTab = 'pending'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: 'Approved Stores',
-          tabKey: 'approved',
-          badgeCount: _storeStats['approved'] ?? 0,
-          activeColor: const Color(0xFF16A34A),
-          currentSelected: _selectedStoreTab,
-          onTap: () => setState(() => _selectedStoreTab = 'approved'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: 'Rejected',
-          tabKey: 'rejected',
-          badgeCount: _storeStats['rejected'] ?? 0,
-          activeColor: const Color(0xFFDC2626),
-          currentSelected: _selectedStoreTab,
-          onTap: () => setState(() => _selectedStoreTab = 'rejected'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: 'All Registrations',
-          tabKey: 'all',
-          badgeCount: _storeStats['total'] ?? 0,
-          activeColor: const Color(0xFF2563EB),
-          currentSelected: _selectedStoreTab,
-          onTap: () => setState(() => _selectedStoreTab = 'all'),
-        ),
-        const Spacer(),
+    final tabs = [
+      _buildFilterTab(
+        label: 'Pending Verification',
+        tabKey: 'pending',
+        badgeCount: _storeStats['pending'] ?? 0,
+        activeColor: const Color(0xFFD97706),
+        currentSelected: _selectedStoreTab,
+        onTap: () => setState(() => _selectedStoreTab = 'pending'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: 'Approved Stores',
+        tabKey: 'approved',
+        badgeCount: _storeStats['approved'] ?? 0,
+        activeColor: const Color(0xFF16A34A),
+        currentSelected: _selectedStoreTab,
+        onTap: () => setState(() => _selectedStoreTab = 'approved'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: 'Rejected',
+        tabKey: 'rejected',
+        badgeCount: _storeStats['rejected'] ?? 0,
+        activeColor: const Color(0xFFDC2626),
+        currentSelected: _selectedStoreTab,
+        onTap: () => setState(() => _selectedStoreTab = 'rejected'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: 'All Registrations',
+        tabKey: 'all',
+        badgeCount: _storeStats['total'] ?? 0,
+        activeColor: const Color(0xFF2563EB),
+        currentSelected: _selectedStoreTab,
+        onTap: () => setState(() => _selectedStoreTab = 'all'),
+      ),
+    ];
 
-        // Search Field
-        SizedBox(
-          width: 280,
-          height: 42,
-          child: TextField(
-            controller: _storeSearchController,
-            onChanged: (v) => setState(() => _storeSearchQuery = v.trim()),
-            decoration: InputDecoration(
-              hintText: 'Search by name, license...',
-              hintStyle: const TextStyle(fontSize: 13),
-              prefixIcon: const Icon(Icons.search, size: 20),
-              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-              filled: true,
-              fillColor: const Color(0xFFF8FAFC),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-            ),
+    final searchField = SizedBox(
+      height: 42,
+      child: TextField(
+        controller: _storeSearchController,
+        onChanged: (v) => setState(() => _storeSearchQuery = v.trim()),
+        decoration: InputDecoration(
+          hintText: 'Search by name, license...',
+          hintStyle: const TextStyle(fontSize: 13),
+          prefixIcon: const Icon(Icons.search, size: 20),
+          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+          filled: true,
+          fillColor: const Color(0xFFF8FAFC),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade300),
           ),
         ),
+      ),
+    );
+
+    if (context.isDesktop) {
+      return Row(
+        children: [
+          ...tabs,
+          const Spacer(),
+          SizedBox(width: 280, child: searchField),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: tabs),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(width: double.infinity, child: searchField),
       ],
     );
   }
@@ -1071,7 +1320,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: Table(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 950),
+            child: Table(
           columnWidths: const {
             0: FlexColumnWidth(2.5), // Store & Category
             1: FlexColumnWidth(1.8), // Bank Info
@@ -1165,7 +1418,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   // Actions
                   Padding(
                     padding: const EdgeInsets.all(14),
-                    child: Row(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
                       children: [
                         OutlinedButton(
                           style: OutlinedButton.styleFrom(
@@ -1176,7 +1431,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           child: const Text('Review', style: TextStyle(fontSize: 12, color: Color(0xFF0D47A1))),
                         ),
                         if (store['status'] == 'pending') ...[
-                          const SizedBox(width: 6),
                           ElevatedButton(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF16A34A),
@@ -1197,8 +1451,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 
   // -------------------------------------------------------------
   // REUSABLE UI HELPERS
@@ -1214,7 +1470,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     bool isAlert = false,
   }) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -1230,20 +1486,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       child: Row(
         children: [
           Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(14)),
-            child: Icon(icon, color: color, size: 26),
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12)),
+            child: Icon(icon, color: color, size: 24),
           ),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
-              const SizedBox(height: 4),
-              Text(count, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-              Text(subtitle, style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
-            ],
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  count,
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1264,13 +1538,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? activeColor.withValues(alpha: 0.1) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: isSelected ? activeColor : Colors.transparent),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               label,
@@ -1375,53 +1650,40 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // -------------------------------------------------------------
 
   Widget _buildFeedbackStatsRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildKpiCard(
-            title: 'Total Submissions',
-            count: '${_feedbackStats['total'] ?? 0}',
-            subtitle: 'All-time citizen feedback',
-            icon: Icons.rate_review_rounded,
-            color: const Color(0xFF2563EB),
-            bgColor: const Color(0xFFEFF6FF),
-          ),
-        ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: _buildKpiCard(
-            title: 'Satisfaction Score',
-            count: '${_feedbackStats['avgRating'] ?? 5.0} ★',
-            subtitle: 'Average citizen rating',
-            icon: Icons.star_rounded,
-            color: const Color(0xFFD97706),
-            bgColor: const Color(0xFFFFFBEB),
-          ),
-        ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: _buildKpiCard(
-            title: 'Civic Surveys',
-            count: '${_feedbackStats['surveyCount'] ?? 0}',
-            subtitle: '4-point locality surveys',
-            icon: Icons.assignment_turned_in_rounded,
-            color: const Color(0xFF16A34A),
-            bgColor: const Color(0xFFF0FDF4),
-          ),
-        ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: _buildKpiCard(
-            title: 'App Reviews',
-            count: '${_feedbackStats['appRatingCount'] ?? 0}',
-            subtitle: 'Ratings & suggestions',
-            icon: Icons.thumb_up_rounded,
-            color: const Color(0xFF0284C7),
-            bgColor: const Color(0xFFF0F9FF),
-          ),
-        ),
-      ],
-    );
+    return _buildResponsiveKpiGrid([
+      _buildKpiCard(
+        title: 'Total Submissions',
+        count: '${_feedbackStats['total'] ?? 0}',
+        subtitle: 'All-time citizen feedback',
+        icon: Icons.rate_review_rounded,
+        color: const Color(0xFF2563EB),
+        bgColor: const Color(0xFFEFF6FF),
+      ),
+      _buildKpiCard(
+        title: 'Satisfaction Score',
+        count: '${_feedbackStats['avgRating'] ?? 5.0} ★',
+        subtitle: 'Average citizen rating',
+        icon: Icons.star_rounded,
+        color: const Color(0xFFD97706),
+        bgColor: const Color(0xFFFFFBEB),
+      ),
+      _buildKpiCard(
+        title: 'Civic Surveys',
+        count: '${_feedbackStats['surveyCount'] ?? 0}',
+        subtitle: '4-point locality surveys',
+        icon: Icons.assignment_turned_in_rounded,
+        color: const Color(0xFF16A34A),
+        bgColor: const Color(0xFFF0FDF4),
+      ),
+      _buildKpiCard(
+        title: 'App Reviews',
+        count: '${_feedbackStats['appRatingCount'] ?? 0}',
+        subtitle: 'Ratings & suggestions',
+        icon: Icons.thumb_up_rounded,
+        color: const Color(0xFF0284C7),
+        bgColor: const Color(0xFFF0F9FF),
+      ),
+    ]);
   }
 
   Widget _buildFeedbackFilterBar() {
@@ -1431,93 +1693,112 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final int star3 = int.tryParse(breakdown['3']?.toString() ?? '0') ?? 0;
     final int star12 = (int.tryParse(breakdown['2']?.toString() ?? '0') ?? 0) + (int.tryParse(breakdown['1']?.toString() ?? '0') ?? 0);
 
-    return Row(
+    final tabs = [
+      _buildFilterTab(
+        label: 'All Feedback',
+        tabKey: 'all',
+        badgeCount: _feedbackStats['total'] ?? 0,
+        activeColor: const Color(0xFF2563EB),
+        currentSelected: _selectedFeedbackTab,
+        onTap: () => setState(() => _selectedFeedbackTab = 'all'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: 'Surveys',
+        tabKey: 'survey',
+        badgeCount: _feedbackStats['surveyCount'] ?? 0,
+        activeColor: const Color(0xFF16A34A),
+        currentSelected: _selectedFeedbackTab,
+        onTap: () => setState(() => _selectedFeedbackTab = 'survey'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: 'App Reviews',
+        tabKey: 'app_rating',
+        badgeCount: _feedbackStats['appRatingCount'] ?? 0,
+        activeColor: const Color(0xFF0284C7),
+        currentSelected: _selectedFeedbackTab,
+        onTap: () => setState(() => _selectedFeedbackTab = 'app_rating'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: '5 Stars ★',
+        tabKey: '5',
+        badgeCount: star5,
+        activeColor: const Color(0xFF16A34A),
+        currentSelected: _selectedFeedbackTab,
+        onTap: () => setState(() => _selectedFeedbackTab = '5'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: '4 Stars ★',
+        tabKey: '4',
+        badgeCount: star4,
+        activeColor: const Color(0xFF0284C7),
+        currentSelected: _selectedFeedbackTab,
+        onTap: () => setState(() => _selectedFeedbackTab = '4'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: '3 Stars ★',
+        tabKey: '3',
+        badgeCount: star3,
+        activeColor: const Color(0xFFD97706),
+        currentSelected: _selectedFeedbackTab,
+        onTap: () => setState(() => _selectedFeedbackTab = '3'),
+      ),
+      const SizedBox(width: 8),
+      _buildFilterTab(
+        label: '1-2 Stars ★',
+        tabKey: '1-2',
+        badgeCount: star12,
+        activeColor: const Color(0xFFDC2626),
+        currentSelected: _selectedFeedbackTab,
+        onTap: () => setState(() => _selectedFeedbackTab = '1-2'),
+      ),
+    ];
+
+    final searchField = Container(
+      width: 260,
+      height: 42,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+      ),
+      child: TextField(
+        controller: _feedbackSearchController,
+        style: const TextStyle(fontSize: 13),
+        decoration: const InputDecoration(
+          hintText: 'Search citizen, phone, remarks...',
+          hintStyle: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+          prefixIcon: Icon(Icons.search_rounded, size: 18, color: Color(0xFF64748B)),
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(vertical: 10),
+        ),
+        onChanged: (val) => setState(() => _feedbackSearchQuery = val),
+      ),
+    );
+
+    if (context.isDesktop) {
+      return Row(
+        children: [
+          ...tabs,
+          const Spacer(),
+          searchField,
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildFilterTab(
-          label: 'All Feedback',
-          tabKey: 'all',
-          badgeCount: _feedbackStats['total'] ?? 0,
-          activeColor: const Color(0xFF2563EB),
-          currentSelected: _selectedFeedbackTab,
-          onTap: () => setState(() => _selectedFeedbackTab = 'all'),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: tabs),
         ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: 'Surveys',
-          tabKey: 'survey',
-          badgeCount: _feedbackStats['surveyCount'] ?? 0,
-          activeColor: const Color(0xFF16A34A),
-          currentSelected: _selectedFeedbackTab,
-          onTap: () => setState(() => _selectedFeedbackTab = 'survey'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: 'App Reviews',
-          tabKey: 'app_rating',
-          badgeCount: _feedbackStats['appRatingCount'] ?? 0,
-          activeColor: const Color(0xFF0284C7),
-          currentSelected: _selectedFeedbackTab,
-          onTap: () => setState(() => _selectedFeedbackTab = 'app_rating'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: '5 Stars ★',
-          tabKey: '5',
-          badgeCount: star5,
-          activeColor: const Color(0xFF16A34A),
-          currentSelected: _selectedFeedbackTab,
-          onTap: () => setState(() => _selectedFeedbackTab = '5'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: '4 Stars ★',
-          tabKey: '4',
-          badgeCount: star4,
-          activeColor: const Color(0xFF0284C7),
-          currentSelected: _selectedFeedbackTab,
-          onTap: () => setState(() => _selectedFeedbackTab = '4'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: '3 Stars ★',
-          tabKey: '3',
-          badgeCount: star3,
-          activeColor: const Color(0xFFD97706),
-          currentSelected: _selectedFeedbackTab,
-          onTap: () => setState(() => _selectedFeedbackTab = '3'),
-        ),
-        const SizedBox(width: 8),
-        _buildFilterTab(
-          label: '1-2 Stars ★',
-          tabKey: '1-2',
-          badgeCount: star12,
-          activeColor: const Color(0xFFDC2626),
-          currentSelected: _selectedFeedbackTab,
-          onTap: () => setState(() => _selectedFeedbackTab = '1-2'),
-        ),
-        const Spacer(),
-        // Search Bar
-        Container(
-          width: 260,
-          height: 40,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFCBD5E1)),
-          ),
-          child: TextField(
-            controller: _feedbackSearchController,
-            style: const TextStyle(fontSize: 13),
-            decoration: const InputDecoration(
-              hintText: 'Search citizen, phone, remarks...',
-              hintStyle: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-              prefixIcon: Icon(Icons.search_rounded, size: 18, color: Color(0xFF64748B)),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(vertical: 10),
-            ),
-            onChanged: (val) => setState(() => _feedbackSearchQuery = val),
-          ),
-        ),
+        const SizedBox(height: 14),
+        SizedBox(width: double.infinity, child: searchField),
       ],
     );
   }
@@ -1529,7 +1810,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Table(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 900),
+          child: Table(
         columnWidths: const {
           0: FixedColumnWidth(160), // ID & Date
           1: FlexColumnWidth(1.4),  // Citizen Profile
@@ -1725,6 +2010,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           }),
         ],
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 }

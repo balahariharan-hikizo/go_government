@@ -271,14 +271,15 @@ exports.getStoreOrders = async (req, res) => {
         activeOrdersCount++;
       }
 
-      if (order.status === 'delivered') {
+      if (['delivered', 'return_rejected'].includes(order.status)) {
         deliveredOrdersCount++;
         pendingSubsidyPayout += orderSubsidy;
         const grand = Number(order.grandTotal) || 0;
-        const del = Number(order.deliveryCharge) || 0;
+        const customerDelivery = Number(order.deliveryCharge) || 0;
+        const riderFee = customerDelivery > 0 ? customerDelivery : 35;
         deliveredGrossSales += grand;
-        totalDeliveryCharges += del;
-        netStoreEarnings += Math.max(0, grand - del);
+        totalDeliveryCharges += riderFee;
+        netStoreEarnings += Math.max(0, grand - riderFee);
       }
     }
 

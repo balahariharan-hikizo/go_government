@@ -81,6 +81,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
   // Multiple Images Management
   List<String> _productImages = [];
   bool _isUploadingImages = false;
+  bool _imageError = false;
 
   // Variants Management (Sizes / Weights)
   bool _hasVariants = false;
@@ -332,6 +333,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
         setState(() {
           _isUploadingImages = false;
           _productImages.addAll(uploaded);
+          if (uploaded.isNotEmpty) _imageError = false;
         });
       }
     } catch (e) {
@@ -349,6 +351,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
         setState(() {
           _isUploadingImages = false;
           _productImages.addAll(uploaded);
+          if (uploaded.isNotEmpty) _imageError = false;
         });
       }
     } catch (e) {
@@ -498,7 +501,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
   void _applyMockPreset(Map<String, dynamic> data) {
     setState(() {
       _titleController.text = data['title'] ?? '';
-      _selectedCategory = data['category'] ?? widget.storeCategory;
+      if (_categoryOptions.isNotEmpty) {
+        final match = _categoryOptions.firstWhere(
+          (c) => c.toLowerCase() == (data['category'] ?? '').toString().toLowerCase(),
+          orElse: () => _categoryOptions.first,
+        );
+        _selectedCategory = match;
+      } else {
+        _selectedCategory = data['category'] ?? widget.storeCategory;
+      }
       _unitController.text = data['unit'] ?? '';
       _priceController.text = data['price'] ?? '';
       _origPriceController.text = data['originalPrice'] ?? '';
@@ -513,7 +524,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
       _subsidyLimitController.text = data['subsidyLimit'] ?? '';
       _descriptionController.text = data['description'] ?? '';
 
-      _productImages = [data['image'] ?? ''];
+      final img = data['image']?.toString() ?? '';
+      _productImages = img.isNotEmpty ? [img] : [];
+      _imageError = false;
 
       // Clear existing variants and load preset variants if present
       for (final vc in _variantControllers) {
@@ -562,6 +575,30 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_productImages.isEmpty) {
+      setState(() => _imageError = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.add_a_photo_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Product photo is mandatory. Please add at least one product photo.',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
 
     if (_selectedCategory.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -872,16 +909,39 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   // 📸 Multiple Product Images UI
   Widget _buildMultipleImagesSection() {
+    final bool hasImages = _productImages.isNotEmpty;
+    final bool showError = _imageError && !hasImages;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _buildSectionHeader('Product Photos (Multiple)'),
-            Text(
-              '${_productImages.length} images added',
-              style: TextStyle(fontSize: 12, color: AppColors.grayFont, fontWeight: FontWeight.w500),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildSectionHeader('Product Photos'),
+                SizedBox(width: Responsive.w(4)),
+                const Text(
+                  '*',
+                  style: TextStyle(color: AppColors.error, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: Responsive.w(8), vertical: Responsive.h(2)),
+              decoration: BoxDecoration(
+                color: showError || !hasImages ? const Color(0xFFFFEBEE) : AppColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(Responsive.w(6)),
+                border: showError || !hasImages ? Border.all(color: const Color(0xFFFFCDD2), width: 0.8) : null,
+              ),
+              child: CustomText.body(
+                !hasImages ? 'Mandatory' : '${_productImages.length} added',
+                fontSize: 11,
+                color: !hasImages ? AppColors.error : AppColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
@@ -927,9 +987,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
                   width: Responsive.w(100),
                   height: Responsive.h(110),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: showError ? const Color(0xFFFFF8F8) : Colors.white,
                     borderRadius: BorderRadius.circular(Responsive.w(16)),
-                    border: Border.all(color: AppColors.primary, width: 1.5, style: BorderStyle.solid),
+                    border: Border.all(
+                      color: showError ? AppColors.error : AppColors.primary,
+                      width: 1.5,
+                      style: BorderStyle.solid,
+                    ),
                     boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
                   ),
                   child: _isUploadingImages
@@ -937,9 +1001,17 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       : Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.add_photo_alternate_outlined, size: 30, color: AppColors.primary),
+                            Icon(
+                              Icons.add_photo_alternate_outlined,
+                              size: 30,
+                              color: showError ? AppColors.error : AppColors.primary,
+                            ),
                             SizedBox(height: Responsive.h(6)),
-                            CustomText.body('+ Add Photos', fontSize: 11, color: AppColors.primary),
+                            CustomText.body(
+                              '+ Add Photos',
+                              fontSize: 11,
+                              color: showError ? AppColors.error : AppColors.primary,
+                            ),
                           ],
                         ),
                 ),
@@ -990,6 +1062,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                           onTap: () {
                             setState(() {
                               _productImages.removeAt(idx);
+                              if (_productImages.isEmpty) _imageError = true;
                             });
                           },
                           child: Container(
@@ -1006,6 +1079,24 @@ class _AddProductScreenState extends State<AddProductScreen> {
             ],
           ),
         ),
+        if (showError) ...[
+          SizedBox(height: Responsive.h(6)),
+          Padding(
+            padding: EdgeInsets.only(left: Responsive.w(4)),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline_rounded, size: 14, color: AppColors.error),
+                SizedBox(width: Responsive.w(4)),
+                CustomText.body(
+                  'At least one product photo is required to publish',
+                  fontSize: 11,
+                  color: AppColors.error,
+                  fontWeight: FontWeight.w500,
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

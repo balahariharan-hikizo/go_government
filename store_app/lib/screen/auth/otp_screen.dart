@@ -112,6 +112,14 @@ class _OtpScreenState extends State<OtpScreen> {
             if (state is AuthSuccessState) {
               // Successfully verified OTP. Check if store profile already exists
               context.read<StoreBloc>().add(FetchMyStoreEvent(state.userId));
+            } else if (state is OtpSentState) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('A new OTP has been sent successfully!'),
+                  backgroundColor: AppColors.success,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
             } else if (state is AuthFailureState) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(

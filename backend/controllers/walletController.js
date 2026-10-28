@@ -69,7 +69,7 @@ exports.getWalletDetails = async (req, res) => {
     if (role === 'store_owner') {
       const storeId = account?.storeId || accountId;
       const [deliveredOrders, returnedOrders, activeOrders] = await Promise.all([
-        Order.find({ storeId, status: 'delivered' }).select('grandTotal deliveryCharge items orderId createdAt').lean(),
+        Order.find({ storeId, status: { $in: ['delivered', 'return_rejected'] } }).select('grandTotal deliveryCharge items orderId createdAt').lean(),
         Order.find({ storeId, status: { $in: ['returned_to_store', 'returning_to_store', 'return_pickup_pending', 'return_pickup_assigned'] } }).select('grandTotal deliveryCharge returnDetails orderId createdAt').lean(),
         Order.find({ storeId, status: { $in: ['placed', 'preparing', 'ready_for_pickup', 'accepted', 'out_for_delivery'] } }).select('grandTotal orderId').lean(),
       ]);
@@ -80,10 +80,11 @@ exports.getWalletDetails = async (req, res) => {
       let totalItemsSold = 0;
       for (const o of deliveredOrders) {
         const grandTotal = Number(o.grandTotal) || 0;
-        const deliveryCharge = Number(o.deliveryCharge) || 0;
+        const customerDelivery = Number(o.deliveryCharge) || 0;
+        const riderFee = customerDelivery > 0 ? customerDelivery : 35;
         grossCustomerSales += grandTotal;
-        riderDeliveryCharges += deliveryCharge;
-        netProductEarnings += Math.max(0, grandTotal - deliveryCharge);
+        riderDeliveryCharges += riderFee;
+        netProductEarnings += Math.max(0, grandTotal - riderFee);
         if (Array.isArray(o.items)) {
           for (const it of o.items) {
             totalItemsSold += (Number(it.quantity) || 1);

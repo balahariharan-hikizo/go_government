@@ -45,9 +45,11 @@ exports.createProduct = async (req, res) => {
     const targetTitle = (req.body.title || req.body.name || '').toString().trim();
     const targetStock = req.body.stock !== undefined ? Number(req.body.stock) : (req.body.stockQuantity !== undefined ? Number(req.body.stockQuantity) : 0);
 
-    if (!storeId || !targetTitle || price === undefined) {
+    const targetImage = image || (Array.isArray(images) && images.length > 0 ? images[0] : '');
+
+    if (!storeId || !targetTitle || price === undefined || !targetImage) {
       return res.status(400).json({
-        success: false, error: 'Missing required fields: storeId, title (or name), and price are mandatory',
+        success: false, error: 'Missing required fields: storeId, title, price, and at least one product photo are mandatory',
       });
     }
 
@@ -151,25 +153,21 @@ exports.getProductsByStore = async (req, res) => {
     }).select('name isActive').lean();
 
     if (allStoreCategories.length > 0) {
-      const activeCats = allStoreCategories.filter((c) => c.isActive);
-      const activeNames = activeCats.map((c) => new RegExp(`^${c.name.trim()}$`, 'i'));
+      const inactiveCats = allStoreCategories.filter((c) => c.isActive === false);
+      const inactiveNames = inactiveCats.map((c) => new RegExp(`^${c.name.trim()}$`, 'i'));
 
       if (category && category !== 'all') {
-        const isRequestedActive = activeCats.some(
+        const isRequestedInactive = inactiveCats.some(
           (c) => c.name.trim().toLowerCase() === category.trim().toLowerCase()
         );
-        if (!isRequestedActive) {
+        if (isRequestedInactive) {
           query._id = null; // Requested category is inactive, return empty
         } else {
           query.category = new RegExp(`^${category}$`, 'i');
         }
-      } else {
-        // If all categories are inactive, return empty
-        if (activeNames.length === 0) {
-          query._id = null;
-        } else {
-          query.category = { $in: activeNames };
-        }
+      } else if (inactiveNames.length > 0) {
+        // Exclude products that belong to explicitly disabled/inactive categories
+        query.category = { $nin: inactiveNames };
       }
     } else if (category && category !== 'all') {
       query.category = new RegExp(`^${category}$`, 'i');

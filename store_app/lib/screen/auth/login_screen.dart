@@ -52,10 +52,12 @@ class _LoginScreenState extends State<LoginScreen> {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is OtpSentState) {
-          Navigator.of(context).pushNamed(
-            RouteConstants.otp,
-            arguments: {'phone': state.phone, 'testOtp': state.otp},
-          );
+          if (ModalRoute.of(context)?.isCurrent == true) {
+            Navigator.of(context).pushNamed(
+              RouteConstants.otp,
+              arguments: {'phone': state.phone, 'testOtp': state.otp},
+            );
+          }
         } else if (state is AuthFailureState) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

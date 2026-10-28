@@ -12,7 +12,9 @@ class StoreBloc extends Bloc<StoreEvent, StoreState> {
 
   StoreBloc._internal() : super(StoreInitial()) {
     on<FetchMyStoreEvent>((event, emit) async {
-      emit(StoreLoading());
+      if (state is! StoreLoaded) {
+        emit(StoreLoading());
+      }
 
       final res = await StoreApiService.getMyStore(event.identifier);
 

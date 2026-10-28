@@ -41,12 +41,15 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
   Map<String, dynamic>? _subsidyMetrics;
   String? _lastNotifiedOrderId;
   int _lastNotifiedTime = 0;
+  bool _isNavigating = false;
 
   @override
   void initState() {
     super.initState();
     _store = widget.store;
-    context.read<StoreBloc>().add(FetchMyStoreEvent(_store.storeId));
+    if (_store.storeId.isEmpty || _store.name.isEmpty) {
+      context.read<StoreBloc>().add(FetchMyStoreEvent(_store.storeId));
+    }
     context.read<ProductBloc>().add(LoadStoreProductsEvent(_store.storeId));
     _fetchFinancialMetrics();
     _initFCM();
@@ -209,32 +212,43 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
     );
   }
 
-  void _openStoreDetails() {
-    Navigator.pushNamed(
+  void _openStoreDetails() async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    await Navigator.pushNamed(
       context,
       RouteConstants.storeDetails,
       arguments: {'store': _store},
     );
+    if (mounted) _isNavigating = false;
   }
 
-  void _openManageProducts() {
-    Navigator.pushNamed(
+  void _openManageProducts() async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    await Navigator.pushNamed(
       context,
       RouteConstants.manageProducts,
       arguments: {'store': _store},
     );
+    if (mounted) _isNavigating = false;
   }
 
-  void _openManageCategories() {
-    Navigator.pushNamed(
+  void _openManageCategories() async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    await Navigator.pushNamed(
       context,
       RouteConstants.manageCategories,
       arguments: {'store': _store},
     );
+    if (mounted) _isNavigating = false;
   }
 
-  void _openAddProduct() {
-    Navigator.pushNamed(
+  void _openAddProduct() async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    await Navigator.pushNamed(
       context,
       RouteConstants.addProduct,
       arguments: {
@@ -242,10 +256,13 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
         'storeCategory': _store.category,
       },
     );
+    if (mounted) _isNavigating = false;
   }
 
-  void _openOrderQueue({int initialTabIndex = 0}) {
-    Navigator.pushNamed(
+  void _openOrderQueue({int initialTabIndex = 0}) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    await Navigator.pushNamed(
       context,
       RouteConstants.orderQueue,
       arguments: {
@@ -253,18 +270,22 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
         'initialTabIndex': initialTabIndex,
       },
     );
+    if (mounted) _isNavigating = false;
   }
 
-  void _openStoreWallet() {
-    Navigator.pushNamed(
+  void _openStoreWallet() async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    await Navigator.pushNamed(
       context,
       RouteConstants.storeWallet,
       arguments: {'store': _store},
-    ).then((_) {
-      if (!mounted) return;
+    );
+    if (mounted) {
+      _isNavigating = false;
       _fetchFinancialMetrics();
       context.read<StoreBloc>().add(FetchMyStoreEvent(_store.storeId));
-    });
+    }
   }
 
 

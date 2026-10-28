@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/admin_api_service.dart';
+import '../utils/responsive.dart';
 
 class LiveMonitoringView extends StatefulWidget {
   const LiveMonitoringView({super.key});
@@ -146,26 +147,43 @@ class _LiveMonitoringViewState extends State<LiveMonitoringView> {
     final liveOrdersCount = _orders.where((o) => ['placed', 'accepted', 'ready_for_pickup', 'out_for_delivery'].contains(o['status'])).length;
     final deliveredCount = _orders.where((o) => o['status'] == 'delivered').length;
 
+    final isMobile = context.isMobile;
+    final isDesktop = context.isDesktop;
+
+    final kpiCards = [
+      _buildStatCard('Active Online Riders', '$_activeRidersCount', Icons.two_wheeler_rounded, Colors.blue),
+      _buildStatCard('Active GPS Signals', '$_activeGpsCount', Icons.location_on_rounded, Colors.green),
+      _buildStatCard('In-Flight Live Orders', '$liveOrdersCount', Icons.local_shipping_rounded, Colors.orange),
+      _buildStatCard('Completed Deliveries', '$deliveredCount', Icons.check_circle_rounded, Colors.teal),
+    ];
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(28),
+      padding: EdgeInsets.all(isMobile ? 16 : 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header Row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 12,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     '📡 Live Dispatch & Store Order Analytics',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                    style: TextStyle(
+                      fontSize: isMobile ? 18 : 22,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF1E293B),
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Real-time GPS tracking of delivery partners & multi-store order histories',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    style: TextStyle(fontSize: isMobile ? 11.5 : 13, color: Colors.grey.shade600),
                   ),
                 ],
               ),
@@ -176,7 +194,7 @@ class _LiveMonitoringViewState extends State<LiveMonitoringView> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2563EB),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 14 : 18, vertical: isMobile ? 10 : 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
@@ -185,36 +203,57 @@ class _LiveMonitoringViewState extends State<LiveMonitoringView> {
           const SizedBox(height: 24),
 
           // Overview KPI Cards
-          Row(
-            children: [
-              _buildStatCard('Active Online Riders', '$_activeRidersCount', Icons.two_wheeler_rounded, Colors.blue),
-              const SizedBox(width: 16),
-              _buildStatCard('Active GPS Signals', '$_activeGpsCount', Icons.location_on_rounded, Colors.green),
-              const SizedBox(width: 16),
-              _buildStatCard('In-Flight Live Orders', '$liveOrdersCount', Icons.local_shipping_rounded, Colors.orange),
-              const SizedBox(width: 16),
-              _buildStatCard('Completed Deliveries', '$deliveredCount', Icons.check_circle_rounded, Colors.teal),
-            ],
-          ),
+          if (isDesktop)
+            Row(
+              children: kpiCards.asMap().entries.map((e) {
+                final isLast = e.key == kpiCards.length - 1;
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(right: isLast ? 0 : 16),
+                    child: e.value,
+                  ),
+                );
+              }).toList(),
+            )
+          else
+            LayoutBuilder(
+              builder: (ctx, constraints) {
+                final maxW = constraints.maxWidth;
+                if (maxW <= 0) return const SizedBox.shrink();
+                final cols = maxW >= 1000 ? 4 : (maxW >= 600 ? 2 : 1);
+                const gap = 12.0;
+                final w = cols == 1
+                    ? maxW
+                    : ((maxW - ((cols - 1) * gap)) / cols).clamp(100.0, maxW);
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: kpiCards.map((c) => SizedBox(width: w, child: c)).toList(),
+                );
+              },
+            ),
           const SizedBox(height: 28),
 
           // Sub-navigation Switcher
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildSubTabButton('Live Riders & GPS', 'riders', Icons.gps_fixed_rounded, _riders.length),
-                const SizedBox(width: 6),
-                _buildSubTabButton('In-Flight Live Orders', 'live_orders', Icons.bolt_rounded, liveOrdersCount),
-                const SizedBox(width: 6),
-                _buildSubTabButton('Store Order Histories', 'store_history', Icons.storefront_rounded, _orders.length),
-              ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildSubTabButton('Live Riders & GPS', 'riders', Icons.gps_fixed_rounded, _riders.length),
+                  const SizedBox(width: 6),
+                  _buildSubTabButton('In-Flight Live Orders', 'live_orders', Icons.bolt_rounded, liveOrdersCount),
+                  const SizedBox(width: 6),
+                  _buildSubTabButton('Store Order Histories', 'store_history', Icons.storefront_rounded, _orders.length),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 20),
@@ -589,31 +628,32 @@ class _LiveMonitoringViewState extends State<LiveMonitoringView> {
   }
 
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Column(
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                Text(title, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Text(title, style: TextStyle(fontSize: 12, color: Colors.grey.shade600), maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -27,6 +27,7 @@ class ManageProductsScreen extends StatefulWidget {
 class _ManageProductsScreenState extends State<ManageProductsScreen> {
   String _searchQuery = '';
   String _selectedFilter = 'All';
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -34,8 +35,10 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
     context.read<ProductBloc>().add(LoadStoreProductsEvent(widget.store.storeId));
   }
 
-  void _editProduct(ProductModel product) {
-    Navigator.pushNamed(
+  void _editProduct(ProductModel product) async {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    await Navigator.pushNamed(
       context,
       RouteConstants.addProduct,
       arguments: {
@@ -44,6 +47,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
         'initialProduct': product,
       },
     );
+    if (mounted) _isNavigating = false;
   }
 
   void _deleteProduct(ProductModel product) {
@@ -121,12 +125,15 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
           IconButton(
             icon: const Icon(Icons.category_outlined, color: AppColors.primary),
             tooltip: 'Manage Categories',
-            onPressed: () {
-              Navigator.pushNamed(
+            onPressed: () async {
+              if (_isNavigating) return;
+              _isNavigating = true;
+              await Navigator.pushNamed(
                 context,
                 RouteConstants.manageCategories,
                 arguments: {'store': widget.store},
               );
+              if (mounted) _isNavigating = false;
             },
           ),
           IconButton(
@@ -146,6 +153,8 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
         ),
         onPressed: () async {
+          if (_isNavigating) return;
+          _isNavigating = true;
           await Navigator.pushNamed(
             context,
             RouteConstants.addProduct,
@@ -154,6 +163,7 @@ class _ManageProductsScreenState extends State<ManageProductsScreen> {
               'storeCategory': widget.store.category,
             },
           );
+          if (mounted) _isNavigating = false;
         },
       ),
       body: CommonBackground(

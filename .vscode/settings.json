@@ -1,3 +1,8 @@
 {
-    "cmake.sourceDirectory": "D:/hikizo/go_government/windows"
+    "dart.projectSearchPaths": [
+        "citizen_app",
+        "store_app",
+        "rider_app",
+        "admin_web"
+    ]
 }

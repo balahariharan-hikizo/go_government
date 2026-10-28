@@ -42,14 +42,16 @@ class _RiderLoginScreenState extends State<RiderLoginScreen> {
       body: BlocConsumer<RiderAuthBloc, RiderAuthState>(
         listener: (context, state) {
           if (state is RiderOtpSentState) {
-            Navigator.pushNamed(
-              context,
-              RouteConstants.otp,
-              arguments: {
-                'phone': state.phone,
-                'otp': state.otp,
-              },
-            );
+            if (ModalRoute.of(context)?.isCurrent == true) {
+              Navigator.pushNamed(
+                context,
+                RouteConstants.otp,
+                arguments: {
+                  'phone': state.phone,
+                  'otp': state.otp,
+                },
+              );
+            }
           } else if (state is RiderAuthFailureState) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(

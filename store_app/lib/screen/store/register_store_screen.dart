@@ -63,6 +63,9 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
   File? _pickedImageFile;
   final ImagePicker _imagePicker = ImagePicker();
   bool _isUploadingImage = false;
+  bool _isNavigating = false;
+  bool _storeImageError = false;
+  String _lastSyncedOwnerName = '';
 
   final List<Map<String, String>> _categories = [
     {'id': 'ration', 'name': 'Fair-Price Ration Depot (PDS)', 'icon': '🌾'},
@@ -94,8 +97,8 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
 
     _addressController = TextEditingController();
     _pincodeController = TextEditingController();
-    _latController = TextEditingController(text: '13.0827');
-    _lngController = TextEditingController(text: '80.2707');
+    _latController = TextEditingController();
+    _lngController = TextEditingController();
 
     _bankNameController = TextEditingController();
     _accountNumberController = TextEditingController();
@@ -108,10 +111,12 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
 
     // Auto sync Holder Name when Owner Name typed
     _ownerNameController.addListener(() {
+      final currentOwner = _ownerNameController.text;
       if (_accountHolderController.text.isEmpty ||
-          _accountHolderController.text == _ownerNameController.text) {
-        _accountHolderController.text = _ownerNameController.text;
+          _accountHolderController.text == _lastSyncedOwnerName) {
+        _accountHolderController.text = currentOwner;
       }
+      _lastSyncedOwnerName = currentOwner;
     });
   }
 
@@ -174,16 +179,19 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
   }
 
   Future<void> _openMapPicker() async {
-    final double curLat = double.tryParse(_latController.text) ?? 13.0827;
-    final double curLng = double.tryParse(_lngController.text) ?? 80.2707;
+    if (_isNavigating) return;
+    _isNavigating = true;
+    final double? curLat = double.tryParse(_latController.text.trim());
+    final double? curLng = double.tryParse(_lngController.text.trim());
 
     final result = await Navigator.of(context).pushNamed(
       RouteConstants.pickLocation,
       arguments: {
-        'initialLocation': LatLng(curLat, curLng),
-        'initialAddress': _addressController.text,
+        'initialLocation': (curLat != null && curLng != null) ? LatLng(curLat, curLng) : null,
+        'initialAddress': _addressController.text.trim(),
       },
     );
+    if (mounted) _isNavigating = false;
 
     if (result != null && result is StoreLocationResult && mounted) {
       setState(() {
@@ -234,6 +242,7 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
                     if (image != null && mounted) {
                       setState(() {
                         _pickedImageFile = File(image.path);
+                        _storeImageError = false;
                       });
                     }
                   },
@@ -260,6 +269,7 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
                     if (image != null && mounted) {
                       setState(() {
                         _pickedImageFile = File(image.path);
+                        _storeImageError = false;
                       });
                     }
                   },
@@ -274,6 +284,31 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
 
   Future<void> _submitRegistration() async {
     if (!_formKey.currentState!.validate()) return;
+
+    final bool hasPhoto = _pickedImageFile != null || _storeImageController.text.trim().isNotEmpty;
+    if (!hasPhoto) {
+      setState(() => _storeImageError = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.add_a_photo_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Storefront photo is mandatory. Please upload your store photo.',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
+    }
 
     if (_accountNumberController.text.trim() != _confirmAccountController.text.trim()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -294,12 +329,70 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
         final uploaded = await StoreApiService.uploadStoreImage(_pickedImageFile!.path);
         if (uploaded != null && uploaded.isNotEmpty) {
           finalImageUrl = uploaded;
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Failed to upload storefront photo. Please try again.'),
+                backgroundColor: AppColors.error,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+          return;
         }
       } catch (e) {
         debugPrint('Failed to upload store image: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Photo upload error: $e'),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
       } finally {
         if (mounted) setState(() => _isUploadingImage = false);
       }
+    }
+
+    if (finalImageUrl.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Storefront photo is mandatory.'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    final double? parsedLat = double.tryParse(_latController.text.trim());
+    final double? parsedLng = double.tryParse(_lngController.text.trim());
+
+    if (parsedLat == null || parsedLng == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.location_on_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Please select store location using "Choose on Map" or "Use Current GPS"'),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+      return;
     }
 
     final newStore = StoreModel(
@@ -310,8 +403,8 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
       category: _selectedCategory,
       address: _addressController.text.trim(),
       pincode: _pincodeController.text.trim(),
-      lat: double.tryParse(_latController.text.trim()) ?? 13.0827,
-      lng: double.tryParse(_lngController.text.trim()) ?? 80.2707,
+      lat: parsedLat,
+      lng: parsedLng,
       storeImage: finalImageUrl,
       bankDetails: BankDetailsModel(
         bankName: _bankNameController.text.trim(),
@@ -335,8 +428,6 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
   @override
   Widget build(BuildContext context) {
     Responsive.init(context);
-    final double curLat = double.tryParse(_latController.text) ?? 13.0827;
-    final double curLng = double.tryParse(_lngController.text) ?? 80.2707;
 
     return BlocConsumer<StoreBloc, StoreState>(
       listener: (context, state) {
@@ -432,7 +523,9 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
                     SizedBox(height: Responsive.h(14)),
                     _buildCategoryDropdown(),
                     SizedBox(height: Responsive.h(14)),
-                    _buildStoreImagePicker(),
+                    _buildStoreImagePicker(
+                      
+                    ),
                   ]),
                   SizedBox(height: Responsive.h(20)),
 
@@ -527,80 +620,116 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
                     SizedBox(height: Responsive.h(14)),
 
                     // Mini Map Preview
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(Responsive.w(14)),
-                      child: Container(
-                        height: Responsive.h(140),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppColors.outliner.withValues(alpha: 0.5)),
-                          borderRadius: BorderRadius.circular(Responsive.w(14)),
-                        ),
-                        child: Stack(
-                          children: [
-                            FlutterMap(
-                              options: MapOptions(
-                                initialCenter: LatLng(curLat, curLng),
-                                initialZoom: 15.0,
-                                interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
-                                onTap: (tapPosition, point) => _openMapPicker(),
+                    Builder(
+                      builder: (context) {
+                        final double? curLat = double.tryParse(_latController.text.trim());
+                        final double? curLng = double.tryParse(_lngController.text.trim());
+                        final bool hasCoords = curLat != null && curLng != null;
+
+                        if (!hasCoords) {
+                          return InkWell(
+                            onTap: _openMapPicker,
+                            borderRadius: BorderRadius.circular(Responsive.w(14)),
+                            child: Container(
+                              height: Responsive.h(100),
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8F9FA),
+                                border: Border.all(color: AppColors.outliner.withValues(alpha: 0.6)),
+                                borderRadius: BorderRadius.circular(Responsive.w(14)),
                               ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.map_outlined, color: AppColors.primary, size: 28),
+                                  SizedBox(height: Responsive.h(6)),
+                                  CustomText.body(
+                                    'No location selected yet. Tap to pinpoint on map.',
+                                    fontSize: 12,
+                                    color: AppColors.grayFont,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
+                        return ClipRRect(
+                          borderRadius: BorderRadius.circular(Responsive.w(14)),
+                          child: Container(
+                            height: Responsive.h(140),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: AppColors.outliner.withValues(alpha: 0.5)),
+                              borderRadius: BorderRadius.circular(Responsive.w(14)),
+                            ),
+                            child: Stack(
                               children: [
-                                TileLayer(
-                                  urlTemplate: GoogleConfig.googleTileUrl,
-                                  subdomains: GoogleConfig.googleTileSubdomains,
-                                  maxZoom: 20,
-                                  userAgentPackageName: 'com.hikizo.storeapp',
-                                ),
-                                MarkerLayer(
-                                  markers: [
-                                    Marker(
-                                      point: LatLng(curLat, curLng),
-                                      width: 40,
-                                      height: 40,
-                                      alignment: Alignment.topCenter,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(6),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.primary,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(color: Colors.white, width: 2),
-                                          boxShadow: const [
-                                            BoxShadow(color: Colors.black26, blurRadius: 4),
-                                          ],
+                                FlutterMap(
+                                  options: MapOptions(
+                                    initialCenter: LatLng(curLat, curLng),
+                                    initialZoom: 15.0,
+                                    interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+                                    onTap: (tapPosition, point) => _openMapPicker(),
+                                  ),
+                                  children: [
+                                    TileLayer(
+                                      urlTemplate: GoogleConfig.googleTileUrl,
+                                      subdomains: GoogleConfig.googleTileSubdomains,
+                                      maxZoom: 20,
+                                      userAgentPackageName: 'com.hikizo.storeapp',
+                                    ),
+                                    MarkerLayer(
+                                      markers: [
+                                        Marker(
+                                          point: LatLng(curLat, curLng),
+                                          width: 40,
+                                          height: 40,
+                                          alignment: Alignment.topCenter,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primary,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(color: Colors.white, width: 2),
+                                              boxShadow: const [
+                                                BoxShadow(color: Colors.black26, blurRadius: 4),
+                                              ],
+                                            ),
+                                            child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 18),
+                                          ),
                                         ),
-                                        child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 18),
-                                      ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ],
-                            ),
-                            Positioned(
-                              right: Responsive.w(10),
-                              bottom: Responsive.h(10),
-                              child: InkWell(
-                                onTap: _openMapPicker,
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(horizontal: Responsive.w(10), vertical: Responsive.h(6)),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.95),
-                                    borderRadius: BorderRadius.circular(Responsive.w(8)),
-                                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.open_in_full_rounded, size: 12, color: AppColors.primary),
-                                      SizedBox(width: Responsive.w(4)),
-                                      CustomText.title('Full Map', fontSize: 11, color: AppColors.primary),
-                                    ],
+                                Positioned(
+                                  right: Responsive.w(10),
+                                  bottom: Responsive.h(10),
+                                  child: InkWell(
+                                    onTap: _openMapPicker,
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(horizontal: Responsive.w(10), vertical: Responsive.h(6)),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.95),
+                                        borderRadius: BorderRadius.circular(Responsive.w(8)),
+                                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.open_in_full_rounded, size: 12, color: AppColors.primary),
+                                          SizedBox(width: Responsive.w(4)),
+                                          CustomText.title('Full Map', fontSize: 11, color: AppColors.primary),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
+                          ),
+                        );
+                      },
                     ),
                     SizedBox(height: Responsive.h(14)),
 
@@ -629,8 +758,9 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
                           child: _buildTextField(
                             controller: _latController,
                             label: 'Latitude (GPS)',
-                            hint: '13.0827',
+                            hint: 'Set on Map',
                             readOnly: true,
+                            validator: (v) => v == null || v.isEmpty ? 'Location required' : null,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           ),
                         ),
@@ -639,8 +769,9 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
                           child: _buildTextField(
                             controller: _lngController,
                             label: 'Longitude (GPS)',
-                            hint: '80.2707',
+                            hint: 'Set on Map',
                             readOnly: true,
+                            validator: (v) => v == null || v.isEmpty ? 'Location required' : null,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           ),
                         ),
@@ -802,20 +933,34 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
   }
 
   Widget _buildStoreImagePicker() {
+    final bool hasImage = _pickedImageFile != null || _storeImageController.text.trim().isNotEmpty;
+    final bool showError = _storeImageError && !hasImage;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            CustomText.title('Storefront Photo', fontSize: 13, color: AppColors.black),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CustomText.title('Storefront Photo', fontSize: 13, color: AppColors.black),
+                SizedBox(width: Responsive.w(4)),
+                const Text(
+                  '*',
+                  style: TextStyle(color: AppColors.error, fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
             Container(
               padding: EdgeInsets.symmetric(horizontal: Responsive.w(8), vertical: Responsive.h(2)),
               decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.08),
+                color: const Color(0xFFFFEBEE),
                 borderRadius: BorderRadius.circular(Responsive.w(6)),
+                border: Border.all(color: const Color(0xFFFFCDD2), width: 0.8),
               ),
-              child: CustomText.body('Recommended', fontSize: 11, color: AppColors.primary),
+              child: CustomText.body('Mandatory', fontSize: 11, color: AppColors.error, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -864,6 +1009,7 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
                           setState(() {
                             _pickedImageFile = null;
                             _storeImageController.clear();
+                            _storeImageError = true;
                           });
                         },
                         icon: const Icon(Icons.delete_outline_rounded, color: AppColors.error, size: 20),
@@ -883,9 +1029,12 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
               width: double.infinity,
               padding: EdgeInsets.symmetric(vertical: Responsive.h(22), horizontal: Responsive.w(16)),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8F9FA),
+                color: showError ? const Color(0xFFFFF8F8) : const Color(0xFFF8F9FA),
                 borderRadius: BorderRadius.circular(Responsive.w(14)),
-                border: Border.all(color: AppColors.outliner, width: 1.2),
+                border: Border.all(
+                  color: showError ? AppColors.error : AppColors.outliner,
+                  width: showError ? 1.5 : 1.2,
+                ),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -894,12 +1043,14 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
                     width: Responsive.w(52),
                     height: Responsive.w(52),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.08),
+                      color: showError
+                          ? AppColors.error.withValues(alpha: 0.1)
+                          : AppColors.primary.withValues(alpha: 0.08),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.add_a_photo_rounded,
-                      color: AppColors.primary,
+                      color: showError ? AppColors.error : AppColors.primary,
                       size: 26,
                     ),
                   ),
@@ -907,19 +1058,39 @@ class _RegisterStoreScreenState extends State<RegisterStoreScreen> {
                   CustomText.title(
                     'Upload Storefront Photo',
                     fontSize: 14,
-                    color: AppColors.primary,
+                    color: showError ? AppColors.error : AppColors.primary,
                   ),
                   SizedBox(height: Responsive.h(4)),
                   CustomText.body(
-                    'Take photo with camera or choose from gallery',
+                    showError
+                        ? 'Storefront photo is required to complete registration'
+                        : 'Take photo with camera or choose from gallery',
                     fontSize: 11,
-                    color: AppColors.grayFont,
+                    color: showError ? AppColors.error : AppColors.grayFont,
                     textAlign: TextAlign.center,
                   ),
                 ],
               ),
             ),
           ),
+        if (showError) ...[
+          SizedBox(height: Responsive.h(6)),
+          Padding(
+            padding: EdgeInsets.only(left: Responsive.w(4)),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline_rounded, size: 14, color: AppColors.error),
+                SizedBox(width: Responsive.w(4)),
+                CustomText.body(
+                  'Storefront photo is required',
+                  fontSize: 11,
+                  color: AppColors.error,
+                  fontWeight: FontWeight.w500,
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

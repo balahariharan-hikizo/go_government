@@ -272,12 +272,13 @@ function initSockets(io, app) {
       } catch (_) {}
     });
 
-    // Rider explicit logout event
-    socket.on('rider:logout', (data) => {
+    // Rider explicit logout event – also clear DB flag
+    socket.on('rider:logout', async (data) => {
       const { riderId } = data || {};
       if (riderId && riderRegistry.has(riderId)) {
         const existing = riderRegistry.get(riderId);
         if (existing.disconnectTimer) clearTimeout(existing.disconnectTimer);
+        // Update in-memory registry
         riderRegistry.set(riderId, {
           ...existing,
           lat: 0,
@@ -285,7 +286,16 @@ function initSockets(io, app) {
           isOnline: false,
           lastSeen: Date.now(),
         });
-        console.log(`🚪 [Socket.io] Rider ${riderId} logged out & marked OFFLINE in registry`);
+        // Persist offline status in MongoDB
+        try {
+          await Rider.updateOne(
+            { $or: [{ riderId }, { phone: riderId }] },
+            { $set: { isOnline: false } }
+          );
+        } catch (e) {
+          console.error('Failed to set rider offline in DB on logout:', e.message);
+        }
+        console.log(`🚪 [Socket.io] Rider ${riderId} logged out & marked OFFLINE in registry & DB`);
       }
     });
 
@@ -393,9 +403,18 @@ function initSockets(io, app) {
         // the UI socket might disconnect before the background socket reconnects or pings.
         if (info.socketId === socket.id) {
           if (info.disconnectTimer) clearTimeout(info.disconnectTimer);
-          info.disconnectTimer = setTimeout(() => {
+          info.disconnectTimer = setTimeout(async () => {
             if (info.socketId === socket.id) {
               info.isOnline = false;
+              // Persist offline status in MongoDB
+              try {
+                await Rider.updateOne(
+                  { $or: [{ riderId }, { phone: riderId }] },
+                  { $set: { isOnline: false } }
+                );
+              } catch (e) {
+                console.error('Failed to set rider offline in DB on disconnect:', e.message);
+              }
               console.log(`🔴 [Socket.io] Rider ${riderId} marked OFFLINE after 60s disconnect grace period`);
             }
           }, 60000);

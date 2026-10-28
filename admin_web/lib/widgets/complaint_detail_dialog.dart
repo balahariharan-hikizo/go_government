@@ -100,13 +100,17 @@ class _ComplaintDetailDialogState extends State<ComplaintDetailDialog> {
     final description = c['description'] ?? 'No description provided.';
     final comments = List<Map<String, dynamic>>.from(c['comments'] ?? []);
 
+    final screenW = MediaQuery.of(context).size.width;
+    final screenH = MediaQuery.of(context).size.height;
+    final isMobile = screenW < 700;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       backgroundColor: Colors.white,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+      insetPadding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 40, vertical: isMobile ? 16 : 24),
       child: Container(
-        width: 820,
-        constraints: const BoxConstraints(maxHeight: 740),
+        width: isMobile ? screenW * 0.95 : 820,
+        constraints: BoxConstraints(maxHeight: screenH * 0.9, maxWidth: 820),
         child: Column(
           children: [
             // Modal Header

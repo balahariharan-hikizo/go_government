@@ -25,6 +25,7 @@ class PickStoreLocationScreen extends StatefulWidget {
 
 class _PickStoreLocationScreenState extends State<PickStoreLocationScreen> {
   late final MapController _mapController;
+  final TextEditingController _searchController = TextEditingController();
   late LatLng _currentLocation;
   String _currentAddress = 'Detecting address...';
   String _currentPincode = '';
@@ -34,6 +35,11 @@ class _PickStoreLocationScreenState extends State<PickStoreLocationScreen> {
   LatLng? _userGpsPoint;
   Timer? _debounceTimer;
 
+  // Search state
+  List<PlaceSearchResult> _searchResults = [];
+  bool _isSearching = false;
+  Timer? _searchDebounce;
+
   @override
   void initState() {
     super.initState();
@@ -41,9 +47,48 @@ class _PickStoreLocationScreenState extends State<PickStoreLocationScreen> {
     _currentLocation = widget.initialLocation ?? LocationService.defaultLocation;
     if (widget.initialAddress != null && widget.initialAddress!.isNotEmpty) {
       _currentAddress = widget.initialAddress!;
+      _searchController.text = widget.initialAddress!;
     }
 
     _fetchGpsAndGeocode();
+  }
+
+  void _onSearchQueryChanged(String query) {
+    _searchDebounce?.cancel();
+    final clean = query.trim();
+    if (clean.length < 2) {
+      if (_searchResults.isNotEmpty || _isSearching) {
+        setState(() {
+          _searchResults = [];
+          _isSearching = false;
+        });
+      }
+      return;
+    }
+
+    setState(() => _isSearching = true);
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () async {
+      final results = await LocationService.searchPlaces(clean);
+      if (!mounted) return;
+      setState(() {
+        _searchResults = results;
+        _isSearching = false;
+      });
+    });
+  }
+
+  void _selectSearchResult(PlaceSearchResult place) {
+    FocusScope.of(context).unfocus();
+    final point = LatLng(place.latitude, place.longitude);
+    setState(() {
+      _currentLocation = point;
+      _searchResults = [];
+      _searchController.text = place.title;
+    });
+    try {
+      _mapController.move(point, 16.5);
+    } catch (_) {}
+    _geocodePosition(point);
   }
 
   Future<void> _fetchGpsAndGeocode() async {
@@ -85,12 +130,17 @@ class _PickStoreLocationScreenState extends State<PickStoreLocationScreen> {
       _currentPincode = result.pincode;
       _currentArea = result.area;
       _currentCity = result.city;
+      if (_searchController.text.isEmpty) {
+        _searchController.text = result.area.isNotEmpty ? result.area : result.city;
+      }
     });
   }
 
   void _onMapTapped(LatLng tapped) {
+    FocusScope.of(context).unfocus();
     setState(() {
       _currentLocation = tapped;
+      _searchResults = [];
     });
     try {
       _mapController.move(tapped, _mapController.camera.zoom);
@@ -104,7 +154,9 @@ class _PickStoreLocationScreenState extends State<PickStoreLocationScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _debounceTimer?.cancel();
+    _searchController.dispose();
     _mapController.dispose();
     super.dispose();
   }
@@ -196,44 +248,133 @@ class _PickStoreLocationScreenState extends State<PickStoreLocationScreen> {
                 ),
               ),
 
-              // 2. Top Header Bar
+              // 2. Top Search Bar & Suggestions Overlay
               Positioned(
                 top: Responsive.h(12),
                 left: Responsive.w(16),
                 right: Responsive.w(16),
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(10)),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.95),
-                    borderRadius: BorderRadius.circular(Responsive.w(16)),
-                    boxShadow: const [
-                      BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 3)),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppColors.black),
-                        onPressed: () => Navigator.of(context).pop(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: Responsive.w(6), vertical: Responsive.h(4)),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(Responsive.w(16)),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 4)),
+                        ],
                       ),
-                      SizedBox(width: Responsive.w(8)),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            CustomText.title('Pinpoint Store Location', fontSize: 15, color: AppColors.black),
-                            SizedBox(height: Responsive.h(2)),
-                            CustomText.body(
-                              'Tap map or drag to set accurate shop entrance',
-                              fontSize: 11,
-                              color: AppColors.grayFont,
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppColors.black),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: _onSearchQueryChanged,
+                              style: TextStyle(
+                                fontSize: Responsive.sp(14),
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.black,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: 'Search area, street, landmark...',
+                                hintStyle: TextStyle(
+                                  fontSize: Responsive.sp(13),
+                                  color: AppColors.grayFont.withValues(alpha: 0.7),
+                                ),
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(vertical: Responsive.h(10)),
+                              ),
                             ),
+                          ),
+                          if (_isSearching)
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: Responsive.w(10)),
+                              child: const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                              ),
+                            )
+                          else if (_searchController.text.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.grayFont),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchResults = []);
+                              },
+                            )
+                          else
+                            Padding(
+                              padding: EdgeInsets.only(right: Responsive.w(10)),
+                              child: const Icon(Icons.search_rounded, size: 20, color: AppColors.primary),
+                            ),
+                        ],
+                      ),
+                    ),
+
+                    // Dropdown Search Predictions
+                    if (_searchResults.isNotEmpty) ...[
+                      SizedBox(height: Responsive.h(8)),
+                      Container(
+                        constraints: BoxConstraints(maxHeight: Responsive.h(240)),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(Responsive.w(16)),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black12, blurRadius: 14, offset: Offset(0, 6)),
                           ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(Responsive.w(16)),
+                          child: ListView.separated(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            itemCount: _searchResults.length,
+                            separatorBuilder: (_, _) => Divider(height: 1, color: AppColors.outliner.withValues(alpha: 0.4)),
+                            itemBuilder: (context, index) {
+                              final place = _searchResults[index];
+                              return ListTile(
+                                dense: true,
+                                leading: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.08),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.location_on_outlined, color: AppColors.primary, size: 16),
+                                ),
+                                title: Text(
+                                  place.title,
+                                  style: TextStyle(
+                                    fontSize: Responsive.sp(13),
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.black,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: place.subtitle.isNotEmpty
+                                    ? Text(
+                                        place.subtitle,
+                                        style: TextStyle(fontSize: Responsive.sp(11), color: AppColors.grayFont),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      )
+                                    : null,
+                                onTap: () => _selectSearchResult(place),
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ],
-                  ),
+                  ],
                 ),
               ),
 

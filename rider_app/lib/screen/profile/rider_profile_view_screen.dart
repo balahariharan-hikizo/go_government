@@ -89,8 +89,8 @@ class RiderProfileViewScreen extends StatelessWidget {
                   _sectionTitle('Vehicle & Partner Info'),
                   SizedBox(height: Responsive.h(8)),
                   _infoTile(Icons.pedal_bike_rounded, 'Vehicle Category', HiveService.vehicleType),
-                  _infoTile(Icons.confirmation_number_outlined, 'Vehicle Plate Number', HiveService.vehicleNumber.isNotEmpty ? HiveService.vehicleNumber : 'KA-01-EE-4521'),
-                  _infoTile(Icons.fingerprint_rounded, 'Rider ID', HiveService.userId.isNotEmpty ? HiveService.userId : 'RIDER_8871'),
+                  _infoTile(Icons.confirmation_number_outlined, 'Vehicle Plate Number', HiveService.vehicleNumber.isNotEmpty ? HiveService.vehicleNumber : 'Not Provided'),
+                  _infoTile(Icons.fingerprint_rounded, 'Rider ID', HiveService.userId.isNotEmpty ? HiveService.userId : 'Not Assigned'),
                   SizedBox(height: Responsive.h(20)),
 
                   // Preferences & Duty

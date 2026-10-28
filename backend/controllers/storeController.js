@@ -17,7 +17,6 @@ exports.sendOtp = async (req, res) => {
     const cleanPhone = sanitizePhone(phone);
     const { otp, otpExpires } = generateOtp(5);
 
-
     // Atomically update OTP for existing store or detect if new registration is needed
     const store = await Store.findOneAndUpdate(
       { phone: cleanPhone },
@@ -155,8 +154,8 @@ exports.registerStore = async (req, res) => {
       licenseDoc,
     } = req.body;
 
-    if (!name || !ownerName || !phone || !address) {
-      return res.status(400).json({ success: false, error: 'Missing required fields: name, ownerName, phone, address are mandatory',
+    if (!name || !ownerName || !phone || !address || !storeImage) {
+      return res.status(400).json({ success: false, error: 'Missing required fields: name, ownerName, phone, address, and storeImage are mandatory',
       });
     }
 

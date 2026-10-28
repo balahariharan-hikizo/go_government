@@ -31,12 +31,16 @@ class FeedbackDetailDialog extends StatelessWidget {
 
     final bool isSurvey = type == 'survey';
 
+    final screenW = MediaQuery.of(context).size.width;
+    final screenH = MediaQuery.of(context).size.height;
+    final isMobile = screenW < 700;
+
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 30),
+      insetPadding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 40, vertical: isMobile ? 16 : 30),
       child: Container(
-        width: 720,
-        constraints: const BoxConstraints(maxHeight: 780),
+        width: isMobile ? screenW * 0.95 : 720,
+        constraints: BoxConstraints(maxHeight: screenH * 0.9, maxWidth: 720),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
@@ -76,17 +80,19 @@ class FeedbackDetailDialog extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 10,
+                          runSpacing: 4,
                           children: [
                             Text(
                               isSurvey ? 'Civic Survey Feedback' : 'Citizen App Review',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 18,
+                                fontSize: isMobile ? 15 : 18,
                               ),
                             ),
-                            const SizedBox(width: 10),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
