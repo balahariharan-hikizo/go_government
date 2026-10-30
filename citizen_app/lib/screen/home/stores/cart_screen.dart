@@ -212,10 +212,17 @@ class _CartScreenState extends State<CartScreen> {
       });
       return {
         'id': e.key,
+        'productId': basePid,
+        'variantId': vid,
         'title': prod['title'] ?? 'Product',
         'price': '₹$p',
+        'originalPrice': orig.toDouble(),
         'qty': e.value,
+        'quantity': e.value,
         'image': prod['image'] ?? '',
+        'unit': prod['unit'] ?? '1 Units',
+        'storeId': resolvedStoreId,
+        'storeName': dynamicStoreName.isNotEmpty ? dynamicStoreName : (widget.storeType == 'medical' ? 'Medical Store' : 'Vegetable Store'),
       };
     }).toList();
 

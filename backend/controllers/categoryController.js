@@ -3,10 +3,10 @@ const Category = require('../models/Category');
 const Product = require('../models/Product');
 const { getNextSequence } = require('../utils/sequenceGenerator');
 
-// 1. CREATE CATEGORY
+// 1. CREATE CATEGORY (Supports infinite nested sub-categories)
 exports.createCategory = async (req, res) => {
   try {
-    const { storeId, name, description, icon, image, displayOrder } = req.body;
+    const { storeId, name, description, icon, image, displayOrder, parentCategoryId } = req.body;
 
     if (!storeId || !name || !name.trim()) {
       return res.status(400).json({
@@ -16,26 +16,51 @@ exports.createCategory = async (req, res) => {
     }
 
     const trimmedName = name.trim();
+    const cleanParentId = (parentCategoryId || '').trim();
 
-    // Check if category with same name already exists for this store (case-insensitive) and not deleted
-    const existing = await Category.findOne({
-      storeId,
-      name: { $regex: new RegExp(`^${trimmedName}$`, 'i') },
-      isDeleted: { $ne: true },
-    });
+    // Single parallel DB trip: check duplicate, fetch parent (if sub-category), and generate next sequence
+    const [existing, parent, categoryId] = await Promise.all([
+      Category.findOne({
+        storeId,
+        parentCategoryId: cleanParentId,
+        name: { $regex: new RegExp(`^${trimmedName}$`, 'i') },
+        isDeleted: { $ne: true },
+      }).select('categoryId name').lean(),
+      cleanParentId
+        ? Category.findOne({ categoryId: cleanParentId, isDeleted: { $ne: true } }).select('categoryId level ancestors').lean()
+        : null,
+      getNextSequence('categoryId', 'CAT_', 5),
+    ]);
 
     if (existing) {
       return res.status(400).json({
         success: false,
-        error: `Category '${trimmedName}' already exists for this store`,
+        error: `Category '${trimmedName}' already exists under this section`,
       });
     }
 
-    const categoryId = await getNextSequence('categoryId', 'CAT_', 5);
+    // Determine level and ancestors from parent
+    let level = 0;
+    let ancestors = [];
+
+    if (cleanParentId) {
+      if (!parent) {
+        return res.status(404).json({
+          success: false,
+          error: 'Parent category not found',
+        });
+      }
+
+      level = (parent.level || 0) + 1;
+      ancestors = [...(parent.ancestors || []), parent.categoryId];
+    }
 
     const newCategory = new Category({
       categoryId,
       storeId,
+      parentCategoryId: cleanParentId,
+      level,
+      ancestors,
       name: trimmedName,
       description: description ? description.trim() : '',
       icon: icon || '',
@@ -47,7 +72,7 @@ exports.createCategory = async (req, res) => {
 
     await newCategory.save();
 
-    console.log(`🏷️ [Category Created] ${trimmedName} (${categoryId}) for store ${storeId}`);
+    console.log(`🏷️ [Category Created] ${trimmedName} (${categoryId}) Level: ${level} Parent: ${cleanParentId || 'ROOT'} for store ${storeId}`);
 
     res.status(201).json({
       success: true,
@@ -64,54 +89,89 @@ exports.createCategory = async (req, res) => {
   }
 };
 
-// 2. GET ALL CATEGORIES FOR A STORE (Includes product count per category)
+// 2. GET ALL CATEGORIES FOR A STORE (Single parallel DB trip, Lean & in-memory aggregation)
 exports.getCategoriesByStore = async (req, res) => {
   try {
     const { storeId } = req.params;
+    const { parentCategoryId, level } = req.query;
 
     if (!storeId) {
       return res.status(400).json({ success: false, error: 'storeId is required' });
     }
 
-    // Query non-deleted categories for this store or global
-    const filter = {
-      storeId: { $in: [storeId, 'global'] },
-      isDeleted: { $ne: true },
-    };
+    const activeFilter = (req.query.activeOnly === 'true' || req.query.isActive === 'true')
+      ? { isActive: true }
+      : {};
 
-    if (req.query.activeOnly === 'true' || req.query.isActive === 'true') {
-      filter.isActive = true;
-    }
+    // Single parallel DB trip: fetch all categories for store AND aggregate product counts simultaneously
+    const [allCategories, productCounts] = await Promise.all([
+      Category.find({
+        storeId: { $in: [storeId, 'global'] },
+        isDeleted: { $ne: true },
+        ...activeFilter,
+      })
+        .sort({ displayOrder: 1, createdAt: 1 })
+        .lean(),
 
-    const categories = await Category.find(filter).sort({ displayOrder: 1, createdAt: 1 });
-
-    // Aggregate product counts per category for this store
-    const productCounts = await Product.aggregate([
-      {
-        $match: {
-          storeId,
-          isDeleted: { $ne: true },
+      Product.aggregate([
+        {
+          $match: {
+            storeId,
+            isDeleted: { $ne: true },
+          },
         },
-      },
-      {
-        $group: {
-          _id: { $toLower: '$category' },
-          count: { $sum: 1 },
+        {
+          $group: {
+            _id: {
+              catName: { $toLower: '$category' },
+              catId: '$categoryId',
+            },
+            count: { $sum: 1 },
+          },
         },
-      },
+      ]),
     ]);
 
-    const countMap = {};
-    for (const item of productCounts) {
-      if (item._id) countMap[item._id] = item.count;
+    // Fast O(1) product count lookups
+    const countMap = Object.create(null);
+    for (let i = 0; i < productCounts.length; i++) {
+      const item = productCounts[i];
+      if (item._id.catName) countMap[item._id.catName] = (countMap[item._id.catName] || 0) + item.count;
+      if (item._id.catId) countMap[item._id.catId] = (countMap[item._id.catId] || 0) + item.count;
     }
 
-    const categoriesWithCount = categories.map((cat) => {
-      const json = cat.toJSON();
+    // Direct in-memory subcategory count mapping (zero extra DB calls)
+    const subCategoryCountMap = Object.create(null);
+    for (let i = 0; i < allCategories.length; i++) {
+      const parentId = allCategories[i].parentCategoryId;
+      if (parentId) {
+        subCategoryCountMap[parentId] = (subCategoryCountMap[parentId] || 0) + 1;
+      }
+    }
+
+    // In-memory level/parentCategoryId filtering if requested
+    let resultCategories = allCategories;
+    if (parentCategoryId !== undefined) {
+      resultCategories = resultCategories.filter((c) => (c.parentCategoryId || '') === parentCategoryId);
+    }
+    if (level !== undefined && !isNaN(Number(level))) {
+      const targetLevel = Number(level);
+      resultCategories = resultCategories.filter((c) => (c.level || 0) === targetLevel);
+    }
+
+    const categoriesWithCount = new Array(resultCategories.length);
+    for (let i = 0; i < resultCategories.length; i++) {
+      const cat = resultCategories[i];
       const catKey = (cat.name || '').toLowerCase();
-      json.productCount = countMap[catKey] || 0;
-      return json;
-    });
+      const subCount = subCategoryCountMap[cat.categoryId] || 0;
+
+      categoriesWithCount[i] = {
+        ...cat,
+        productCount: countMap[cat.categoryId] || countMap[catKey] || 0,
+        subCategoryCount: subCount,
+        hasChildren: subCount > 0,
+      };
+    }
 
     res.status(200).json({
       success: true,
@@ -218,31 +278,32 @@ exports.updateCategory = async (req, res) => {
   }
 };
 
-// 5. SOFT DELETE CATEGORY (Soft delete only!)
+// 5. SOFT DELETE CATEGORY (Single atomic DB update)
 exports.deleteCategory = async (req, res) => {
   try {
     const { categoryId } = req.params;
 
-    const existing = await Category.findOne({
-      categoryId,
-      isDeleted: { $ne: true },
-    });
+    const deleted = await Category.findOneAndUpdate(
+      { categoryId, isDeleted: { $ne: true } },
+      {
+        $set: {
+          isDeleted: true,
+          isActive: false,
+          deletedAt: new Date(),
+        },
+      },
+      { returnDocument: 'after' }
+    ).lean();
 
-    if (!existing) {
+    if (!deleted) {
       return res.status(404).json({ success: false, error: 'Category not found' });
     }
 
-    // Soft delete
-    existing.isDeleted = true;
-    existing.isActive = false;
-    existing.deletedAt = new Date();
-    await existing.save();
-
-    console.log(`🗑️ [Category Soft-Deleted] ${existing.name} (${categoryId})`);
+    console.log(`🗑️ [Category Soft-Deleted] ${deleted.name} (${categoryId})`);
 
     res.status(200).json({
       success: true,
-      message: `Category '${existing.name}' deleted successfully (soft delete)`,
+      message: `Category '${deleted.name}' deleted successfully (soft delete)`,
       categoryId,
     });
   } catch (error) {

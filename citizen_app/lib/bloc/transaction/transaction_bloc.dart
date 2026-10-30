@@ -67,24 +67,37 @@ class TransactionBloc extends Bloc<TransactionEvent, TransactionState> {
 
               final isCredit = t['type'] == 'credit';
               final amt = (t['amount'] as num?)?.abs().toDouble() ?? 0.0;
+              final metadata = t['metadata'] is Map ? Map<String, dynamic>.from(t['metadata'] as Map) : null;
+              final int? coinsAdded = (metadata?['coinsAdded'] as num?)?.toInt();
+              final bool isCivicCoins = cat == 'civic_reward' || (coinsAdded != null && coinsAdded > 0);
+
+              String amountDisplay;
+              if (isCivicCoins) {
+                final int coinCount = coinsAdded ?? (amt > 0 ? amt.toInt() : 100);
+                amountDisplay = isCredit ? '+$coinCount Coins' : '-$coinCount Coins';
+              } else {
+                amountDisplay = isCredit ? '+₹${amt.toInt()}' : '-₹${amt.toInt()}';
+              }
+
               nonOrderWalletTxs.add({
                 'id': t['transactionId'] ?? t['_id'] ?? '',
                 'title': t['title'] ?? (cat == 'order_refund' ? 'Order Refund' : 'Transaction'),
                 'subtitle': t['subtitle'] ?? '',
-                'amount': isCredit ? '+₹${amt.toInt()}' : '-₹${amt.toInt()}',
+                'amount': amountDisplay,
                 'isPositive': isCredit,
                 'status': t['status'] == 'success' ? 'Successful' : (t['status'] ?? 'Successful'),
                 'date': t['subtitle']?.toString().split('·').last.trim() ?? '',
                 'createdAt': t['createdAt'],
                 'items': [],
-                'address': t['paymentMethod'] ?? 'Wallet Account',
+                'address': isCivicCoins ? 'Civic Coins Reward' : (t['paymentMethod'] ?? 'Wallet Account'),
                 'listingPrice': '₹0.00',
-                'sellingPrice': '₹${amt.toInt()}',
-                'grandTotal': '₹${amt.toInt()}',
-                'paid': '₹${amt.toInt()}',
+                'sellingPrice': isCivicCoins ? amountDisplay : '₹${amt.toInt()}',
+                'grandTotal': isCivicCoins ? amountDisplay : '₹${amt.toInt()}',
+                'paid': isCivicCoins ? amountDisplay : '₹${amt.toInt()}',
                 'paymentMethod': t['paymentMethod'] ?? 'Wallet',
                 'category': cat,
                 'orderId': orderId,
+                'metadata': metadata,
               });
             }
           }

@@ -46,7 +46,15 @@ class StoreDetailsScreen extends StatefulWidget {
 
 class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
   String _currentStorePhone = '';
-  String _selectedCategory = 'All';
+  String _selectedMainCategoryId = ''; // '' means All
+  List<String> _selectedCategoryPath = []; // Path of subcategory IDs [level1, level2, level3, ... infinite]
+
+  String get _selectedSubCategoryId =>
+      _selectedCategoryPath.isNotEmpty ? _selectedCategoryPath[0] : '';
+  String get _selectedChildCategoryId =>
+      _selectedCategoryPath.length > 1 ? _selectedCategoryPath[1] : '';
+  String get _selectedSubChildCategoryId =>
+      _selectedCategoryPath.length > 2 ? _selectedCategoryPath[2] : '';
   List<Map<String, dynamic>> _storeCategories = [];
   bool _isNavigating = false;
 
@@ -102,10 +110,6 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
       if (mounted) {
         setState(() {
           _storeCategories = cats;
-          if (_selectedCategory != 'All' &&
-              !cats.any((c) => (c['name']?.toString().toLowerCase().trim() ?? '') == _selectedCategory.toLowerCase().trim())) {
-            _selectedCategory = 'All';
-          }
         });
       }
     } catch (_) {}
@@ -123,6 +127,35 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
     super.dispose();
   }
 
+  Set<String> _getDescendantIds(String parentId, List<Map<String, dynamic>> allCats) {
+    final Set<String> ids = {parentId};
+    final List<String> queue = [parentId];
+    while (queue.isNotEmpty) {
+      final current = queue.removeLast();
+      for (final cat in allCats) {
+        final pid = (cat['parentCategoryId'] ?? '').toString().trim();
+        final cid = (cat['categoryId'] ?? '').toString().trim();
+        if (pid == current && cid.isNotEmpty && ids.add(cid)) {
+          queue.add(cid);
+        }
+      }
+    }
+    return ids;
+  }
+
+  Set<String> _getDescendantNames(String parentId, List<Map<String, dynamic>> allCats) {
+    final ids = _getDescendantIds(parentId, allCats);
+    final Set<String> names = {};
+    for (final cat in allCats) {
+      final cid = (cat['categoryId'] ?? '').toString().trim();
+      final name = (cat['name'] ?? '').toString().trim().toLowerCase();
+      if (ids.contains(cid) && name.isNotEmpty) {
+        names.add(name);
+      }
+    }
+    return names;
+  }
+
   @override
   Widget build(BuildContext context) {
     // Calculate total quantity of items in the cart
@@ -134,36 +167,221 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
     final List<Map<String, dynamic>> allProducts =
         (productState is ProductLoaded) ? productState.products : [];
 
-    // Build rich category items: Start with 'All'
-    final List<Map<String, dynamic>> categoryItems = [
-      {'name': 'All', 'icon': '', 'productCount': allProducts.length}
-    ];
+    // 1. Root / Main Categories (parentCategoryId is empty or null, level == 0)
+    final rootCats = _storeCategories.where((c) {
+      final pid = (c['parentCategoryId'] ?? '').toString().trim();
+      final lvl = c['level'] is num ? (c['level'] as num).toInt() : 0;
+      return pid.isEmpty || lvl == 0;
+    }).toList();
 
-    if (_storeCategories.isNotEmpty) {
-      // Use Store Categories from Category Master API (filtered by productCount > 0)
-      for (final cat in _storeCategories) {
+    // Main category filter chips: starts with 'All'
+    final List<Map<String, dynamic>> mainCategoryItems = [
+      {'categoryId': '', 'name': 'All', 'icon': '', 'productCount': allProducts.length}
+    ];
+    if (rootCats.isNotEmpty) {
+      for (final cat in rootCats) {
         final name = cat['name']?.toString().trim() ?? '';
-        final count = cat['productCount'] is num ? (cat['productCount'] as num).toInt() : 0;
-        if (name.isNotEmpty && count > 0) {
-          categoryItems.add({
+        if (name.isNotEmpty) {
+          mainCategoryItems.add({
+            'categoryId': cat['categoryId']?.toString() ?? '',
             'name': name,
             'icon': cat['icon']?.toString().trim() ?? '',
-            'productCount': count,
+            'productCount': cat['productCount'] ?? 0,
+          });
+        }
+      }
+    } else {
+      // Fallback: extract distinct categories from products if no Category master docs configured
+      final Set<String> seen = {};
+      for (final p in allProducts) {
+        final cat = p['category']?.toString().trim() ?? '';
+        if (cat.isNotEmpty && !seen.contains(cat.toLowerCase())) {
+          seen.add(cat.toLowerCase());
+          mainCategoryItems.add({
+            'categoryId': '',
+            'name': cat,
+            'icon': '',
+            'productCount': 0,
           });
         }
       }
     }
 
+    // 2. Sub-categories under the currently selected main category (Level 1)
+    final List<Map<String, dynamic>> subCategoryItems = [];
+    if (_selectedMainCategoryId.isNotEmpty) {
+      final subCats = _storeCategories.where((c) {
+        final pid = (c['parentCategoryId'] ?? '').toString().trim();
+        return pid == _selectedMainCategoryId;
+      }).toList();
+
+      if (subCats.isNotEmpty) {
+        final selectedMain = _storeCategories.cast<Map<String, dynamic>?>().firstWhere(
+          (c) => c?['categoryId'] == _selectedMainCategoryId,
+          orElse: () => null,
+        );
+        final mainName = selectedMain?['name'] ?? 'All';
+        subCategoryItems.add({
+          'categoryId': '',
+          'name': 'All $mainName',
+          'icon': '',
+          'hasChildren': false,
+        });
+        for (final sub in subCats) {
+          final subName = sub['name']?.toString().trim() ?? '';
+          final subId = sub['categoryId']?.toString() ?? '';
+          if (subName.isNotEmpty) {
+            final hasChildren = _storeCategories.any((c) => (c['parentCategoryId'] ?? '').toString().trim() == subId);
+            subCategoryItems.add({
+              'categoryId': subId,
+              'name': subName,
+              'icon': sub['icon']?.toString().trim() ?? '',
+              'hasChildren': hasChildren,
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Child categories under the currently selected sub-category (Level 2)
+    final List<Map<String, dynamic>> childCategoryItems = [];
+    if (_selectedSubCategoryId.isNotEmpty) {
+      final childCats = _storeCategories.where((c) {
+        final pid = (c['parentCategoryId'] ?? '').toString().trim();
+        return pid == _selectedSubCategoryId;
+      }).toList();
+
+      if (childCats.isNotEmpty) {
+        final selectedSub = _storeCategories.cast<Map<String, dynamic>?>().firstWhere(
+          (c) => c?['categoryId'] == _selectedSubCategoryId,
+          orElse: () => null,
+        );
+        final subName = selectedSub?['name'] ?? 'All';
+        childCategoryItems.add({
+          'categoryId': '',
+          'name': 'All $subName',
+          'icon': '',
+          'hasChildren': false,
+        });
+        for (final child in childCats) {
+          final childName = child['name']?.toString().trim() ?? '';
+          final childId = child['categoryId']?.toString() ?? '';
+          if (childName.isNotEmpty) {
+            final hasChildren = _storeCategories.any((c) => (c['parentCategoryId'] ?? '').toString().trim() == childId);
+            childCategoryItems.add({
+              'categoryId': childId,
+              'name': childName,
+              'icon': child['icon']?.toString().trim() ?? '',
+              'hasChildren': hasChildren,
+            });
+          }
+        }
+      }
+    }
+
+    // 4. Dynamic Deeper Categories (Level 3, Level 4, Level 5... Infinite Depth!)
+    final List<Map<String, dynamic>> deeperCategoryItems = [];
+    bool showDeeperBackChip = false;
+    String backTargetName = '';
+    String activeDeeperParentId = '';
+
+    if (_selectedCategoryPath.length >= 2) {
+      final lastId = _selectedCategoryPath.last;
+      final directChildrenOfLast = _storeCategories.where((c) {
+        final pid = (c['parentCategoryId'] ?? '').toString().trim();
+        return pid == lastId;
+      }).toList();
+
+      if (directChildrenOfLast.isNotEmpty) {
+        // Last selected category HAS children -> display its children!
+        activeDeeperParentId = lastId;
+      } else if (_selectedCategoryPath.length > 2) {
+        // Only if we are ALREADY deeper than Level 2 (i.e. Level 3+) and selecting a leaf item,
+        // stay showing the siblings under its parent!
+        activeDeeperParentId = _selectedCategoryPath[_selectedCategoryPath.length - 2];
+      }
+
+      // CRITICAL: Only query deeper categories if activeDeeperParentId is NOT empty!
+      // Otherwise, an empty string query matches root categories (Level 0 parent like 'Grocery')!
+      if (activeDeeperParentId.isNotEmpty) {
+        final deeperCats = _storeCategories.where((c) {
+          final pid = (c['parentCategoryId'] ?? '').toString().trim();
+          return pid == activeDeeperParentId;
+        }).toList();
+
+        if (deeperCats.isNotEmpty) {
+          // Show back chip ONLY if we drilled down deeper than Level 3 (Level 4+)
+          final parentIdx = _selectedCategoryPath.indexOf(activeDeeperParentId);
+          if (parentIdx > 1) {
+            showDeeperBackChip = true;
+            final prevCatId = _selectedCategoryPath[parentIdx - 1];
+            final prevCat = _storeCategories.cast<Map<String, dynamic>?>().firstWhere(
+              (c) => c?['categoryId'] == prevCatId,
+              orElse: () => null,
+            );
+            backTargetName = prevCat?['name'] ?? 'Back';
+          }
+
+          final parentCat = _storeCategories.cast<Map<String, dynamic>?>().firstWhere(
+            (c) => c?['categoryId'] == activeDeeperParentId,
+            orElse: () => null,
+          );
+          final deeperParentName = parentCat?['name'] ?? 'All';
+
+          deeperCategoryItems.add({
+            'categoryId': '',
+            'name': 'All $deeperParentName',
+            'hasChildren': false,
+            'isAllChip': true,
+            'activeParentId': activeDeeperParentId,
+          });
+
+          for (final sc in deeperCats) {
+            final scName = sc['name']?.toString().trim() ?? '';
+            final scId = sc['categoryId']?.toString() ?? '';
+            if (scName.isNotEmpty) {
+              final hasChildren = _storeCategories.any((c) => (c['parentCategoryId'] ?? '').toString().trim() == scId);
+              deeperCategoryItems.add({
+                'categoryId': scId,
+                'name': scName,
+                'hasChildren': hasChildren,
+                'activeParentId': activeDeeperParentId,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // 5. Target category for filtering (Infinite depth target)
+    final String targetCatId = _selectedCategoryPath.isNotEmpty
+        ? _selectedCategoryPath.last
+        : _selectedMainCategoryId;
+
+    final Set<String> targetIds = targetCatId.isNotEmpty
+        ? _getDescendantIds(targetCatId, _storeCategories)
+        : const {};
+    final Set<String> targetNames = targetCatId.isNotEmpty
+        ? _getDescendantNames(targetCatId, _storeCategories)
+        : const {};
+
     final filteredProducts = allProducts.where((p) {
       final name = p['title'].toString().toLowerCase();
       final query = _searchQuery.toLowerCase();
-      final matchesSearch = name.contains(query);
+      final matchesSearch = query.isEmpty || name.contains(query);
+      if (!matchesSearch) return false;
 
-      final cat = p['category']?.toString().trim() ?? '';
-      final matchesCategory = (_selectedCategory == 'All') ||
-          (cat.toLowerCase() == _selectedCategory.toLowerCase());
+      if (targetCatId.isEmpty) return true;
 
-      return matchesSearch && matchesCategory;
+      final pCatId = (p['categoryId'] ?? '').toString().trim();
+      final pPath = p['categoryPath'] is List
+          ? (p['categoryPath'] as List).map((e) => e.toString().trim()).toList()
+          : <String>[];
+      final pCatName = (p['category'] ?? '').toString().toLowerCase().trim();
+
+      return targetIds.contains(pCatId) ||
+          pPath.any((id) => targetIds.contains(id)) ||
+          targetNames.contains(pCatName);
     }).toList();
 
     return Scaffold(
@@ -234,22 +452,26 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                       SizedBox(height: Responsive.h(14)),
 
                       // Category Filter Chips
-                      if (categoryItems.length > 1) ...[
+                      if (mainCategoryItems.length > 1) ...[
                         SizedBox(
                           height: Responsive.h(38),
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             physics: const BouncingScrollPhysics(),
-                            itemCount: categoryItems.length,
+                            itemCount: mainCategoryItems.length,
                             separatorBuilder: (context, index) => SizedBox(width: Responsive.w(8)),
                             itemBuilder: (context, index) {
-                              final item = categoryItems[index];
-                              final cat = item['name'] as String;
+                              final item = mainCategoryItems[index];
+                              final catId = item['categoryId'] as String;
+                              final catName = item['name'] as String;
                               final icon = item['icon'] as String? ?? '';
-                              final isSelected = _selectedCategory.toLowerCase() == cat.toLowerCase();
+                              final isSelected = _selectedMainCategoryId == catId;
                               return GestureDetector(
                                 onTap: () {
-                                  setState(() => _selectedCategory = cat);
+                                  setState(() {
+                                    _selectedMainCategoryId = catId;
+                                    _selectedCategoryPath = [];
+                                  });
                                 },
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
@@ -283,7 +505,7 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                                           SizedBox(width: Responsive.w(5)),
                                         ],
                                         CustomText.title(
-                                          cat,
+                                          catName,
                                           fontSize: 13,
                                           fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                                           color: isSelected ? Colors.white : AppColors.black,
@@ -296,6 +518,264 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                             },
                           ),
                         ),
+                        // Secondary Sub-Category Filter Chips (Level 1)
+                        if (subCategoryItems.isNotEmpty) ...[
+                          SizedBox(height: Responsive.h(10)),
+                          SizedBox(
+                            height: Responsive.h(32),
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              itemCount: subCategoryItems.length,
+                              separatorBuilder: (context, index) => SizedBox(width: Responsive.w(8)),
+                              itemBuilder: (context, index) {
+                                final item = subCategoryItems[index];
+                                final subId = item['categoryId'] as String;
+                                final subName = item['name'] as String;
+                                final hasChildren = item['hasChildren'] == true;
+                                final isSubSelected = _selectedSubCategoryId == subId;
+
+                                return GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      if (subId.isEmpty) {
+                                        _selectedCategoryPath = [];
+                                      } else {
+                                        _selectedCategoryPath = [subId];
+                                      }
+                                    });
+                                  },
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 150),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: Responsive.w(12),
+                                      vertical: Responsive.h(5),
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isSubSelected
+                                          ? AppColors.primary.withValues(alpha: 0.15)
+                                          : Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(Responsive.w(16)),
+                                      border: Border.all(
+                                        color: isSubSelected ? AppColors.primary : Colors.grey.shade300,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          CustomText.body(
+                                            subName,
+                                            fontSize: 12,
+                                            fontWeight: isSubSelected ? FontWeight.bold : FontWeight.w500,
+                                            color: isSubSelected ? AppColors.primary : Colors.black87,
+                                          ),
+                                          if (hasChildren) ...[
+                                            SizedBox(width: Responsive.w(3)),
+                                            Icon(
+                                              Icons.arrow_drop_down,
+                                              size: Responsive.w(14),
+                                              color: isSubSelected ? AppColors.primary : Colors.grey.shade600,
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                        // Tertiary Child Category Filter Chips (Level 2 - Sub category's sub category)
+                        if (childCategoryItems.isNotEmpty) ...[
+                          SizedBox(height: Responsive.h(8)),
+                          SizedBox(
+                            height: Responsive.h(28),
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              itemCount: childCategoryItems.length,
+                              separatorBuilder: (context, index) => SizedBox(width: Responsive.w(6)),
+                              itemBuilder: (context, index) {
+                                final item = childCategoryItems[index];
+                                final childId = item['categoryId'] as String;
+                                final childName = item['name'] as String;
+                                final hasChildren = item['hasChildren'] == true;
+                                final isChildSelected = childId.isEmpty
+                                    ? (_selectedCategoryPath.length == 1)
+                                    : (_selectedCategoryPath.length > 1 && _selectedCategoryPath[1] == childId);
+
+                                return GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      if (childId.isEmpty) {
+                                        _selectedCategoryPath = [_selectedCategoryPath[0]];
+                                      } else {
+                                        _selectedCategoryPath = [_selectedCategoryPath[0], childId];
+                                      }
+                                    });
+                                  },
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 150),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: Responsive.w(10),
+                                      vertical: Responsive.h(4),
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isChildSelected
+                                          ? AppColors.primary
+                                          : const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(Responsive.w(14)),
+                                      border: Border.all(
+                                        color: isChildSelected ? AppColors.primary : Colors.grey.shade300,
+                                        width: 0.8,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          CustomText.body(
+                                            childName,
+                                            fontSize: 11,
+                                            fontWeight: isChildSelected ? FontWeight.bold : FontWeight.w500,
+                                            color: isChildSelected ? Colors.white : Colors.black87,
+                                          ),
+                                          if (hasChildren && childId.isNotEmpty) ...[
+                                            SizedBox(width: Responsive.w(2)),
+                                            Icon(
+                                              Icons.arrow_drop_down,
+                                              size: Responsive.w(13),
+                                              color: isChildSelected ? Colors.white : Colors.grey.shade600,
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                        // Dynamic Deeper Category Filter Chips (Level 3, 4, 5... Infinite Depth)
+                        if (deeperCategoryItems.isNotEmpty) ...[
+                          SizedBox(height: Responsive.h(6)),
+                          SizedBox(
+                            height: Responsive.h(28),
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              itemCount: deeperCategoryItems.length + (showDeeperBackChip ? 1 : 0),
+                              separatorBuilder: (context, index) => SizedBox(width: Responsive.w(6)),
+                              itemBuilder: (context, index) {
+                                if (showDeeperBackChip && index == 0) {
+                                  return GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        final parentIdx = _selectedCategoryPath.indexOf(activeDeeperParentId);
+                                        if (parentIdx > 1) {
+                                          _selectedCategoryPath = _selectedCategoryPath.sublist(0, parentIdx);
+                                        } else {
+                                          _selectedCategoryPath = _selectedCategoryPath.sublist(0, 2);
+                                        }
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: Responsive.w(8),
+                                        vertical: Responsive.h(3),
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade300,
+                                        borderRadius: BorderRadius.circular(Responsive.w(12)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.arrow_back_ios_rounded, size: 9, color: Colors.grey.shade800),
+                                          SizedBox(width: Responsive.w(2)),
+                                          Text(
+                                            backTargetName,
+                                            style: TextStyle(
+                                              fontSize: Responsive.sp(9.5),
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.grey.shade800,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                final item = deeperCategoryItems[showDeeperBackChip ? index - 1 : index];
+                                final scId = item['categoryId'] as String;
+                                final scName = item['name'] as String;
+                                final hasChildren = item['hasChildren'] == true;
+                                final isAllChip = item['isAllChip'] == true;
+
+                                final bool isSelected = isAllChip
+                                    ? (_selectedCategoryPath.last == activeDeeperParentId)
+                                    : (_selectedCategoryPath.contains(scId) && (_selectedCategoryPath.last == scId || !hasChildren));
+
+                                return GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      final parentIdx = _selectedCategoryPath.indexOf(activeDeeperParentId);
+                                      if (parentIdx != -1) {
+                                        _selectedCategoryPath = _selectedCategoryPath.sublist(0, parentIdx + 1);
+                                      }
+                                      if (!isAllChip && scId.isNotEmpty) {
+                                        _selectedCategoryPath.add(scId);
+                                      }
+                                    });
+                                  },
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 150),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: Responsive.w(10),
+                                      vertical: Responsive.h(4),
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? AppColors.primary
+                                          : const Color(0xFFE2E8F0),
+                                      borderRadius: BorderRadius.circular(Responsive.w(14)),
+                                      border: Border.all(
+                                        color: isSelected ? AppColors.primary : Colors.grey.shade400,
+                                        width: 0.8,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          CustomText.body(
+                                            scName,
+                                            fontSize: 10.5,
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                            color: isSelected ? Colors.white : Colors.black87,
+                                          ),
+                                          if (hasChildren && scId.isNotEmpty) ...[
+                                            SizedBox(width: Responsive.w(2)),
+                                            Icon(
+                                              Icons.arrow_drop_down,
+                                              size: Responsive.w(13),
+                                              color: isSelected ? Colors.white : Colors.grey.shade600,
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                         SizedBox(height: Responsive.h(16)),
                       ],
 
@@ -305,7 +785,17 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                         children: [
                           Expanded(
                             child: CustomText.header(
-                              _selectedCategory == 'All' ? 'All Items' : _selectedCategory,
+                              _selectedCategoryPath.isNotEmpty
+                                  ? (_storeCategories.cast<Map<String, dynamic>?>().firstWhere(
+                                      (c) => c?['categoryId'] == _selectedCategoryPath.last,
+                                      orElse: () => null,
+                                    )?['name'] ?? 'Products')
+                                  : (_selectedMainCategoryId.isNotEmpty
+                                      ? (_storeCategories.cast<Map<String, dynamic>?>().firstWhere(
+                                          (c) => c?['categoryId'] == _selectedMainCategoryId,
+                                          orElse: () => null,
+                                        )?['name'] ?? 'Products')
+                                      : 'All Items'),
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                               maxLines: 1,
@@ -323,7 +813,12 @@ class _StoreDetailsScreenState extends State<StoreDetailsScreen> {
                                   'title': 'All Items',
                                   'products': allProducts,
                                   'storeType': widget.storeType,
-                                  'categories': categoryItems,
+                                  'categories': mainCategoryItems,
+                                  'storeCategories': _storeCategories,
+                                  'initialMainCategoryId': _selectedMainCategoryId,
+                                  'initialSubCategoryId': _selectedSubCategoryId,
+                                  'initialChildCategoryId': _selectedChildCategoryId,
+                                  'initialSubChildCategoryId': _selectedSubChildCategoryId,
                                 },
                               );
                               if (mounted) _isNavigating = false;

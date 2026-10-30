@@ -22,6 +22,7 @@ exports.createProduct = async (req, res) => {
       storeId,
       title,
       category,
+      categoryId: incomingCategoryId,
       unit,
       price,
       originalPrice,
@@ -53,12 +54,27 @@ exports.createProduct = async (req, res) => {
       });
     }
 
-    const store = await Store.findOne({ storeId });
+    const trimmedCatId = (incomingCategoryId || '').trim();
+    const trimmedCatName = (category || '').trim();
+
+    // Single parallel DB trip: validate store, lookup category doc, and generate sequence ID simultaneously
+    const [store, catDoc, productId] = await Promise.all([
+      Store.findOne({ storeId }).select('storeId category').lean(),
+      trimmedCatId
+        ? Category.findOne({ categoryId: trimmedCatId, isDeleted: { $ne: true } }).select('categoryId name ancestors').lean()
+        : (trimmedCatName
+            ? Category.findOne({
+                storeId: { $in: [storeId, 'global'] },
+                name: { $regex: new RegExp(`^${trimmedCatName}$`, 'i') },
+                isDeleted: { $ne: true },
+              }).select('categoryId name ancestors').lean()
+            : null),
+      getNextSequence('productId', 'PROD_', 5),
+    ]);
+
     if (!store) {
       return res.status(404).json({ success: false, error: `Store with ID ${storeId} not found` });
     }
-
-    const productId = await getNextSequence('productId', 'PROD_', 5);
 
     const numericPrice = Number(price);
     const numericOrig = originalPrice ? Number(originalPrice) : 0;
@@ -97,11 +113,26 @@ exports.createProduct = async (req, res) => {
       });
     }
 
+    // Category resolution from concurrent lookup
+    let finalCategoryName = store.category || 'general';
+    let finalCategoryId = '';
+    let finalCategoryPath = [];
+
+    if (catDoc) {
+      finalCategoryName = catDoc.name;
+      finalCategoryId = catDoc.categoryId;
+      finalCategoryPath = [...(catDoc.ancestors || []), catDoc.categoryId];
+    } else if (trimmedCatName) {
+      finalCategoryName = trimmedCatName;
+    }
+
     const newProduct = new Product({
       productId,
       storeId,
       title: targetTitle,
-      category: category || store.category || 'general',
+      category: finalCategoryName,
+      categoryId: finalCategoryId,
+      categoryPath: finalCategoryPath,
       unit: unit || (formattedVariants.length > 0 ? formattedVariants[0].unit : '1 Units'),
       price: numericPrice,
       originalPrice: numericOrig,
@@ -138,39 +169,64 @@ exports.createProduct = async (req, res) => {
   }
 };
 
-// 2. GET ALL PRODUCTS FOR A STORE (Supports Pagination, hasMore, Category, Search)
+// 2. GET ALL PRODUCTS FOR A STORE (Supports Pagination, hasMore, Category, CategoryId, Search)
 exports.getProductsByStore = async (req, res) => {
   try {
     const { storeId } = req.params;
-    const { category, search } = req.query;
+    const { category, categoryId, search } = req.query;
 
     const query = { storeId, isDeleted: { $ne: true } };
 
-    // Check if store has configured categories in Category master
-    const allStoreCategories = await Category.find({
-      storeId: { $in: [storeId, 'global'] },
-      isDeleted: { $ne: true },
-    }).select('name isActive').lean();
+    // Support filtering by categoryId (matches exact leaf categoryId OR any child in categoryPath)
+    if (categoryId && categoryId !== 'all') {
+      query.$or = [
+        { categoryId },
+        { categoryPath: categoryId },
+      ];
+    } else {
+      // Check if store has configured categories in Category master
+      const allStoreCategories = await Category.find({
+        storeId: { $in: [storeId, 'global'] },
+        isDeleted: { $ne: true },
+      }).select('name categoryId isActive').lean();
 
-    if (allStoreCategories.length > 0) {
-      const inactiveCats = allStoreCategories.filter((c) => c.isActive === false);
-      const inactiveNames = inactiveCats.map((c) => new RegExp(`^${c.name.trim()}$`, 'i'));
+      if (allStoreCategories.length > 0) {
+        const inactiveCats = allStoreCategories.filter((c) => c.isActive === false);
+        const inactiveNames = inactiveCats.map((c) => new RegExp(`^${c.name.trim()}$`, 'i'));
+        const inactiveIds = inactiveCats.map((c) => c.categoryId);
 
-      if (category && category !== 'all') {
-        const isRequestedInactive = inactiveCats.some(
-          (c) => c.name.trim().toLowerCase() === category.trim().toLowerCase()
-        );
-        if (isRequestedInactive) {
-          query._id = null; // Requested category is inactive, return empty
-        } else {
-          query.category = new RegExp(`^${category}$`, 'i');
+        if (category && category !== 'all') {
+          const isRequestedInactive = inactiveCats.some(
+            (c) => c.name.trim().toLowerCase() === category.trim().toLowerCase()
+          );
+          if (isRequestedInactive) {
+            query._id = null; // Requested category is inactive, return empty
+          } else {
+            // Find all subcategories under this category name to include their products too!
+            const matchedCat = allStoreCategories.find(
+              (c) => c.name.trim().toLowerCase() === category.trim().toLowerCase()
+            );
+            if (matchedCat) {
+              query.$or = [
+                { category: new RegExp(`^${category}$`, 'i') },
+                { categoryId: matchedCat.categoryId },
+                { categoryPath: matchedCat.categoryId },
+              ];
+            } else {
+              query.category = new RegExp(`^${category}$`, 'i');
+            }
+          }
+        } else if (inactiveNames.length > 0) {
+          // Exclude products that belong to explicitly disabled/inactive categories
+          query.category = { $nin: inactiveNames };
+          if (inactiveIds.length > 0) {
+            query.categoryId = { $nin: inactiveIds };
+            query.categoryPath = { $nin: inactiveIds };
+          }
         }
-      } else if (inactiveNames.length > 0) {
-        // Exclude products that belong to explicitly disabled/inactive categories
-        query.category = { $nin: inactiveNames };
+      } else if (category && category !== 'all') {
+        query.category = new RegExp(`^${category}$`, 'i');
       }
-    } else if (category && category !== 'all') {
-      query.category = new RegExp(`^${category}$`, 'i');
     }
 
     if (search && search.trim()) {
@@ -179,8 +235,6 @@ exports.getProductsByStore = async (req, res) => {
         { brand: { $regex: search.trim(), $options: 'i' } },
       ];
     }
-
-    const total = await Product.countDocuments(query);
 
     let queryBuilder = Product.find(query).sort({ createdAt: -1 });
 
@@ -193,7 +247,11 @@ exports.getProductsByStore = async (req, res) => {
       queryBuilder = queryBuilder.skip(skip).limit(limit);
     }
 
-    const products = await queryBuilder;
+    // Single parallel DB trip: total count and product list fetched simultaneously with .lean()
+    const [total, products] = await Promise.all([
+      Product.countDocuments(query),
+      queryBuilder.lean(),
+    ]);
     const effectiveLimit = limit > 0 ? limit : (total || 1);
     const totalPages = limit > 0 ? Math.ceil(total / limit) : 1;
     const hasMore = limit > 0 ? page * limit < total : false;
@@ -252,6 +310,25 @@ exports.updateProduct = async (req, res) => {
     // Discount calculation if prices provided
     if (updateData.price !== undefined && updateData.originalPrice !== undefined) {
       updateData.discountPercentage = calculateDiscount(updateData.price, updateData.originalPrice);
+    }
+
+    // Category and path synchronization if category changed
+    if (updateData.categoryId || updateData.category) {
+      let catDoc = null;
+      if (updateData.categoryId) {
+        catDoc = await Category.findOne({ categoryId: updateData.categoryId.trim(), isDeleted: { $ne: true } });
+      }
+      if (!catDoc && updateData.category) {
+        catDoc = await Category.findOne({
+          name: { $regex: new RegExp(`^${updateData.category.trim()}$`, 'i') },
+          isDeleted: { $ne: true },
+        });
+      }
+      if (catDoc) {
+        updateData.categoryId = catDoc.categoryId;
+        updateData.category = catDoc.name;
+        updateData.categoryPath = [...(catDoc.ancestors || []), catDoc.categoryId];
+      }
     }
 
     // Synchronize images if provided

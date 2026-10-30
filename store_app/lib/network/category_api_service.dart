@@ -6,9 +6,19 @@ import 'api_client.dart';
 class CategoryApiService {
   CategoryApiService._();
 
-  /// 1. Fetch all non-deleted categories for a store
-  static Future<List<CategoryModel>> getCategoriesByStore(String storeId, {bool activeOnly = false}) async {
-    final query = activeOnly ? '?activeOnly=true' : '';
+  /// 1. Fetch all non-deleted categories for a store (supports parentCategoryId and level filtering)
+  static Future<List<CategoryModel>> getCategoriesByStore(
+    String storeId, {
+    bool activeOnly = false,
+    String? parentCategoryId,
+    int? level,
+  }) async {
+    final params = <String>[];
+    if (activeOnly) params.add('activeOnly=true');
+    if (parentCategoryId != null) params.add('parentCategoryId=$parentCategoryId');
+    if (level != null) params.add('level=$level');
+
+    final query = params.isNotEmpty ? '?${params.join('&')}' : '';
     final url = '${ApiClient.baseUrl}/categories/store/$storeId$query';
 
     try {
@@ -34,10 +44,11 @@ class CategoryApiService {
     }
   }
 
-  /// 2. Create new category for store
+  /// 2. Create new category for store (supports parentCategoryId)
   static Future<Map<String, dynamic>> createCategory({
     required String storeId,
     required String name,
+    String parentCategoryId = '',
     String description = '',
     String icon = '',
     String image = '',
@@ -48,6 +59,7 @@ class CategoryApiService {
     final payload = jsonEncode({
       'storeId': storeId,
       'name': name.trim(),
+      'parentCategoryId': parentCategoryId.trim(),
       'description': description.trim(),
       'icon': icon,
       'image': image,

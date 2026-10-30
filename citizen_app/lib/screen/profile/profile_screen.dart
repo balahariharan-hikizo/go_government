@@ -678,11 +678,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: () => _showLogoutDialog(context),
                     ),
                     SizedBox(height: Responsive.h(6)),
-                    _buildProfileOption(
-                      icon: Icons.delete_outline,
-                      title: 'Delete',
-                      onTap: () => _showDeleteDialog(context),
-                    ),
+                    // _buildProfileOption(
+                    //   icon: Icons.delete_outline,
+                    //   title: 'Delete',
+                    //   onTap: () => _showDeleteDialog(context),
+                    // ),
                   ],
                 ),
               ),

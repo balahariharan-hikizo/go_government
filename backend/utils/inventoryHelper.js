@@ -11,32 +11,51 @@ async function adjustProductStock(items, mode = 'decrement') {
   if (!Array.isArray(items) || items.length === 0) return;
 
   const multiplier = mode === 'decrement' ? -1 : 1;
+  const bulkOps = [];
 
-  const bulkOps = items
-    .map((item) => {
-      const pId = item.productId || item.id;
-      const vId = item.variantId;
-      const qty = Number(item.quantity || item.qty || 1);
-      if (!pId || qty <= 0) return null;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    let pId = (item.productId || item.id || '').toString().trim();
+    let vId = (item.variantId || '').toString().trim();
+    const qty = Number(item.quantity || item.qty || 1);
+    if (qty <= 0) continue;
 
-      const delta = multiplier * qty;
+    if (pId.includes(':')) {
+      const parts = pId.split(':');
+      pId = parts[0].trim();
+      if (!vId && parts[1]) vId = parts[1].trim();
+    }
 
-      if (vId) {
-        // Direct match on 'variants.variantId' enables MongoDB positional operator '$'
-        return {
-          updateOne: {
-            filter: { productId: pId, 'variants.variantId': vId }, update: { $inc: { 'variants.$.stock': delta, stock: delta } },
-          },
-        };
-      }
+    const delta = multiplier * qty;
 
-      return {
+    // Filter construction: support productId, and fallback to title match if pId was a dummy timestamp
+    let filter;
+    if (pId && !pId.startsWith('prod_') && !pId.startsWith('reorder_')) {
+      filter = vId ? { productId: pId, 'variants.variantId': vId } : { productId: pId };
+    } else if (item.title) {
+      filter = vId
+        ? { title: item.title, 'variants.variantId': vId }
+        : { title: item.title };
+    } else {
+      continue;
+    }
+
+    if (vId) {
+      bulkOps.push({
         updateOne: {
-          filter: { productId: pId }, update: { $inc: { stock: delta } },
+          filter,
+          update: { $inc: { 'variants.$.stock': delta, stock: delta } },
         },
-      };
-    })
-    .filter(Boolean);
+      });
+    } else {
+      bulkOps.push({
+        updateOne: {
+          filter,
+          update: { $inc: { stock: delta } },
+        },
+      });
+    }
+  }
 
   if (bulkOps.length > 0) {
     await Product.bulkWrite(bulkOps, { ordered: false })

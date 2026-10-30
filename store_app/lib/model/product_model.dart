@@ -63,6 +63,8 @@ class ProductModel {
   final String storeId;
   final String title;
   final String category;
+  final String categoryId;
+  final List<String> categoryPath;
   final String unit;
   final double price;
   final double originalPrice;
@@ -92,6 +94,8 @@ class ProductModel {
     required this.storeId,
     required this.title,
     this.category = 'general',
+    this.categoryId = '',
+    this.categoryPath = const [],
     this.unit = '1 Units',
     required this.price,
     this.originalPrice = 0.0,
@@ -160,6 +164,10 @@ class ProductModel {
       storeId: json['storeId']?.toString() ?? '',
       title: json['title']?.toString() ?? json['name']?.toString() ?? '',
       category: json['category']?.toString() ?? 'general',
+      categoryId: json['categoryId']?.toString() ?? '',
+      categoryPath: json['categoryPath'] is List
+          ? (json['categoryPath'] as List).map((e) => e.toString()).toList()
+          : const [],
       unit: json['unit']?.toString() ?? (parsedVariants.isNotEmpty ? parsedVariants[0].unit : '1 Units'),
       price: parseDouble(json['price'], 0.0),
       originalPrice: parseDouble(json['originalPrice'], 0.0),
@@ -188,6 +196,8 @@ class ProductModel {
       'storeId': storeId,
       'title': title,
       'category': category,
+      'categoryId': categoryId,
+      'categoryPath': categoryPath,
       'unit': unit,
       'price': price,
       'originalPrice': originalPrice,
@@ -215,6 +225,8 @@ class ProductModel {
     String? storeId,
     String? title,
     String? category,
+    String? categoryId,
+    List<String>? categoryPath,
     String? unit,
     double? price,
     double? originalPrice,
@@ -240,6 +252,8 @@ class ProductModel {
       storeId: storeId ?? this.storeId,
       title: title ?? this.title,
       category: category ?? this.category,
+      categoryId: categoryId ?? this.categoryId,
+      categoryPath: categoryPath ?? this.categoryPath,
       unit: unit ?? this.unit,
       price: price ?? this.price,
       originalPrice: originalPrice ?? this.originalPrice,

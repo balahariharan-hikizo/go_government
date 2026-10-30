@@ -319,18 +319,20 @@ class _FeedbackSurveyScreenState extends State<FeedbackSurveyScreen> {
                   'id': 'REW-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}',
                   'title': 'Feedback Survey Reward',
                   'subtitle': 'Earned through survey · ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}',
-                  'amount': '+50',
+                  'amount': '+50 Coins',
                   'isPositive': true,
                   'status': 'Credited',
                   'date': 'Today',
                   'items': [],
                   'address': 'Citizen Participation Survey',
                   'listingPrice': '₹0.00',
-                  'sellingPrice': '₹50.00',
-                  'grandTotal': '₹50.00',
-                  'paid': '₹50.00',
+                  'sellingPrice': '+50 Coins',
+                  'grandTotal': '+50 Coins',
+                  'paid': '+50 Coins',
+                  'category': 'civic_reward',
+                  'paymentMethod': 'Reward Coins',
                 };
-                context.read<TransactionBloc>().add(AddCoinsEvent(50));
+                context.read<TransactionBloc>().add(AddCoinsEvent(50, reason: 'Feedback Survey Reward'));
                 context.read<TransactionBloc>().add(AddTransactionEvent(rewardTx));
 
                 ScaffoldMessenger.of(context).showSnackBar(

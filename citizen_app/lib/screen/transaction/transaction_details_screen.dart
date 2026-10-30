@@ -557,18 +557,29 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
 
     final bool isRefund = category == 'order_refund' || title.toLowerCase().contains('refund');
     final bool isTopup = category == 'topup' || title.toLowerCase().contains('top-up') || title.toLowerCase().contains('topup');
-    final bool isCoins = !isRefund && !isTopup && (
-        title.toLowerCase().contains('coin') ||
-        title.toLowerCase().contains('bonus') ||
-        title.toLowerCase().contains('reward') ||
-        title.toLowerCase().contains('complaint') ||
-        title.toLowerCase().contains('survey') ||
-        !amount.contains('₹'));
+    final bool isCoins = category == 'civic_reward' ||
+        (!isRefund && !isTopup && (
+          title.toLowerCase().contains('coin') ||
+          title.toLowerCase().contains('bonus') ||
+          title.toLowerCase().contains('reward') ||
+          title.toLowerCase().contains('complaint') ||
+          title.toLowerCase().contains('survey') ||
+          amount.toLowerCase().contains('coin') ||
+          !amount.contains('₹')
+        ));
 
     String formattedAmount = amount;
     if (isCoins) {
       final String cleanAmt = amount.replaceAll('+', '').replaceAll('-', '').replaceAll('Coins', '').replaceAll('🪙', '').trim();
-      formattedAmount = isPositive ? '+$cleanAmt Coins' : '-$cleanAmt Coins';
+      // If cleanAmt was 0 (from legacy backend amount: 0), try to extract from subtitle (e.g. "+200")
+      String coinNum = cleanAmt;
+      if (coinNum.isEmpty || coinNum == '0') {
+        final match = RegExp(r'[+]?(\d+)\s*coins', caseSensitive: false).firstMatch(subtitle);
+        if (match != null) {
+          coinNum = match.group(1) ?? '100';
+        }
+      }
+      formattedAmount = isPositive ? '+$coinNum Coins' : '-$coinNum Coins';
     } else {
       if (!formattedAmount.contains('₹')) {
         formattedAmount = isPositive ? '+₹$formattedAmount' : '-₹$formattedAmount';
@@ -888,14 +899,23 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
   }
 
   Future<void> _reorderAllAndGoToCart(BuildContext context) async {
-    final List items = widget.transaction?['items'] as List? ?? [];
     final storeDetails = (widget.transaction?['storeDetails'] as Map?) ?? {};
     String storeId = (widget.transaction?['storeId'] ?? storeDetails['storeId'] ?? '').toString().trim();
     String storeName = (widget.transaction?['storeName'] ?? storeDetails['name'] ?? widget.title).toString().trim();
     final String orderId = (widget.transaction?['id'] ?? widget.transaction?['orderId'] ?? '').toString().trim();
 
-    // If storeId is missing, recover it directly from MongoDB
-    if (storeId.isEmpty && orderId.isNotEmpty) {
+    List resolvedItems = List.from((widget.transaction?['items'] as List?) ?? []);
+
+    // If storeId is missing OR items is empty OR any item has dummy/missing productId:
+    final bool needsLiveFetch = storeId.isEmpty ||
+        resolvedItems.isEmpty ||
+        resolvedItems.any((it) {
+          if (it is! Map) return true;
+          final pid = (it['productId'] ?? it['id'] ?? '').toString();
+          return pid.isEmpty || pid.startsWith('prod_') || pid.startsWith('reorder_');
+        });
+
+    if (needsLiveFetch && orderId.isNotEmpty) {
       try {
         final liveDetails = await OrderApiService.fetchOrderDetails(orderId);
         if (liveDetails != null) {
@@ -904,6 +924,11 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
           final sName = (liveStoreDetails['name'] ?? liveDetails['storeName'] ?? '').toString().trim();
           if (sId.isNotEmpty) storeId = sId;
           if (sName.isNotEmpty) storeName = sName;
+
+          final liveItems = liveDetails['items'] as List?;
+          if (liveItems != null && liveItems.isNotEmpty) {
+            resolvedItems = List.from(liveItems);
+          }
         }
       } catch (_) {}
     }
@@ -911,27 +936,47 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
     // Clear previous cart to prevent cross-store item mixing
     CartManager.instance.clear();
 
-    if (items.isNotEmpty) {
-      for (final raw in items) {
+    if (resolvedItems.isNotEmpty) {
+      for (final raw in resolvedItems) {
         if (raw is Map) {
           final item = Map<String, dynamic>.from(raw);
-          final pId = item['productId']?.toString() ??
-              item['id']?.toString() ??
-              'prod_${DateTime.now().millisecondsSinceEpoch}';
+          final rawPid = (item['productId'] ?? item['id'] ?? '').toString().trim();
+          final vId = (item['variantId'] ?? (rawPid.contains(':') ? rawPid.split(':').last : '')).toString().trim();
+          final basePid = rawPid.contains(':') ? rawPid.split(':').first : rawPid;
+          final cartKey = vId.isNotEmpty ? '$basePid:$vId' : basePid;
+
+          final rawPrice = item['price'];
+          num parsedPrice = 99;
+          if (rawPrice is num) {
+            parsedPrice = rawPrice;
+          } else if (rawPrice != null) {
+            parsedPrice = num.tryParse(rawPrice.toString().replaceAll(RegExp(r'[^0-9.]'), '')) ?? 99;
+          }
+
+          final rawOrig = item['originalPrice'];
+          num parsedOrig = parsedPrice;
+          if (rawOrig is num) {
+            parsedOrig = rawOrig;
+          } else if (rawOrig != null) {
+            parsedOrig = num.tryParse(rawOrig.toString().replaceAll(RegExp(r'[^0-9.]'), '')) ?? parsedPrice;
+          }
+
           final prodData = {
             ...item,
-            'id': pId,
-            'productId': pId,
+            'id': cartKey,
+            'productId': basePid,
+            'variantId': vId,
             if (storeId.isNotEmpty) 'storeId': storeId,
             if (storeName.isNotEmpty) 'storeName': storeName,
             'title': item['title'] ?? item['name'] ?? 'Product',
-            'price': item['price'] ?? 99,
-            'originalPrice': item['originalPrice'] ?? item['price'] ?? 99,
+            'price': parsedPrice,
+            'originalPrice': parsedOrig,
             'image': (item['image'] ?? item['imageUrl'] ?? '').toString(),
-            'stock': 10,
+            'unit': item['unit'] ?? '1 Units',
+            'stock': 100,
           };
           final qty = ((item['qty'] ?? item['quantity'] ?? 1) as num).toInt();
-          CartManager.instance.addToCart(prodData, qty: qty);
+          CartManager.instance.addToCart(prodData, qty: qty, productId: cartKey);
         }
       }
     } else {
@@ -1021,27 +1066,46 @@ class _TransactionDetailsScreenState extends State<TransactionDetailsScreen> {
                     final String storeId = (widget.transaction?['storeId'] ?? storeDetails['storeId'] ?? '').toString();
                     final String storeName = (widget.transaction?['storeName'] ?? storeDetails['name'] ?? widget.title).toString();
 
-                    final pId = item?['productId']?.toString() ??
-                        item?['id']?.toString() ??
-                        'reorder_${DateTime.now().millisecondsSinceEpoch}';
+                    final rawPid = (item?['productId'] ?? item?['id'] ?? '').toString().trim();
+                    final vId = (item?['variantId'] ?? (rawPid.contains(':') ? rawPid.split(':').last : '')).toString().trim();
+                    final basePid = rawPid.contains(':') ? rawPid.split(':').first : rawPid;
+                    final cartKey = vId.isNotEmpty ? '$basePid:$vId' : basePid;
+
                     final pTitle = item?['title'] ?? item?['name'] ?? title;
-                    final pPrice = item?['price'] ?? 99;
+                    final rawPrice = item?['price'];
+                    num parsedPrice = 99;
+                    if (rawPrice is num) {
+                      parsedPrice = rawPrice;
+                    } else if (rawPrice != null) {
+                      parsedPrice = num.tryParse(rawPrice.toString().replaceAll(RegExp(r'[^0-9.]'), '')) ?? 99;
+                    }
+
+                    final rawOrig = item?['originalPrice'];
+                    num parsedOrig = parsedPrice;
+                    if (rawOrig is num) {
+                      parsedOrig = rawOrig;
+                    } else if (rawOrig != null) {
+                      parsedOrig = num.tryParse(rawOrig.toString().replaceAll(RegExp(r'[^0-9.]'), '')) ?? parsedPrice;
+                    }
+
                     final pQty = ((item?['qty'] ?? item?['quantity'] ?? 1) as num).toInt();
 
                     final prodData = {
                       ...?item,
-                      'id': pId,
-                      'productId': pId,
+                      'id': cartKey,
+                      'productId': basePid,
+                      'variantId': vId,
                       if (storeId.isNotEmpty) 'storeId': storeId,
                       if (storeName.isNotEmpty) 'storeName': storeName,
                       'title': pTitle,
-                      'price': pPrice,
-                      'originalPrice': item?['originalPrice'] ?? pPrice,
+                      'price': parsedPrice,
+                      'originalPrice': parsedOrig,
                       'image': (item?['image'] ?? item?['imageUrl'] ?? '').toString(),
-                      'stock': 10,
+                      'unit': item?['unit'] ?? '1 Units',
+                      'stock': 100,
                     };
 
-                    CartManager.instance.addToCart(prodData, qty: pQty);
+                    CartManager.instance.addToCart(prodData, qty: pQty, productId: cartKey);
 
                     if (context.mounted) {
                       context.read<TransactionBloc>().add(ToggleReorderScreenEvent(false));

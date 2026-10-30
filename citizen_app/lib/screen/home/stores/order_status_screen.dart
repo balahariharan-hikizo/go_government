@@ -1969,8 +1969,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
                 : (widget.storeType == 'medical'
                       ? 'Medical Store'
                       : 'Vegetable Store'));
+      final sId = (_serverOrderData!['storeId'] ?? _serverOrderData!['storeDetails']?['storeId'] ?? '').toString().trim();
+      final storeDetails = _serverOrderData!['storeDetails'] as Map<String, dynamic>? ?? {'storeId': sId, 'name': storeName};
       return {
         'id': _orderId,
+        'orderId': _orderId,
+        'storeId': sId,
+        'storeName': storeName,
+        'storeDetails': storeDetails,
         'title': storeName,
         'subtitle': 'Order placed · Processing',
         'amount': '-₹$grandTotal',
@@ -1980,12 +1986,23 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
         'date': 'Today',
         'items': items
             .map(
-              (i) => {
-                'title': i['name'] ?? i['title'] ?? 'Item',
-                'price': '₹${i['price'] ?? 0}',
-                'qty': i['quantity'] ?? i['qty'] ?? 1,
-                'image':
-                    (i['imageUrl'] ?? i['image'] ?? '').toString(),
+              (i) {
+                final pId = (i['productId'] ?? i['id'] ?? '').toString();
+                final vId = (i['variantId'] ?? '').toString();
+                return {
+                  'id': vId.isNotEmpty ? '$pId:$vId' : pId,
+                  'productId': pId,
+                  'variantId': vId,
+                  'title': i['title'] ?? i['name'] ?? 'Item',
+                  'price': '₹${i['price'] ?? 0}',
+                  'originalPrice': i['originalPrice'] ?? i['price'] ?? 0,
+                  'qty': i['quantity'] ?? i['qty'] ?? 1,
+                  'quantity': i['quantity'] ?? i['qty'] ?? 1,
+                  'unit': i['unit'] ?? '1 Units',
+                  'image': (i['imageUrl'] ?? i['image'] ?? '').toString(),
+                  if (sId.isNotEmpty) 'storeId': sId,
+                  if (storeName.isNotEmpty) 'storeName': storeName,
+                };
               },
             )
             .toList(),

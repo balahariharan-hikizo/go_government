@@ -495,7 +495,7 @@ class _TransactionScreenState extends State<TransactionScreen> {
                         ),
                         onPressed: () async {
                           // 1. Credit 100 Civic Coins
-                          context.read<TransactionBloc>().add(AddCoinsEvent(100));
+                          context.read<TransactionBloc>().add(AddCoinsEvent(100, reason: 'Referral Welcome Bonus'));
 
                           // 2. Add transaction history entry
                           final now = DateTime.now();

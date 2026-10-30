@@ -4,6 +4,9 @@ const CategorySchema = new mongoose.Schema(
   {
     categoryId: { type: String, required: true, unique: true, index: true },
     storeId: { type: String, required: true, index: true }, // Associated storeId or 'global'
+    parentCategoryId: { type: String, default: '', index: true }, // Empty string = Main Category (Level 0), or parent categoryId
+    level: { type: Number, default: 0, index: true }, // 0 = Main, 1 = Sub, 2 = Sub-Sub, etc.
+    ancestors: { type: [String], default: [] }, // Array of parent categoryIds up to root, e.g. ["CAT_001", "CAT_002"]
     name: { type: String, required: true, trim: true },
     description: { type: String, default: '', trim: true },
     icon: { type: String, default: '' },
@@ -17,6 +20,11 @@ const CategorySchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Compound indexes for high-speed single-query lookups
+CategorySchema.index({ storeId: 1, isDeleted: 1, isActive: 1, displayOrder: 1 });
+CategorySchema.index({ storeId: 1, parentCategoryId: 1, isDeleted: 1 });
+CategorySchema.index({ storeId: 1, name: 1, isDeleted: 1 });
 
 CategorySchema.set('toJSON', {
   virtuals: true,

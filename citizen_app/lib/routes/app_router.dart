@@ -136,6 +136,11 @@ class AppRouter {
             products: (args['products'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [],
             storeType: args['storeType'] as String? ?? 'medical',
             categories: (args['categories'] as List<dynamic>?)?.cast<Map<String, dynamic>>(),
+            storeCategories: (args['storeCategories'] as List<dynamic>?)?.cast<Map<String, dynamic>>(),
+            initialMainCategoryId: args['initialMainCategoryId'] as String?,
+            initialSubCategoryId: args['initialSubCategoryId'] as String?,
+            initialChildCategoryId: args['initialChildCategoryId'] as String?,
+            initialSubChildCategoryId: args['initialSubChildCategoryId'] as String?,
           ),
           settings,
         );

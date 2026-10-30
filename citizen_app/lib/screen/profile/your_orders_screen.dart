@@ -775,14 +775,23 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
 }
 
   Future<void> _reorderOrderAndGoToCart(BuildContext context, Map<String, dynamic> order) async {
-    final List items = (order['items'] as List?) ?? [];
     final storeDetails = (order['storeDetails'] as Map?) ?? {};
     String storeId = (order['storeId'] ?? storeDetails['storeId'] ?? '').toString().trim();
     String storeName = (order['storeName'] ?? storeDetails['name'] ?? order['title'] ?? 'Store').toString().trim();
     final String orderId = (order['id'] ?? order['orderId'] ?? '').toString().trim();
 
-    // If storeId is missing from locally cached order, query MongoDB directly to recover storeId & storeName
-    if (storeId.isEmpty && orderId.isNotEmpty) {
+    List resolvedItems = List.from((order['items'] as List?) ?? []);
+
+    // If storeId is missing OR items is empty OR any item has dummy/missing productId:
+    final bool needsLiveFetch = storeId.isEmpty ||
+        resolvedItems.isEmpty ||
+        resolvedItems.any((it) {
+          if (it is! Map) return true;
+          final pid = (it['productId'] ?? it['id'] ?? '').toString();
+          return pid.isEmpty || pid.startsWith('prod_') || pid.startsWith('reorder_');
+        });
+
+    if (needsLiveFetch && orderId.isNotEmpty) {
       try {
         final liveDetails = await OrderApiService.fetchOrderDetails(orderId);
         if (liveDetails != null) {
@@ -791,6 +800,11 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
           final sName = (liveStoreDetails['name'] ?? liveDetails['storeName'] ?? '').toString().trim();
           if (sId.isNotEmpty) storeId = sId;
           if (sName.isNotEmpty) storeName = sName;
+
+          final liveItems = liveDetails['items'] as List?;
+          if (liveItems != null && liveItems.isNotEmpty) {
+            resolvedItems = List.from(liveItems);
+          }
         }
       } catch (_) {}
     }
@@ -798,27 +812,47 @@ class _YourOrdersScreenState extends State<YourOrdersScreen> {
     // Clear previous cart to prevent cross-store item mixing
     CartManager.instance.clear();
 
-    if (items.isNotEmpty) {
-      for (final raw in items) {
+    if (resolvedItems.isNotEmpty) {
+      for (final raw in resolvedItems) {
         if (raw is Map) {
           final it = Map<String, dynamic>.from(raw);
-          final pId = it['productId']?.toString() ??
-              it['id']?.toString() ??
-              'prod_${DateTime.now().millisecondsSinceEpoch}';
+          final rawPid = (it['productId'] ?? it['id'] ?? '').toString().trim();
+          final vId = (it['variantId'] ?? (rawPid.contains(':') ? rawPid.split(':').last : '')).toString().trim();
+          final basePid = rawPid.contains(':') ? rawPid.split(':').first : rawPid;
+          final cartKey = vId.isNotEmpty ? '$basePid:$vId' : basePid;
+
+          final rawPrice = it['price'];
+          num parsedPrice = 99;
+          if (rawPrice is num) {
+            parsedPrice = rawPrice;
+          } else if (rawPrice != null) {
+            parsedPrice = num.tryParse(rawPrice.toString().replaceAll(RegExp(r'[^0-9.]'), '')) ?? 99;
+          }
+
+          final rawOrig = it['originalPrice'];
+          num parsedOrig = parsedPrice;
+          if (rawOrig is num) {
+            parsedOrig = rawOrig;
+          } else if (rawOrig != null) {
+            parsedOrig = num.tryParse(rawOrig.toString().replaceAll(RegExp(r'[^0-9.]'), '')) ?? parsedPrice;
+          }
+
           final prodData = {
             ...it,
-            'id': pId,
-            'productId': pId,
+            'id': cartKey,
+            'productId': basePid,
+            'variantId': vId,
             if (storeId.isNotEmpty) 'storeId': storeId,
             if (storeName.isNotEmpty) 'storeName': storeName,
             'title': it['title'] ?? it['name'] ?? 'Product',
-            'price': it['price'] ?? 99,
-            'originalPrice': it['originalPrice'] ?? it['price'] ?? 99,
+            'price': parsedPrice,
+            'originalPrice': parsedOrig,
             'image': (it['image'] ?? it['imageUrl'] ?? '').toString(),
-            'stock': 10,
+            'unit': it['unit'] ?? '1 Units',
+            'stock': 100,
           };
           final qty = ((it['qty'] ?? it['quantity'] ?? 1) as num).toInt();
-          CartManager.instance.addToCart(prodData, qty: qty);
+          CartManager.instance.addToCart(prodData, qty: qty, productId: cartKey);
         }
       }
     } else {

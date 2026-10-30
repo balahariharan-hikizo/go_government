@@ -22,6 +22,8 @@ const ProductSchema = new mongoose.Schema(
     storeId: { type: String, required: true, index: true },
     title: { type: String, required: true, trim: true },
     category: { type: String, default: 'general', trim: true },
+    categoryId: { type: String, default: '', index: true }, // Associated leaf/sub categoryId
+    categoryPath: { type: [String], default: [] }, // Array of categoryIds [mainId, subId, subSubId]
     
     // Default Base Unit & Price (used as base/fallback)
     unit: { type: String, default: '1 Units', trim: true },
@@ -61,6 +63,12 @@ const ProductSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// High-performance compound indexes for store queries & category hierarchy filters
+ProductSchema.index({ storeId: 1, isDeleted: 1, createdAt: -1 });
+ProductSchema.index({ storeId: 1, isDeleted: 1, categoryId: 1 });
+ProductSchema.index({ storeId: 1, isDeleted: 1, categoryPath: 1 });
+ProductSchema.index({ storeId: 1, isDeleted: 1, category: 1 });
 
 // Pre-save hook to ensure images array and primary image are synchronized
 ProductSchema.pre('save', function () {

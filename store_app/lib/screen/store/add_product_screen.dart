@@ -5,6 +5,7 @@ import '../../bloc/product/product_bloc.dart';
 import '../../bloc/product/product_event.dart';
 import '../../bloc/product/product_state.dart';
 import '../../model/product_model.dart';
+import '../../model/category_model.dart';
 import '../../network/store_api_service.dart';
 import '../../network/category_api_service.dart';
 import '../../utils/app_colors.dart';
@@ -16,12 +17,14 @@ class AddProductScreen extends StatefulWidget {
   final String storeId;
   final String storeCategory;
   final ProductModel? initialProduct;
+  final String? initialCategoryId;
 
   const AddProductScreen({
     super.key,
     required this.storeId,
     required this.storeCategory,
     this.initialProduct,
+    this.initialCategoryId,
   });
 
   @override
@@ -73,8 +76,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
   late TextEditingController _descriptionController;
   late TextEditingController _subsidyLimitController;
 
-  List<String> _categoryOptions = [];
+  List<CategoryModel> _storeCategories = [];
   String _selectedCategory = '';
+  String _selectedCategoryId = '';
   bool _isSubsidized = false;
   bool _isLoadingCategories = false;
 
@@ -96,6 +100,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     final p = widget.initialProduct;
     if (p != null) {
       _selectedCategory = p.category;
+      _selectedCategoryId = p.categoryId;
       _titleController = TextEditingController(text: p.title);
       _priceController = TextEditingController(text: p.price.toStringAsFixed(0));
       _origPriceController =
@@ -133,6 +138,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       }
     } else {
       _selectedCategory = '';
+      _selectedCategoryId = widget.initialCategoryId ?? '';
       _titleController = TextEditingController();
       _priceController = TextEditingController();
       _origPriceController = TextEditingController();
@@ -171,16 +177,51 @@ class _AddProductScreenState extends State<AddProductScreen> {
     super.dispose();
   }
 
+  String _getCategoryFullPath(CategoryModel cat) {
+    if (cat.ancestors.isEmpty) {
+      return '${cat.icon.isNotEmpty ? "${cat.icon} " : ""}${cat.name}';
+    }
+    final pathSegments = <String>[];
+    for (final ancId in cat.ancestors) {
+      final anc = _storeCategories.cast<CategoryModel?>().firstWhere(
+        (c) => c?.categoryId == ancId,
+        orElse: () => null,
+      );
+      if (anc != null) {
+        pathSegments.add(anc.name);
+      }
+    }
+    pathSegments.add(cat.name);
+    final iconPrefix = cat.icon.isNotEmpty ? '${cat.icon} ' : '';
+    return '$iconPrefix${pathSegments.join(' > ')}';
+  }
+
   Future<void> _loadStoreCategories() async {
     setState(() => _isLoadingCategories = true);
     final cats = await CategoryApiService.getCategoriesByStore(widget.storeId, activeOnly: true);
     if (mounted) {
       setState(() {
-        _categoryOptions = cats.where((c) => c.isActive).map((c) => c.name).toList();
-        if (_selectedCategory.isNotEmpty && !_categoryOptions.contains(_selectedCategory)) {
-          _categoryOptions.insert(0, _selectedCategory);
-        } else if (_selectedCategory.isEmpty && _categoryOptions.isNotEmpty) {
-          _selectedCategory = _categoryOptions.first;
+        _storeCategories = cats.where((c) => c.isActive).toList();
+        if (_selectedCategoryId.isNotEmpty) {
+          final found = _storeCategories.cast<CategoryModel?>().firstWhere(
+            (c) => c?.categoryId == _selectedCategoryId,
+            orElse: () => null,
+          );
+          if (found != null) {
+            _selectedCategory = found.name;
+          }
+        } else if (_selectedCategory.isNotEmpty) {
+          final found = _storeCategories.cast<CategoryModel?>().firstWhere(
+            (c) => c?.name.toLowerCase() == _selectedCategory.toLowerCase(),
+            orElse: () => null,
+          );
+          if (found != null) {
+            _selectedCategoryId = found.categoryId;
+            _selectedCategory = found.name;
+          }
+        } else if (_storeCategories.isNotEmpty) {
+          _selectedCategory = _storeCategories.first.name;
+          _selectedCategoryId = _storeCategories.first.categoryId;
         }
         _isLoadingCategories = false;
       });
@@ -189,6 +230,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   void _showQuickAddCategoryModal() {
     final nameCtrl = TextEditingController();
+    String parentCatId = '';
     bool isSaving = false;
 
     showModalBottomSheet(
@@ -222,8 +264,45 @@ class _AddProductScreenState extends State<AddProductScreen> {
                 ),
               ),
               SizedBox(height: Responsive.h(16)),
-              CustomText.title('Add New Category', fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.black),
+              CustomText.title('Add New Category / Sub-Category', fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.black),
               SizedBox(height: Responsive.h(12)),
+
+              // Optional Parent Picker
+              if (_storeCategories.isNotEmpty) ...[
+                CustomText.body('Parent Category (Optional)', fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+                SizedBox(height: Responsive.h(6)),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: Responsive.w(12)),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: parentCatId.isEmpty ? '' : parentCatId,
+                      isExpanded: true,
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: '',
+                          child: Text('📁 None (Create as Main Category)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                        ),
+                        ..._storeCategories.map((c) => DropdownMenuItem<String>(
+                              value: c.categoryId,
+                              child: Text('↳ Under "${c.name}"', style: const TextStyle(fontSize: 13)),
+                            )),
+                      ],
+                      onChanged: (val) {
+                        setSheetState(() => parentCatId = val ?? '');
+                      },
+                    ),
+                  ),
+                ),
+                SizedBox(height: Responsive.h(12)),
+              ],
+
+              CustomText.body('Category Name', fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+              SizedBox(height: Responsive.h(6)),
               TextField(
                 controller: nameCtrl,
                 autofocus: true,
@@ -253,6 +332,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                           final res = await CategoryApiService.createCategory(
                             storeId: widget.storeId,
                             name: name,
+                            parentCategoryId: parentCatId,
                           );
 
                           if (!mounted) return;
@@ -260,12 +340,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
                           Navigator.pop(ctx);
 
                           if (res['success'] == true) {
-                            setState(() {
-                              if (!_categoryOptions.contains(name)) {
-                                _categoryOptions.add(name);
-                              }
-                              _selectedCategory = name;
-                            });
+                            await _loadStoreCategories();
+                            if (res['category'] != null) {
+                              final created = CategoryModel.fromJson(res['category']);
+                              setState(() {
+                                _selectedCategoryId = created.categoryId;
+                                _selectedCategory = created.name;
+                              });
+                            }
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text('Category "$name" created & selected!'),
@@ -501,12 +583,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
   void _applyMockPreset(Map<String, dynamic> data) {
     setState(() {
       _titleController.text = data['title'] ?? '';
-      if (_categoryOptions.isNotEmpty) {
-        final match = _categoryOptions.firstWhere(
-          (c) => c.toLowerCase() == (data['category'] ?? '').toString().toLowerCase(),
-          orElse: () => _categoryOptions.first,
+      if (_storeCategories.isNotEmpty) {
+        final match = _storeCategories.cast<CategoryModel?>().firstWhere(
+          (c) => c?.name.toLowerCase() == (data['category'] ?? '').toString().toLowerCase(),
+          orElse: () => _storeCategories.first,
         );
-        _selectedCategory = match;
+        if (match != null) {
+          _selectedCategory = match.name;
+          _selectedCategoryId = match.categoryId;
+        }
       } else {
         _selectedCategory = data['category'] ?? widget.storeCategory;
       }
@@ -652,6 +737,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       storeId: widget.storeId,
       title: _titleController.text.trim(),
       category: _selectedCategory,
+      categoryId: _selectedCategoryId,
       unit: effectiveUnit,
       price: effectivePrice,
       originalPrice: effectiveOrigPrice,
@@ -1351,13 +1437,18 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   Widget _buildCategoryDropdown() {
+    final selectedCat = _storeCategories.cast<CategoryModel?>().firstWhere(
+      (c) => c?.categoryId == _selectedCategoryId || c?.name.toLowerCase() == _selectedCategory.toLowerCase(),
+      orElse: () => null,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-             CustomText.title(
+            CustomText.title(
               'Product Category / Shelf *',
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -1387,65 +1478,500 @@ class _AddProductScreenState extends State<AddProductScreen> {
           ],
         ),
         SizedBox(height: Responsive.h(6)),
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: Responsive.w(14)),
-          decoration: BoxDecoration(
-            color: Colors.white,
+        if (_isLoadingCategories)
+          Container(
+            height: Responsive.h(52),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(Responsive.w(12)),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+              ),
+            ),
+          )
+        else if (_storeCategories.isEmpty)
+          InkWell(
+            onTap: _showQuickAddCategoryModal,
             borderRadius: BorderRadius.circular(Responsive.w(12)),
-            border: Border.all(color: Colors.grey.shade300, width: 1),
-          ),
-          child: _isLoadingCategories
-              ? SizedBox(
-                  height: Responsive.h(48),
-                  child: const Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: Responsive.w(14), vertical: Responsive.h(14)),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(Responsive.w(12)),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.add_circle_outline_rounded, color: AppColors.primary, size: 20),
+                  SizedBox(width: Responsive.w(10)),
+                  const Expanded(
+                    child: Text(
+                      'No categories created yet. Tap to add your first category.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
                     ),
                   ),
-                )
-              : _categoryOptions.isEmpty
-                  ? InkWell(
-                      onTap: _showQuickAddCategoryModal,
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: Responsive.h(12)),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.add_circle_outline_rounded, color: AppColors.primary, size: 18),
-                            SizedBox(width: Responsive.w(8)),
-                            const Expanded(
-                              child: Text(
-                                'No categories yet. Tap to create one.',
-                                style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500),
+                ],
+              ),
+            ),
+          )
+        else
+          // Interactive Category Picker Tile
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _showCategoryDrillDownPicker,
+              borderRadius: BorderRadius.circular(Responsive.w(12)),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(10)),
+                decoration: BoxDecoration(
+                  color: _selectedCategory.isNotEmpty ? AppColors.primary.withValues(alpha: 0.04) : Colors.white,
+                  borderRadius: BorderRadius.circular(Responsive.w(12)),
+                  border: Border.all(
+                    color: _selectedCategory.isNotEmpty ? AppColors.primary.withValues(alpha: 0.35) : Colors.grey.shade300,
+                    width: 1.2,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: Responsive.w(40),
+                      height: Responsive.w(40),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(Responsive.w(10)),
+                      ),
+                      child: Text(
+                        selectedCat?.icon.isNotEmpty == true ? selectedCat!.icon : '🏷️',
+                        style: TextStyle(fontSize: Responsive.sp(20)),
+                      ),
+                    ),
+                    SizedBox(width: Responsive.w(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CustomText.title(
+                            _selectedCategory.isNotEmpty ? _selectedCategory : 'Select Product Category',
+                            fontSize: 14,
+                            fontWeight: _selectedCategory.isNotEmpty ? FontWeight.bold : FontWeight.w500,
+                            color: _selectedCategory.isNotEmpty ? AppColors.black : Colors.grey.shade600,
+                          ),
+                          if (selectedCat != null) ...[
+                            SizedBox(height: Responsive.h(2)),
+                            Text(
+                              _getCategoryFullPath(selectedCat),
+                              style: TextStyle(
+                                fontSize: Responsive.sp(11.5),
+                                color: Colors.grey.shade600,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: Responsive.w(10), vertical: Responsive.h(5)),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(Responsive.w(8)),
+                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _selectedCategory.isNotEmpty ? Icons.swap_horiz_rounded : Icons.keyboard_arrow_right_rounded,
+                            size: 16,
+                            color: AppColors.primary,
+                          ),
+                          SizedBox(width: Responsive.w(4)),
+                          Text(
+                            _selectedCategory.isNotEmpty ? 'Change' : 'Choose',
+                            style: TextStyle(
+                              fontSize: Responsive.sp(11.5),
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Modern Drill-Down Bottom Sheet Category Picker
+  void _showCategoryDrillDownPicker() {
+    final List<CategoryModel> pickerStack = [];
+    String searchQuery = '';
+    final searchCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setPickerState) {
+          final currentParent = pickerStack.isNotEmpty ? pickerStack.last : null;
+
+          // Compute displayed items for current drill-down level or global search
+          List<CategoryModel> displayedCats;
+          if (searchQuery.isNotEmpty) {
+            final q = searchQuery.toLowerCase();
+            displayedCats = _storeCategories
+                .where((c) => c.name.toLowerCase().contains(q) || c.description.toLowerCase().contains(q))
+                .toList();
+          } else {
+            final parentId = currentParent?.categoryId ?? '';
+            displayedCats = _storeCategories.where((c) => c.parentCategoryId == parentId).toList();
+          }
+
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.72,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              children: [
+                // Modal Handle
+                Padding(
+                  padding: EdgeInsets.only(top: Responsive.h(12)),
+                  child: Container(
+                    width: Responsive.w(44),
+                    height: Responsive.h(4),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+
+                // Top Header Row
+                Padding(
+                  padding: EdgeInsets.fromLTRB(Responsive.w(16), Responsive.h(12), Responsive.w(16), Responsive.h(4)),
+                  child: Row(
+                    children: [
+                      if (pickerStack.isNotEmpty && searchQuery.isEmpty)
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.black),
+                          onPressed: () {
+                            setPickerState(() {
+                              pickerStack.removeLast();
+                            });
+                          },
+                        ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CustomText.title(
+                              searchQuery.isNotEmpty
+                                  ? 'Search Results'
+                                  : (currentParent == null ? 'Select Category' : currentParent.name),
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.black,
+                            ),
+                            Text(
+                              searchQuery.isNotEmpty
+                                  ? '${displayedCats.length} matching categories'
+                                  : (currentParent == null
+                                      ? 'Choose a category to organize this product'
+                                      : 'Select a sub-category under ${currentParent.name}'),
+                              style: TextStyle(fontSize: Responsive.sp(11.5), color: Colors.grey.shade600),
                             ),
                           ],
                         ),
                       ),
-                    )
-                  : DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _categoryOptions.contains(_selectedCategory)
-                            ? _selectedCategory
-                            : (_categoryOptions.isNotEmpty ? _categoryOptions.first : null),
-                        isExpanded: true,
-                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.primary),
-                        items: _categoryOptions.map((cat) {
-                          return DropdownMenuItem<String>(
-                            value: cat,
-                            child: CustomText.body(cat, fontSize: 14, color: AppColors.black),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() => _selectedCategory = val);
-                          }
-                        },
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.close_rounded, color: Colors.grey),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Search Bar
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: Responsive.w(16), vertical: Responsive.h(8)),
+                  child: Container(
+                    height: Responsive.h(42),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(Responsive.w(12)),
+                    ),
+                    padding: EdgeInsets.symmetric(horizontal: Responsive.w(12)),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.search, size: 18, color: Colors.grey),
+                        SizedBox(width: Responsive.w(8)),
+                        Expanded(
+                          child: TextField(
+                            controller: searchCtrl,
+                            onChanged: (val) => setPickerState(() => searchQuery = val.trim()),
+                            decoration: InputDecoration(
+                              hintText: 'Search categories...',
+                              hintStyle: TextStyle(fontSize: Responsive.sp(12.5), color: Colors.grey.shade500),
+                              border: InputBorder.none,
+                              isDense: true,
+                            ),
+                            style: TextStyle(fontSize: Responsive.sp(13)),
+                          ),
+                        ),
+                        if (searchQuery.isNotEmpty)
+                          GestureDetector(
+                            onTap: () {
+                              searchCtrl.clear();
+                              setPickerState(() => searchQuery = '');
+                            },
+                            child: const Icon(Icons.cancel, size: 18, color: Colors.grey),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Breadcrumb trail when navigated deep
+                if (pickerStack.isNotEmpty && searchQuery.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(horizontal: Responsive.w(16), vertical: Responsive.h(6)),
+                    color: Colors.grey.shade50,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () => setPickerState(() => pickerStack.clear()),
+                            child: Text(
+                              'All Categories',
+                              style: TextStyle(
+                                fontSize: Responsive.sp(11.5),
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ),
+                          for (int i = 0; i < pickerStack.length; i++) ...[
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: Responsive.w(4)),
+                              child: Icon(Icons.chevron_right_rounded, size: 14, color: Colors.grey.shade400),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                                setPickerState(() {
+                                  pickerStack.removeRange(i + 1, pickerStack.length);
+                                });
+                              },
+                              child: Text(
+                                pickerStack[i].name,
+                                style: TextStyle(
+                                  fontSize: Responsive.sp(11.5),
+                                  fontWeight: i == pickerStack.length - 1 ? FontWeight.bold : FontWeight.w500,
+                                  color: i == pickerStack.length - 1 ? Colors.black87 : AppColors.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-        ),
-      ],
+                  ),
+
+                // Quick Action: "Use Current Parent as Product Category"
+                if (currentParent != null && searchQuery.isEmpty)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(Responsive.w(16), Responsive.h(6), Responsive.w(16), Responsive.h(4)),
+                    child: InkWell(
+                      onTap: () {
+                        setState(() {
+                          _selectedCategoryId = currentParent.categoryId;
+                          _selectedCategory = currentParent.name;
+                        });
+                        Navigator.pop(ctx);
+                      },
+                      borderRadius: BorderRadius.circular(Responsive.w(10)),
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: Responsive.w(12), vertical: Responsive.h(9)),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0FDF4),
+                          borderRadius: BorderRadius.circular(Responsive.w(10)),
+                          border: Border.all(color: const Color(0xFF86EFAC)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_outline, color: Color(0xFF16A34A), size: 18),
+                            SizedBox(width: Responsive.w(8)),
+                            Expanded(
+                              child: Text(
+                                'Assign directly to "${currentParent.name}"',
+                                style: TextStyle(
+                                  fontSize: Responsive.sp(12.5),
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF15803D),
+                                ),
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward_rounded, size: 16, color: Color(0xFF15803D)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                Divider(height: Responsive.h(10), color: Colors.grey.shade200),
+
+                // List of Categories or Empty State
+                Expanded(
+                  child: displayedCats.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.category_outlined, size: 40, color: Colors.grey.shade400),
+                              SizedBox(height: Responsive.h(8)),
+                              Text(
+                                searchQuery.isNotEmpty ? 'No matching category found' : 'No sub-categories here',
+                                style: TextStyle(fontSize: Responsive.sp(13), color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: EdgeInsets.symmetric(horizontal: Responsive.w(16), vertical: Responsive.h(6)),
+                          itemCount: displayedCats.length,
+                          separatorBuilder: (_, index) => Divider(height: 1, color: Colors.grey.shade100),
+                          itemBuilder: (context, idx) {
+                            final cat = displayedCats[idx];
+                            final hasChildren = cat.subCategoryCount > 0;
+                            final isCurrentSelection = cat.categoryId == _selectedCategoryId;
+
+                            return InkWell(
+                              onTap: () {
+                                if (hasChildren && searchQuery.isEmpty) {
+                                  // Drill down into sub-categories!
+                                  setPickerState(() {
+                                    pickerStack.add(cat);
+                                  });
+                                } else {
+                                  // Leaf category selected!
+                                  setState(() {
+                                    _selectedCategoryId = cat.categoryId;
+                                    _selectedCategory = cat.name;
+                                  });
+                                  Navigator.pop(ctx);
+                                }
+                              },
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: Responsive.h(11)),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: Responsive.w(36),
+                                      height: Responsive.w(36),
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: isCurrentSelection
+                                            ? AppColors.primary.withValues(alpha: 0.12)
+                                            : Colors.grey.shade100,
+                                        borderRadius: BorderRadius.circular(Responsive.w(8)),
+                                      ),
+                                      child: Text(
+                                        cat.icon.isNotEmpty ? cat.icon : '🏷️',
+                                        style: TextStyle(fontSize: Responsive.sp(18)),
+                                      ),
+                                    ),
+                                    SizedBox(width: Responsive.w(12)),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            cat.name,
+                                            style: TextStyle(
+                                              fontSize: Responsive.sp(13.5),
+                                              fontWeight: isCurrentSelection ? FontWeight.bold : FontWeight.w600,
+                                              color: isCurrentSelection ? AppColors.primary : Colors.black87,
+                                            ),
+                                          ),
+                                          if (searchQuery.isNotEmpty)
+                                            Text(
+                                              _getCategoryFullPath(cat),
+                                              style: TextStyle(fontSize: Responsive.sp(11), color: Colors.grey.shade500),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            )
+                                          else if (hasChildren)
+                                            Text(
+                                              '${cat.subCategoryCount} Sub-categories',
+                                              style: TextStyle(fontSize: Responsive.sp(11), color: AppColors.primary),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (hasChildren && searchQuery.isEmpty)
+                                      Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey.shade400)
+                                    else if (isCurrentSelection)
+                                      const Icon(Icons.check_circle_rounded, size: 20, color: AppColors.primary)
+                                    else
+                                      Icon(Icons.radio_button_unchecked_rounded, size: 18, color: Colors.grey.shade300),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+
+                // Bottom Add Category Shortcut
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: Responsive.w(16), vertical: Responsive.h(10)),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Can\'t find what you need?',
+                        style: TextStyle(fontSize: Responsive.sp(12), color: Colors.grey.shade600),
+                      ),
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _showQuickAddCategoryModal();
+                        },
+                        icon: const Icon(Icons.add_rounded, size: 16, color: AppColors.primary),
+                        label: Text(
+                          currentParent == null ? 'Add Category' : 'Add Sub-Category',
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 

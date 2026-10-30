@@ -404,18 +404,20 @@ class _AddComplaintScreenState extends State<AddComplaintScreen> {
               'title': 'Complaint coins',
               'subtitle':
                   'Earned through reporting · ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}',
-              'amount': '+200',
+              'amount': '+200 Coins',
               'isPositive': true,
               'status': 'Credited',
               'date': 'Today',
               'items': [],
               'address': 'Grievance Redressal Reward',
               'listingPrice': '₹0.00',
-              'sellingPrice': '₹200.00',
-              'grandTotal': '₹200.00',
-              'paid': '₹200.00',
+              'sellingPrice': '+200 Coins',
+              'grandTotal': '+200 Coins',
+              'paid': '+200 Coins',
+              'category': 'civic_reward',
+              'paymentMethod': 'Reward Coins',
             };
-            context.read<TransactionBloc>().add(AddCoinsEvent(200));
+            context.read<TransactionBloc>().add(AddCoinsEvent(200, reason: 'Complaint coins'));
             context.read<TransactionBloc>().add(AddTransactionEvent(rewardTx));
 
             ScaffoldMessenger.of(context).showSnackBar(

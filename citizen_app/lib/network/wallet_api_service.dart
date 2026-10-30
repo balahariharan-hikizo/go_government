@@ -210,15 +210,26 @@ class WalletApiService {
           final payMethod = o['paymentMethod']?.toString() ?? 'Cash on Delivery';
           final addr = o['deliveryAddress']?['address']?.toString() ?? '';
           final itemTotal = (o['itemTotal'] as num?)?.toInt() ?? total;
-          final rawItems = (o['items'] as List<dynamic>? ?? []).map<Map<String, dynamic>>((i) => {
-            'id': i['productId']?.toString() ?? '',
-            'productId': i['productId']?.toString() ?? '',
-            'title': i['title']?.toString() ?? 'Product',
-            'price': '₹${(i['price'] as num?)?.toInt() ?? 0}',
-            'qty': (i['quantity'] as num?)?.toInt() ?? 1,
-            'image': i['image']?.toString() ?? '',
-            if (storeId.isNotEmpty) 'storeId': storeId,
-            if (storeName.isNotEmpty) 'storeName': storeName,
+          final rawItems = (o['items'] as List<dynamic>? ?? []).map<Map<String, dynamic>>((i) {
+            final pId = (i['productId'] ?? i['id'] ?? '').toString();
+            final vId = (i['variantId'] ?? '').toString();
+            final price = (i['price'] as num?)?.toDouble() ?? 0.0;
+            final origPrice = (i['originalPrice'] as num?)?.toDouble() ?? price;
+            final qty = (i['quantity'] ?? i['qty'] as num?)?.toInt() ?? 1;
+            return {
+              'id': vId.isNotEmpty ? '$pId:$vId' : pId,
+              'productId': pId,
+              'variantId': vId,
+              'title': i['title']?.toString() ?? 'Product',
+              'price': '₹${price.toInt()}',
+              'originalPrice': origPrice,
+              'qty': qty,
+              'quantity': qty,
+              'unit': i['unit']?.toString() ?? '1 Units',
+              'image': i['image']?.toString() ?? '',
+              if (storeId.isNotEmpty) 'storeId': storeId,
+              if (storeName.isNotEmpty) 'storeName': storeName,
+            };
           }).toList();
 
           String dateFormatted = '';
