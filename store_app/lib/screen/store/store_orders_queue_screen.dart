@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../model/store_model.dart';
+import '../../network/api_client.dart';
 import '../../network/store_order_api_service.dart';
 import '../../services/socket_service.dart';
 import '../../utils/app_colors.dart';
@@ -369,31 +370,41 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
           ),
           SizedBox(height: Responsive.h(12)),
 
-          // Items to Pack Checklist
+          // Commodities List in Order
           Container(
             padding: EdgeInsets.all(Responsive.w(12)),
             decoration: BoxDecoration(
-              color: AppColors.lightGray.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(Responsive.w(10)),
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(Responsive.w(14)),
+              border: Border.all(color: Colors.blueGrey.shade100, width: 1.0),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Header with Item Count & Total
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: CustomText.caption(
-                        'COMMODITIES (${items.length} ITEMS)',
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        const Icon(Icons.inventory_2_outlined, size: 16, color: AppColors.primary),
+                        SizedBox(width: Responsive.w(6)),
+                        Text(
+                          'COMMODITIES (${items.length} ITEMS)',
+                          style: TextStyle(
+                            fontSize: Responsive.sp(11.5),
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blueGrey.shade900,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
                     ),
-                    SizedBox(width: Responsive.w(8)),
                     Flexible(
                       child: Text(
                         'Total: ₹$grandTotal ($paymentMethod)',
                         style: TextStyle(
-                          fontSize: Responsive.sp(11),
+                          fontSize: Responsive.sp(11.5),
                           fontWeight: FontWeight.bold,
                           color: AppColors.black,
                         ),
@@ -404,36 +415,192 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
                     ),
                   ],
                 ),
-                SizedBox(height: Responsive.h(8)),
-                ...items.map((item) {
-                  final qty = item['quantity'] ?? 1;
-                  final title = item['title'] ?? 'Item';
-                  final unit = item['unit'] ?? '';
-                  final price = item['price'] ?? 0;
+                SizedBox(height: Responsive.h(10)),
 
-                  return Padding(
-                    padding: EdgeInsets.symmetric(vertical: Responsive.h(3)),
+                // Items List
+                ...items.map((item) {
+                  final qty = item['quantity'] ?? item['qty'] ?? 1;
+                  final title = item['title']?.toString() ?? 'Item';
+                  final unit = item['unit']?.toString() ?? '';
+                  final price = item['price'] ?? 0;
+                  final productId = item['productId']?.toString() ?? '';
+                  final rawImage = item['image']?.toString() ?? '';
+
+                  final isSubsidized = item['isSubsidized'] == true ||
+                      (item['subsidyLimit'] != null && item['subsidyLimit'].toString().trim().isNotEmpty) ||
+                      title.toLowerCase().contains('govt ration');
+
+                  String? fullImageUrl;
+                  if (rawImage.isNotEmpty) {
+                    fullImageUrl = rawImage.startsWith('http')
+                        ? rawImage
+                        : '${ApiClient.baseUrl.replaceAll('/api', '')}$rawImage';
+                  }
+
+                  return Container(
+                    margin: EdgeInsets.only(bottom: Responsive.h(8)),
+                    padding: EdgeInsets.all(Responsive.w(8)),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(Responsive.w(10)),
+                      border: Border.all(
+                        color: Colors.grey.shade200,
+                        width: 1.0,
+                      ),
+                    ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        // 1. Product Thumbnail Image
                         Container(
-                          padding: EdgeInsets.symmetric(horizontal: Responsive.w(6), vertical: Responsive.h(2)),
+                          width: Responsive.w(44),
+                          height: Responsive.w(44),
                           decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(4),
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(Responsive.w(8)),
+                            border: Border.all(color: Colors.grey.shade300, width: 0.8),
                           ),
-                          child: Text(
-                            '${qty}x',
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 11),
-                          ),
+                          child: fullImageUrl != null && fullImageUrl.isNotEmpty
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(Responsive.w(8)),
+                                  child: Image.network(
+                                    fullImageUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => const Icon(
+                                      Icons.inventory_2_outlined,
+                                      size: 20,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.inventory_2_outlined,
+                                  size: 20,
+                                  color: AppColors.primary,
+                                ),
                         ),
                         SizedBox(width: Responsive.w(10)),
+
+                        // 2. Product Info & Metadata
                         Expanded(
-                          child: Text(
-                            '$title ($unit)',
-                            style: TextStyle(fontSize: Responsive.sp(12.5), fontWeight: FontWeight.w500),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: TextStyle(
+                                  fontSize: Responsive.sp(12.5),
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              SizedBox(height: Responsive.h(3)),
+                              Wrap(
+                                spacing: Responsive.w(5),
+                                runSpacing: Responsive.h(3),
+                                children: [
+                                  if (unit.isNotEmpty)
+                                    Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: Responsive.w(5),
+                                        vertical: Responsive.h(1.5),
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade100,
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: Colors.grey.shade300, width: 0.8),
+                                      ),
+                                      child: Text(
+                                        unit,
+                                        style: TextStyle(
+                                          fontSize: Responsive.sp(10),
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey.shade800,
+                                        ),
+                                      ),
+                                    ),
+                                  if (isSubsidized)
+                                    Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: Responsive.w(5),
+                                        vertical: Responsive.h(1.5),
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFE8F5E9),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: const Color(0xFFA5D6A7), width: 0.8),
+                                      ),
+                                      child: Text(
+                                        'Govt Quota',
+                                        style: TextStyle(
+                                          fontSize: Responsive.sp(9.5),
+                                          fontWeight: FontWeight.bold,
+                                          color: const Color(0xFF2E7D32),
+                                        ),
+                                      ),
+                                    ),
+                                  if (productId.isNotEmpty)
+                                    Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: Responsive.w(5),
+                                        vertical: Responsive.h(1.5),
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: Colors.blueGrey.shade200, width: 0.6),
+                                      ),
+                                      child: Text(
+                                        'ID: $productId',
+                                        style: TextStyle(
+                                          fontSize: Responsive.sp(9.5),
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.blueGrey.shade800,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        Text('₹${price * qty}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        SizedBox(width: Responsive.w(8)),
+
+                        // 3. Quantity Badge & Price
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: Responsive.w(7),
+                                vertical: Responsive.h(2.5),
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                '${qty}x',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primary,
+                                  fontSize: Responsive.sp(11.5),
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: Responsive.h(4)),
+                            Text(
+                              '₹${price * qty}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: Responsive.sp(12),
+                                color: AppColors.black,
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   );

@@ -159,6 +159,69 @@ class AllTransactionsScreen extends StatelessWidget {
 
   Widget _buildTransactionCard(BuildContext context, Map<String, dynamic> tx) {
     final bool isPositive = tx['isPositive'] as bool? ?? false;
+    final String amountStr = tx['amount']?.toString() ?? '₹0';
+    final String paymentMethod = (tx['paymentMethod'] ?? tx['paymentTag'] ?? '').toString().toLowerCase();
+    final String category = tx['category']?.toString().toLowerCase() ?? '';
+    final String status = tx['status']?.toString().toLowerCase() ?? '';
+
+    final bool isRefund = isPositive || category == 'order_refund' || tx['title'].toString().toLowerCase().contains('refund');
+    final bool isCod = paymentMethod.contains('cash') || paymentMethod.contains('cod');
+    final bool isUpi = paymentMethod.contains('upi') || paymentMethod.contains('online') || paymentMethod.contains('bank');
+    final bool isCancelled = status.contains('cancel') || tx['subtitle'].toString().toLowerCase().contains('cancel');
+
+    Color iconBg;
+    Color iconColor;
+    IconData iconData;
+    Color amountColor;
+    String badgeText;
+    Color badgeBg;
+    Color badgeColor;
+
+    if (isRefund) {
+      iconBg = const Color(0xFFE8F5E9);
+      iconColor = const Color(0xFF2E7D32);
+      iconData = Icons.assignment_return_rounded;
+      amountColor = const Color(0xFF2E7D32);
+      badgeText = isUpi ? 'Bank Refund' : 'Wallet Refund';
+      badgeBg = const Color(0xFFE8F5E9);
+      badgeColor = const Color(0xFF2E7D32);
+    } else if (isCod) {
+      if (isCancelled) {
+        iconBg = const Color(0xFFF1F5F9);
+        iconColor = Colors.grey.shade600;
+        iconData = Icons.money_off_rounded;
+        amountColor = Colors.grey.shade600;
+        badgeText = 'COD · Cancelled';
+        badgeBg = const Color(0xFFF1F5F9);
+        badgeColor = Colors.grey.shade700;
+      } else {
+        iconBg = const Color(0xFFFFF8E1);
+        iconColor = const Color(0xFFE65100);
+        iconData = Icons.payments_outlined;
+        amountColor = Colors.blueGrey.shade900;
+        badgeText = 'Cash on Delivery';
+        badgeBg = const Color(0xFFFFF3E0);
+        badgeColor = const Color(0xFFE65100);
+      }
+    } else if (isUpi) {
+      iconBg = const Color(0xFFE3F2FD);
+      iconColor = const Color(0xFF1565C0);
+      iconData = Icons.account_balance_outlined;
+      amountColor = const Color(0xFFFF5252);
+      badgeText = 'Paid via UPI';
+      badgeBg = const Color(0xFFE3F2FD);
+      badgeColor = const Color(0xFF1565C0);
+    } else {
+      // Wallet
+      iconBg = isPositive ? const Color(0xFFE8F5E9) : const Color(0xFFFFF2EC);
+      iconColor = isPositive ? const Color(0xFF4CAF50) : AppColors.primary;
+      iconData = isPositive ? Icons.arrow_downward : Icons.account_balance_wallet_outlined;
+      amountColor = isPositive ? const Color(0xFF4CAF50) : const Color(0xFFFF5252);
+      badgeText = isPositive ? 'Wallet Top-up' : 'Paid from Wallet';
+      badgeBg = isPositive ? const Color(0xFFE8F5E9) : const Color(0xFFFFF2EC);
+      badgeColor = isPositive ? const Color(0xFF2E7D32) : AppColors.primary;
+    }
+
     return GestureDetector(
       onTap: () {
         Navigator.of(context).pushNamed(
@@ -182,17 +245,17 @@ class AllTransactionsScreen extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: Responsive.w(42),
-              height: Responsive.w(42),
+              width: Responsive.w(44),
+              height: Responsive.w(44),
               decoration: BoxDecoration(
-                color: isPositive ? const Color(0xFFE8F5E9) : const Color(0xFFFFF2EC),
+                color: iconBg,
                 borderRadius: BorderRadius.circular(Responsive.w(12)),
               ),
               child: Center(
                 child: Icon(
-                  isPositive ? Icons.arrow_downward : Icons.arrow_upward,
-                  color: isPositive ? const Color(0xFF4CAF50) : AppColors.primary,
-                  size: Responsive.w(20),
+                  iconData,
+                  color: iconColor,
+                  size: Responsive.w(22),
                 ),
               ),
             ),
@@ -207,22 +270,41 @@ class AllTransactionsScreen extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                     maxLines: 1,
                   ),
-                  SizedBox(height: Responsive.h(4)),
+                  SizedBox(height: Responsive.h(3)),
                   CustomText.subtitle(
                     tx['subtitle'],
                     fontSize: 11,
                     color: AppColors.grayFont,
                     maxLines: 1,
                   ),
+                  Container(
+                    margin: EdgeInsets.only(top: Responsive.h(4)),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: Responsive.w(6),
+                      vertical: Responsive.h(2),
+                    ),
+                    decoration: BoxDecoration(
+                      color: badgeBg,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      badgeText,
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.bold,
+                        color: badgeColor,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
             SizedBox(width: Responsive.w(10)),
             CustomText.title(
-              tx['amount'],
+              amountStr,
               fontSize: 15,
               fontWeight: FontWeight.bold,
-              color: isPositive ? const Color(0xFF4CAF50) : const Color(0xFFFF5252),
+              color: amountColor,
             ),
           ],
         ),

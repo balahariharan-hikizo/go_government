@@ -51,7 +51,7 @@ exports.createProduct = async (req, res) => {
     if (!storeId || !targetTitle || price === undefined || !targetImage) {
       return res.status(400).json({
         success: false, error: 'Missing required fields: storeId, title, price, and at least one product photo are mandatory',
-      });
+     R });
     }
 
     const trimmedCatId = (incomingCategoryId || '').trim();
@@ -362,6 +362,16 @@ exports.updateProduct = async (req, res) => {
           image: v.image || '',
         };
       });
+    } else if (updateData.stock !== undefined) {
+      // If stock is adjusted directly (via 1-tap quick adjuster) without sending variants array,
+      // sync the primary variant's stock so variants array stays in 100% sync
+      const existing = await Product.findOne(query).select('hasVariants variants').lean();
+      if (existing && existing.hasVariants && Array.isArray(existing.variants) && existing.variants.length > 0) {
+        updateData['variants.0.stock'] = updateData.stock;
+        if (updateData.isAvailable !== undefined) {
+          updateData['variants.0.isAvailable'] = updateData.isAvailable;
+        }
+      }
     }
 
     // Single Atomic DB Call: updates and returns the updated product

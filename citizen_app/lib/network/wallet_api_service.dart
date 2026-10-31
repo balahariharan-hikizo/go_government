@@ -262,12 +262,54 @@ class WalletApiService {
             'return_rejected': 'Return Declined',
           };
 
+          final isCod = payMethod.toLowerCase().contains('cash') || payMethod.toLowerCase().contains('cod');
+          final isUpi = payMethod.toLowerCase().contains('upi') || payMethod.toLowerCase().contains('online');
+
+          String subtitleText = 'Sent by you · $shortDate';
+          String amountText = '-₹$total';
+          bool isPositiveTx = false;
+          String paymentTag = 'Wallet';
+
+          if (isCod) {
+            paymentTag = 'Cash on Delivery';
+            if (status == 'cancelled') {
+              amountText = '₹0';
+              subtitleText = 'COD · Order Cancelled · $shortDate';
+            } else if (status == 'returned_to_store' || status == 'returned') {
+              amountText = '₹$total';
+              subtitleText = 'COD · Return Processed · $shortDate';
+            } else {
+              amountText = '₹$total';
+              subtitleText = 'Pay on Delivery · $shortDate';
+            }
+          } else if (isUpi) {
+            paymentTag = 'UPI Payment';
+            if (status == 'cancelled') {
+              amountText = '+₹$total';
+              subtitleText = 'UPI Refund Initiated · $shortDate';
+              isPositiveTx = true;
+            } else {
+              amountText = '-₹$total';
+              subtitleText = 'Paid via UPI · $shortDate';
+            }
+          } else {
+            paymentTag = 'Wallet Account';
+            if (status == 'cancelled') {
+              amountText = '+₹$total';
+              subtitleText = 'Refunded to Wallet · $shortDate';
+              isPositiveTx = true;
+            } else {
+              amountText = '-₹$total';
+              subtitleText = 'Paid from Wallet · $shortDate';
+            }
+          }
+
           return {
             'id': orderId,
             'title': storeName,
-            'subtitle': 'Sent by you · $shortDate',
-            'amount': '-₹$total',
-            'isPositive': false,
+            'subtitle': subtitleText,
+            'amount': amountText,
+            'isPositive': isPositiveTx,
             'status': statusMap[status] ?? 'Processing',
             'date': dateFormatted,
             'createdAt': o['createdAt'],
@@ -278,6 +320,7 @@ class WalletApiService {
             'grandTotal': '₹$total',
             'paid': '₹$total',
             'paymentMethod': payMethod,
+            'paymentTag': paymentTag,
             'storeId': storeId,
             'storeName': storeName,
             'storePhone': storePhone,
