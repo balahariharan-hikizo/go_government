@@ -238,12 +238,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setSheetState) => Container(
+        builder: (modalCtx, setSheetState) => Container(
           padding: EdgeInsets.only(
             left: Responsive.w(20),
             right: Responsive.w(20),
             top: Responsive.h(20),
-            bottom: MediaQuery.of(context).viewInsets.bottom + Responsive.h(20),
+            bottom: MediaQuery.of(modalCtx).viewInsets.bottom + Responsive.h(20),
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -337,10 +337,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
                           if (!mounted) return;
                           setSheetState(() => isSaving = false);
-                          Navigator.pop(ctx);
+                          if (ctx.mounted) Navigator.pop(ctx);
 
                           if (res['success'] == true) {
                             await _loadStoreCategories();
+                            if (!mounted) return;
                             if (res['category'] != null) {
                               final created = CategoryModel.fromJson(res['category']);
                               setState(() {
@@ -355,6 +356,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               ),
                             );
                           } else {
+                            if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(res['error'] ?? 'Failed to add category'),

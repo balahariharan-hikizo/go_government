@@ -5,6 +5,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
 import 'bloc/auth/auth_bloc.dart';
+import 'bloc/category/category_bloc.dart';
+import 'bloc/order/order_bloc.dart';
 import 'bloc/product/product_bloc.dart';
 import 'bloc/store/store_bloc.dart';
 import 'constants/route_constants.dart';
@@ -97,6 +99,8 @@ class StoreApp extends StatelessWidget {
         BlocProvider<AuthBloc>(create: (_) => AuthBloc()),
         BlocProvider<StoreBloc>(create: (_) => StoreBloc()),
         BlocProvider<ProductBloc>(create: (_) => ProductBloc()),
+        BlocProvider<CategoryBloc>(create: (_) => CategoryBloc()),
+        BlocProvider<OrderBloc>(create: (_) => OrderBloc()),
       ],
       child: MaterialApp(
         title: 'GoGovernment Store Partner',

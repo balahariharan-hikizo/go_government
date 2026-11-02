@@ -121,9 +121,15 @@ class ProductBloc extends Bloc<ProductEvent, ProductState> {
       if (idx != -1) {
         final current = _currentProducts[idx];
         final newStock = (current.stock + event.delta).clamp(0, 99999);
+        // 1. Optimistic in-memory update for instant 60fps UI response
+        _currentProducts[idx] = current.copyWith(stock: newStock);
+        emit(ProductLoaded(List.from(_currentProducts), hasMore: _hasMore, page: _currentPage, total: _total));
+
+        // 2. Perform API update in background
         final success = await ProductApiService.updateProductStock(event.productId, newStock);
-        if (success) {
-          _currentProducts[idx] = current.copyWith(stock: newStock);
+        if (!success) {
+          // Rollback on failure
+          _currentProducts[idx] = current;
           emit(ProductLoaded(List.from(_currentProducts), hasMore: _hasMore, page: _currentPage, total: _total));
         }
       }

@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../bloc/order/order_bloc.dart';
+import '../../bloc/order/order_event.dart';
+import '../../bloc/order/order_state.dart';
 import '../../model/store_model.dart';
 import '../../network/api_client.dart';
-import '../../network/store_order_api_service.dart';
-import '../../services/socket_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/responsive_helper.dart';
 import '../../widget/common_background.dart';
@@ -26,11 +28,6 @@ class StoreOrdersQueueScreen extends StatefulWidget {
 
 class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  List<Map<String, dynamic>> _orders = [];
-  bool _isLoading = true;
-  StreamSubscription? _newOrderSub;
-  StreamSubscription? _orderUpdateSub;
-  StreamSubscription? _returnReqSub;
 
   @override
   void initState() {
@@ -40,87 +37,34 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
       vsync: this,
       initialIndex: widget.initialTabIndex.clamp(0, 8),
     );
-    _fetchOrders();
-
-    // Subscribe to real-time Socket.io events for this store
-    StoreSocketService().subscribeToStore(widget.store.storeId);
-    _newOrderSub = StoreSocketService().onNewOrder.listen((newOrder) {
-      if (!mounted) return;
-      final orderId = newOrder['orderId']?.toString();
-      setState(() {
-        _orders.removeWhere((o) => o['orderId']?.toString() == orderId);
-        _orders.insert(0, newOrder);
-      });
-      _fetchOrders(showLoading: false);
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('🔔 New Order #$orderId received!'),
-          backgroundColor: AppColors.primary,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    });
-
-    _orderUpdateSub = StoreSocketService().onOrderUpdate.listen((updatedOrder) {
-      if (!mounted) return;
-      final orderId = updatedOrder['orderId']?.toString();
-      setState(() {
-        _orders.removeWhere((o) => o['orderId']?.toString() == orderId);
-        _orders.insert(0, updatedOrder);
-      });
-      _fetchOrders(showLoading: false);
-    });
-
-    _returnReqSub = StoreSocketService().onReturnRequested.listen((returnOrder) {
-      if (!mounted) return;
-      final orderId = returnOrder['orderId']?.toString();
-      setState(() {
-        _orders.removeWhere((o) => o['orderId']?.toString() == orderId);
-        _orders.insert(0, returnOrder);
-      });
-      _fetchOrders(showLoading: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchOrders();
     });
   }
 
   @override
   void dispose() {
-    _newOrderSub?.cancel();
-    _orderUpdateSub?.cancel();
-    _returnReqSub?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
   Future<void> _fetchOrders({bool showLoading = true}) async {
-    if (showLoading) setState(() => _isLoading = true);
-    final list = await StoreOrderApiService.fetchStoreOrders(widget.store.storeId);
-    if (mounted) {
-      setState(() {
-        _orders = list;
-        _isLoading = false;
-      });
-    }
+    context.read<OrderBloc>().add(
+          LoadStoreOrdersEvent(
+            storeId: widget.store.storeId,
+            showLoading: showLoading,
+          ),
+        );
   }
 
-  Future<void> _updateStatus(String orderId, String newStatus, String message) async {
-    final success = await StoreOrderApiService.updateOrderStatus(
-      orderId: orderId,
-      status: newStatus,
-    );
-
-    if (!mounted) return;
-
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: AppColors.success),
-      );
-      _fetchOrders();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to update order status'), backgroundColor: AppColors.error),
-      );
-    }
+  void _updateStatus(String orderId, String newStatus, String message) {
+    context.read<OrderBloc>().add(
+          UpdateOrderStatusEvent(
+            orderId: orderId,
+            newStatus: newStatus,
+            successMessage: message,
+          ),
+        );
   }
 
   Future<void> _callPhone(String phone) async {
@@ -176,77 +120,96 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
   Widget build(BuildContext context) {
     Responsive.init(context);
 
-    final allSorted = _sortOrders(_orders);
-    final placedOrders = _sortOrders(_orders.where((o) => o['status'] == 'placed').toList());
-    final preparingOrders = _sortOrders(_orders.where((o) => o['status'] == 'preparing').toList());
-    final readyOrders = _sortOrders(_orders.where((o) => o['status'] == 'ready_for_pickup').toList());
-    final acceptedOrders = _sortOrders(_orders.where((o) => o['status'] == 'accepted').toList());
-    final dispatchedOrders = _sortOrders(_orders.where((o) => o['status'] == 'out_for_delivery').toList());
-    final completedOrders = _sortOrders(_orders.where((o) => o['status'] == 'delivered').toList());
-    final returnOrders = _sortOrders(_orders.where((o) => [
-      'returning_to_store',
-      'returned_to_store',
-      'return_requested',
-      'returned',
-      'return_rejected',
-    ].contains(o['status'])).toList());
-    final cancelledOrders = _sortOrders(_orders.where((o) => o['status'] == 'cancelled').toList());
+    return BlocConsumer<OrderBloc, OrderState>(
+      listener: (context, state) {
+        if (state is OrderLoaded && state.notificationMessage != null) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.notificationMessage!),
+              backgroundColor: state.isErrorNotification ? AppColors.error : AppColors.primary,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      },
+      builder: (context, state) {
+        final orders = (state is OrderLoaded) ? state.orders : <Map<String, dynamic>>[];
+        final isLoading = state is OrderLoading;
 
-    return Scaffold(
-      backgroundColor: AppColors.screenColor,
-      appBar: AppBar(
-        title: CustomText.title('Order Fulfillment Queue', fontWeight: FontWeight.bold),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
-            onPressed: _fetchOrders,
-            tooltip: 'Refresh Orders',
+        final allSorted = _sortOrders(orders);
+        final placedOrders = _sortOrders(orders.where((o) => o['status'] == 'placed').toList());
+        final preparingOrders = _sortOrders(orders.where((o) => o['status'] == 'preparing').toList());
+        final readyOrders = _sortOrders(orders.where((o) => o['status'] == 'ready_for_pickup').toList());
+        final acceptedOrders = _sortOrders(orders.where((o) => o['status'] == 'accepted').toList());
+        final dispatchedOrders = _sortOrders(orders.where((o) => o['status'] == 'out_for_delivery').toList());
+        final completedOrders = _sortOrders(orders.where((o) => o['status'] == 'delivered').toList());
+        final returnOrders = _sortOrders(orders.where((o) => [
+          'returning_to_store',
+          'returned_to_store',
+          'return_requested',
+          'returned',
+          'return_rejected',
+        ].contains(o['status'])).toList());
+        final cancelledOrders = _sortOrders(orders.where((o) => o['status'] == 'cancelled').toList());
+
+        return Scaffold(
+          backgroundColor: AppColors.screenColor,
+          appBar: AppBar(
+            title: CustomText.title('Order Fulfillment Queue', fontWeight: FontWeight.bold),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.black),
+              onPressed: () => Navigator.pop(context),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
+                onPressed: _fetchOrders,
+                tooltip: 'Refresh Orders',
+              ),
+            ],
+            bottom: TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              labelColor: AppColors.primary,
+              unselectedLabelColor: AppColors.grayFont,
+              indicatorColor: AppColors.primary,
+              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              tabs: [
+                Tab(text: 'All (${orders.length})'),
+                Tab(text: 'New (${placedOrders.length})'),
+                Tab(text: 'Packing (${preparingOrders.length})'),
+                Tab(text: 'Ready (${readyOrders.length})'),
+                Tab(text: 'Rider Coming (${acceptedOrders.length})'),
+                Tab(text: 'Dispatched (${dispatchedOrders.length})'),
+                Tab(text: 'Delivered (${completedOrders.length})'),
+                Tab(text: 'Returns (${returnOrders.length})'),
+                Tab(text: 'Cancelled (${cancelledOrders.length})'),
+              ],
+            ),
           ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.grayFont,
-          indicatorColor: AppColors.primary,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          tabs: [
-            Tab(text: 'All (${_orders.length})'),
-            Tab(text: 'New (${placedOrders.length})'),
-            Tab(text: 'Packing (${preparingOrders.length})'),
-            Tab(text: 'Ready (${readyOrders.length})'),
-            Tab(text: 'Rider Coming (${acceptedOrders.length})'),
-            Tab(text: 'Dispatched (${dispatchedOrders.length})'),
-            Tab(text: 'Delivered (${completedOrders.length})'),
-            Tab(text: 'Returns (${returnOrders.length})'),
-            Tab(text: 'Cancelled (${cancelledOrders.length})'),
-          ],
-        ),
-      ),
-      body: CommonBackground(
-        child: SafeArea(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-              : TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildOrdersList(allSorted),
-                    _buildOrdersList(placedOrders),
-                    _buildOrdersList(preparingOrders),
-                    _buildOrdersList(readyOrders),
-                    _buildOrdersList(acceptedOrders),
-                    _buildOrdersList(dispatchedOrders),
-                    _buildOrdersList(completedOrders),
-                    _buildOrdersList(returnOrders),
-                    _buildOrdersList(cancelledOrders),
-                  ],
-                ),
-        ),
-      ),
+          body: CommonBackground(
+            child: SafeArea(
+              child: isLoading
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildOrdersList(allSorted),
+                        _buildOrdersList(placedOrders),
+                        _buildOrdersList(preparingOrders),
+                        _buildOrdersList(readyOrders),
+                        _buildOrdersList(acceptedOrders),
+                        _buildOrdersList(dispatchedOrders),
+                        _buildOrdersList(completedOrders),
+                        _buildOrdersList(returnOrders),
+                        _buildOrdersList(cancelledOrders),
+                      ],
+                    ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1104,30 +1067,14 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
               backgroundColor: const Color(0xFFE65100),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            onPressed: () async {
+            onPressed: () {
               Navigator.pop(ctx);
-              final res = await StoreOrderApiService.confirmReturn(
-                orderId: orderId,
-                storeId: widget.store.storeId,
-              );
-              if (res['success'] == true) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('✅ Return confirmed! Items restocked & customer refunded.'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
-                _fetchOrders();
-              } else {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(res['message']?.toString() ?? 'Failed to confirm return'),
-                    backgroundColor: AppColors.error,
-                  ),
-                );
-              }
+              context.read<OrderBloc>().add(
+                    ConfirmReturnEvent(
+                      orderId: orderId,
+                      storeId: widget.store.storeId,
+                    ),
+                  );
             },
             child: const Text('Confirm & Restock', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
@@ -1155,31 +1102,15 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
               backgroundColor: AppColors.success,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            onPressed: () async {
+            onPressed: () {
               Navigator.pop(ctx);
-              final res = await StoreOrderApiService.reviewCitizenReturn(
-                orderId: orderId,
-                storeId: widget.store.storeId,
-                action: 'approve',
-              );
-              if (res['success'] == true) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('✅ Return approved! Delivery partner dispatched for customer doorstep pickup.'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
-                _fetchOrders();
-              } else {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(res['message']?.toString() ?? 'Failed to approve return'),
-                    backgroundColor: AppColors.error,
-                  ),
-                );
-              }
+              context.read<OrderBloc>().add(
+                    ReviewCitizenReturnEvent(
+                      orderId: orderId,
+                      storeId: widget.store.storeId,
+                      action: 'approve',
+                    ),
+                  );
             },
             child: const Text('Approve & Dispatch Rider', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
@@ -1221,7 +1152,7 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
               backgroundColor: AppColors.error,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            onPressed: () async {
+            onPressed: () {
               final reason = reasonController.text.trim();
               if (reason.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1230,27 +1161,14 @@ class _StoreOrdersQueueScreenState extends State<StoreOrdersQueueScreen> with Si
                 return;
               }
               Navigator.pop(ctx);
-              final res = await StoreOrderApiService.reviewCitizenReturn(
-                orderId: orderId,
-                storeId: widget.store.storeId,
-                action: 'reject',
-                rejectionReason: reason,
-              );
-              if (res['success'] == true) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Return request declined.'), backgroundColor: AppColors.warning),
-                );
-                _fetchOrders();
-              } else {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(res['message']?.toString() ?? 'Failed to reject return'),
-                    backgroundColor: AppColors.error,
-                  ),
-                );
-              }
+              context.read<OrderBloc>().add(
+                    ReviewCitizenReturnEvent(
+                      orderId: orderId,
+                      storeId: widget.store.storeId,
+                      action: 'reject',
+                      rejectionReason: reason,
+                    ),
+                  );
             },
             child: const Text('Decline Return', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../bloc/category/category_bloc.dart';
+import '../../bloc/category/category_event.dart';
+import '../../bloc/category/category_state.dart';
 import '../../model/category_model.dart';
 import '../../model/product_model.dart';
 import '../../model/store_model.dart';
-import '../../network/category_api_service.dart';
 import '../../network/product_api_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/responsive_helper.dart';
@@ -23,7 +26,6 @@ class ManageCategoriesScreen extends StatefulWidget {
 }
 
 class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
-  bool _isLoading = true;
   List<CategoryModel> _allCategories = [];
   List<ProductModel> _allStoreProducts = [];
   String _searchQuery = '';
@@ -52,23 +54,15 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
   }
 
   Future<void> _loadCategories() async {
-    setState(() => _isLoading = true);
+    context.read<CategoryBloc>().add(LoadStoreCategoriesEvent(widget.store.storeId));
     try {
-      final catsFuture = CategoryApiService.getCategoriesByStore(widget.store.storeId);
-      final prodsFuture = ProductApiService.getProductsByStore(widget.store.storeId);
-      final results = await Future.wait([catsFuture, prodsFuture]);
+      final prods = await ProductApiService.getProductsByStore(widget.store.storeId);
       if (mounted) {
         setState(() {
-          _allCategories = results[0] as List<CategoryModel>;
-          _allStoreProducts = results[1] as List<ProductModel>;
-          _isLoading = false;
+          _allStoreProducts = prods;
         });
       }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
+    } catch (_) {}
   }
 
   // Filter categories displayed in current drill-down level
@@ -473,7 +467,6 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     String selectedIcon = existing?.icon.isNotEmpty == true ? existing!.icon : '🏷️';
     bool isActive = existing?.isActive ?? true;
-    bool isSaving = false;
 
     showModalBottomSheet(
       context: context,
@@ -647,24 +640,21 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
                     width: double.infinity,
                     height: Responsive.h(48),
                     child: ElevatedButton(
-                      onPressed: isSaving
-                          ? null
-                          : () async {
-                              final name = nameCtrl.text.trim();
-                              if (name.isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Please enter category name')),
-                                );
-                                return;
-                              }
+                      onPressed: () async {
+                        final name = nameCtrl.text.trim();
+                        if (name.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Please enter category name')),
+                          );
+                          return;
+                        }
 
-                              final messenger = ScaffoldMessenger.of(context);
-                              final nav = Navigator.of(ctx);
-                              setSheetState(() => isSaving = true);
-                              Map<String, dynamic> res;
+                        final nav = Navigator.of(ctx);
+                        nav.pop();
 
-                              if (existing == null) {
-                                res = await CategoryApiService.createCategory(
+                        if (existing == null) {
+                          context.read<CategoryBloc>().add(
+                                CreateCategoryEvent(
                                   storeId: widget.store.storeId,
                                   name: name,
                                   parentCategoryId: effectiveParent?.categoryId ?? '',
@@ -672,53 +662,29 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
                                   icon: selectedIcon,
                                   displayOrder: _allCategories.length + 1,
                                   isActive: isActive,
-                                );
-                              } else {
-                                res = await CategoryApiService.updateCategory(
-                                  existing.categoryId,
+                                ),
+                              );
+                        } else {
+                          context.read<CategoryBloc>().add(
+                                UpdateCategoryEvent(
+                                  categoryId: existing.categoryId,
                                   name: name,
                                   description: descCtrl.text.trim(),
                                   icon: selectedIcon,
                                   isActive: isActive,
-                                );
-                              }
-
-                              if (!mounted) return;
-                              setSheetState(() => isSaving = false);
-                              nav.pop();
-
-                              if (res['success'] == true) {
-                                messenger.showSnackBar(
-                                  SnackBar(
-                                    content: Text(res['message'] ?? 'Category saved successfully!'),
-                                    backgroundColor: Colors.green.shade700,
-                                  ),
-                                );
-                                _loadCategories();
-                              } else {
-                                messenger.showSnackBar(
-                                  SnackBar(
-                                    content: Text(res['error'] ?? 'Operation failed'),
-                                    backgroundColor: Colors.red.shade700,
-                                  ),
-                                );
-                              }
-                            },
+                                ),
+                              );
+                        }
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         elevation: 0,
                       ),
-                      child: isSaving
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                            )
-                          : Text(
-                              existing == null ? 'Create Category' : 'Save Changes',
-                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
-                            ),
+                      child: Text(
+                        existing == null ? 'Create Category' : 'Save Changes',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
                     ),
                   ),
                 ],
@@ -730,50 +696,25 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
     );
   }
 
-  Future<void> _toggleCategoryStatus(CategoryModel cat, bool newStatus) async {
-    final oldStatus = cat.isActive;
-    setState(() {
-      final idx = _allCategories.indexWhere((c) => c.categoryId == cat.categoryId);
-      if (idx != -1) {
-        _allCategories[idx] = cat.copyWith(isActive: newStatus);
-      }
-    });
-
-    final res = await CategoryApiService.updateCategory(
-      cat.categoryId,
-      isActive: newStatus,
+  void _toggleCategoryStatus(CategoryModel cat, bool newStatus) {
+    context.read<CategoryBloc>().add(
+          ToggleCategoryActiveEvent(
+            categoryId: cat.categoryId,
+            isActive: newStatus,
+          ),
+        );
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          newStatus
+              ? "'${cat.name}' is now ACTIVE and visible in store"
+              : "'${cat.name}' is now INACTIVE and hidden from citizens",
+        ),
+        duration: const Duration(seconds: 2),
+        backgroundColor: newStatus ? Colors.green.shade700 : Colors.grey.shade800,
+      ),
     );
-
-    if (res['success'] == true) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              newStatus
-                  ? "'${cat.name}' is now ACTIVE and visible in store"
-                  : "'${cat.name}' is now INACTIVE and hidden from citizens",
-            ),
-            duration: const Duration(seconds: 2),
-            backgroundColor: newStatus ? Colors.green.shade700 : Colors.grey.shade800,
-          ),
-        );
-      }
-    } else {
-      if (mounted) {
-        setState(() {
-          final idx = _allCategories.indexWhere((c) => c.categoryId == cat.categoryId);
-          if (idx != -1) {
-            _allCategories[idx] = cat.copyWith(isActive: oldStatus);
-          }
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(res['error'] ?? 'Failed to update category status'),
-            backgroundColor: Colors.red.shade700,
-          ),
-        );
-      }
-    }
   }
 
   void _confirmDeleteCategory(CategoryModel cat) {
@@ -816,27 +757,9 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
             child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            onPressed: () async {
+            onPressed: () {
               Navigator.pop(ctx);
-              final res = await CategoryApiService.deleteCategory(cat.categoryId);
-              if (mounted) {
-                if (res['success'] == true) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(res['message'] ?? 'Category deleted'),
-                      backgroundColor: Colors.green.shade700,
-                    ),
-                  );
-                  _loadCategories();
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(res['error'] ?? 'Failed to delete category'),
-                      backgroundColor: Colors.red.shade700,
-                    ),
-                  );
-                }
-              }
+              context.read<CategoryBloc>().add(DeleteCategoryEvent(cat.categoryId));
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -903,9 +826,38 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
-          body: _isLoading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-              : Column(
+          body: BlocConsumer<CategoryBloc, CategoryState>(
+            listener: (context, state) {
+              if (state is CategoryOperationSuccess) {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: Colors.green.shade700,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              } else if (state is CategoryError) {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: Colors.red.shade700,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            builder: (context, state) {
+              if (state is CategoryLoading && _allCategories.isEmpty) {
+                return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+              }
+
+              if (state is CategoryLoaded) {
+                _allCategories = state.categories;
+              }
+
+              return Column(
                   children: [
                     // Breadcrumb navigation bar if navigated into sub-categories
                     if (_navigationStack.isNotEmpty)
@@ -1143,7 +1095,9 @@ class _ManageCategoriesScreenState extends State<ManageCategoriesScreen> {
                         : _buildMainContent(filtered),
                   ),
                 ],
-              ),
+              );
+            },
+          ),
         ),
       ),
     );
