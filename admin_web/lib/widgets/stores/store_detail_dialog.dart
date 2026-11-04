@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/admin_api_service.dart';
+import '../../services/admin_api_service.dart';
 
 class StoreDetailDialog extends StatefulWidget {
   final Map<String, dynamic> store;

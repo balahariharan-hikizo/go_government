@@ -360,7 +360,7 @@ exports.updateStatus = async (req, res) => {
       now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
     const adminComment = {
-      userName: updatedBy || 'Municipal Administration',
+      userName: req.admin ? `${req.admin.name} (${req.admin.adminId})` : (updatedBy || 'Municipal Administration'),
       comment: adminNotes
         ? `Status updated to '${normalizedStatus}': ${adminNotes}`
         : `Official complaint status updated to '${normalizedStatus}'`,

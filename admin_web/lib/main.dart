@@ -1,10 +1,22 @@
 import 'package:flutter/material.dart';
 import 'services/admin_api_service.dart';
 import 'screens/admin_dashboard_screen.dart';
+import 'screens/admin_login_screen.dart';
+
+final GlobalKey<NavigatorState> adminNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  AdminApiService.init();
+  await AdminApiService.init();
+
+  // Setup global auto-logout listener on session expiry
+  AdminApiService.onUnauthorized = () {
+    adminNavigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AdminLoginScreen()),
+      (route) => false,
+    );
+  };
+
   runApp(const AdminWebApp());
 }
 
@@ -14,6 +26,7 @@ class AdminWebApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: adminNavigatorKey,
       title: 'GoGovernment Municipal Admin Portal',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -25,7 +38,9 @@ class AdminWebApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFFF1F5F9),
         fontFamily: 'Roboto',
       ),
-      home: const AdminDashboardScreen(),
+      home: AdminApiService.isLoggedIn
+          ? const AdminDashboardScreen()
+          : const AdminLoginScreen(),
     );
   }
 }

@@ -1,16 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../services/admin_api_service.dart';
-import '../utils/responsive.dart';
+import '../../services/admin_api_service.dart';
+import '../../utils/responsive.dart';
 
-class LiveMonitoringView extends StatefulWidget {
-  const LiveMonitoringView({super.key});
+class DispatchTabView extends StatefulWidget {
+  const DispatchTabView({super.key});
 
   @override
-  State<LiveMonitoringView> createState() => _LiveMonitoringViewState();
+  State<DispatchTabView> createState() => _DispatchTabViewState();
 }
 
-class _LiveMonitoringViewState extends State<LiveMonitoringView> {
+class _DispatchTabViewState extends State<DispatchTabView> {
   bool _isLoading = true;
   Timer? _refreshTimer;
   List<Map<String, dynamic>> _riders = [];

@@ -33,6 +33,8 @@ const orderRoutes = require('./routes/orderRoutes');
 const walletRoutes = require('./routes/walletRoutes');
 const riderRoutes = require('./routes/riderRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const adminAuthRoutes = require('./routes/adminAuthRoutes');
+const { seedMasterAdmin } = require('./utils/adminSeed');
 const { initSockets, riderRegistry, dispatchTimers } = require('./sockets/socketHandler');
 
 const app = express();
@@ -60,6 +62,9 @@ app.use(morgan('dev'));
 
 // Serve uploaded photos statically so Flutter can display them
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Admin Authentication & Management APIs (Must precede static web routing)
+app.use('/admin/auth', adminAuthRoutes);
 
 // Serve Production Admin Web Portal directly from backend
 const adminWebPath = path.join(__dirname, '../admin_web/build/web');
@@ -141,8 +146,9 @@ const os = require('os');
 
 mongoose
   .connect(MONGO_URI)
-  .then(() => {
+  .then(async () => {
     console.log(' MongoDB Atlas Connected Successfully!');
+    await seedMasterAdmin();
 
     server.listen(PORT, '0.0.0.0', () => {
       console.log(` Server is running!`);

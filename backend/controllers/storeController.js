@@ -406,7 +406,7 @@ exports.reviewStore = async (req, res) => {
       status,
       rejectionReason: status === 'rejected' ? rejectionReason : '',
       verifiedAt: status === 'approved' ? new Date() : null,
-      verifiedBy: verifiedBy || 'Municipal Authority',
+      verifiedBy: req.admin ? `${req.admin.name} (${req.admin.adminId})` : (verifiedBy || 'Municipal Authority'),
     };
 
     const updatedStore = await Store.findOneAndUpdate(
