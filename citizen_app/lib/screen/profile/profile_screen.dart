@@ -315,105 +315,105 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showDeleteDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          backgroundColor: AppColors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Responsive.w(28)),
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(Responsive.w(24)),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CustomText.header(
-                  'Are you sure you want to delete your account?',
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  textAlign: TextAlign.center,
-                  height: 1.4,
-                ),
-                SizedBox(height: Responsive.h(24)),
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          height: Responsive.h(44),
-                          decoration: BoxDecoration(
-                            color: AppColors.white,
-                            borderRadius: BorderRadius.circular(Responsive.w(22)),
-                            border: Border.all(
-                              color: AppColors.grayFont.withValues(alpha: 0.5),
-                              width: Responsive.w(1.2),
-                            ),
-                          ),
-                          child: Center(
-                            child: CustomText.title(
-                              'Cancel',
-                              color: AppColors.grayFont,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: Responsive.w(12)),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          context.read<AuthBloc>().add(LogoutEvent());
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('Account deleted successfully!'),
-                              backgroundColor: AppColors.error,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(Responsive.w(12)),
-                              ),
-                            ),
-                          );
-                          Navigator.of(context).pushNamedAndRemoveUntil(
-                            RouteConstants.login,
-                            (route) => false,
-                          );
-                        },
-                        child: Container(
-                          height: Responsive.h(44),
-                          decoration: BoxDecoration(
-                            color: AppColors.white,
-                            borderRadius: BorderRadius.circular(Responsive.w(22)),
-                            border: Border.all(
-                              color: AppColors.error,
-                              width: Responsive.w(1.2),
-                            ),
-                          ),
-                          child: Center(
-                            child: CustomText.title(
-                              'Delete Account',
-                              color: AppColors.error,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+  // void _showDeleteDialog(BuildContext context) {
+  //   showDialog(
+  //     context: context,
+  //     builder: (context) {
+  //       return Dialog(
+  //         backgroundColor: AppColors.white,
+  //         shape: RoundedRectangleBorder(
+  //           borderRadius: BorderRadius.circular(Responsive.w(28)),
+  //         ),
+  //         child: Padding(
+  //           padding: EdgeInsets.all(Responsive.w(24)),
+  //           child: Column(
+  //             mainAxisSize: MainAxisSize.min,
+  //             children: [
+  //               CustomText.header(
+  //                 'Are you sure you want to delete your account?',
+  //                 fontSize: 15,
+  //                 fontWeight: FontWeight.bold,
+  //                 textAlign: TextAlign.center,
+  //                 height: 1.4,
+  //               ),
+  //               SizedBox(height: Responsive.h(24)),
+  //               Row(
+  //                 children: [
+  //                   Expanded(
+  //                     child: GestureDetector(
+  //                       onTap: () => Navigator.pop(context),
+  //                       child: Container(
+  //                         height: Responsive.h(44),
+  //                         decoration: BoxDecoration(
+  //                           color: AppColors.white,
+  //                           borderRadius: BorderRadius.circular(Responsive.w(22)),
+  //                           border: Border.all(
+  //                             color: AppColors.grayFont.withValues(alpha: 0.5),
+  //                             width: Responsive.w(1.2),
+  //                           ),
+  //                         ),
+  //                         child: Center(
+  //                           child: CustomText.title(
+  //                             'Cancel',
+  //                             color: AppColors.grayFont,
+  //                             fontSize: 14,
+  //                             fontWeight: FontWeight.bold,
+  //                           ),
+  //                         ),
+  //                       ),
+  //                     ),
+  //                   ),
+  //                   SizedBox(width: Responsive.w(12)),
+  //                   Expanded(
+  //                     child: GestureDetector(
+  //                       onTap: () {
+  //                         context.read<AuthBloc>().add(LogoutEvent());
+  //                         Navigator.pop(context);
+  //                         ScaffoldMessenger.of(context).showSnackBar(
+  //                           SnackBar(
+  //                             content: const Text('Account deleted successfully!'),
+  //                             backgroundColor: AppColors.error,
+  //                             behavior: SnackBarBehavior.floating,
+  //                             shape: RoundedRectangleBorder(
+  //                               borderRadius: BorderRadius.circular(Responsive.w(12)),
+  //                             ),
+  //                           ),
+  //                         );
+  //                         Navigator.of(context).pushNamedAndRemoveUntil(
+  //                           RouteConstants.login,
+  //                           (route) => false,
+  //                         );
+  //                       },
+  //                       child: Container(
+  //                         height: Responsive.h(44),
+  //                         decoration: BoxDecoration(
+  //                           color: AppColors.white,
+  //                           borderRadius: BorderRadius.circular(Responsive.w(22)),
+  //                           border: Border.all(
+  //                             color: AppColors.error,
+  //                             width: Responsive.w(1.2),
+  //                           ),
+  //                         ),
+  //                         child: Center(
+  //                           child: CustomText.title(
+  //                             'Delete Account',
+  //                             color: AppColors.error,
+  //                             fontSize: 14,
+  //                             fontWeight: FontWeight.bold,
+  //                           ),
+  //                         ),
+  //                       ),
+  //                     ),
+  //                   ),
+  //                 ],
+  //               ),
+  //             ],
+  //           ),
+  //         ),
+  //       );
+  //     },
+  //   );
+  // }
 
   @override
   Widget build(BuildContext context) {
