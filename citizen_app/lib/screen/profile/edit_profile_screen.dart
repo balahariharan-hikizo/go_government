@@ -10,7 +10,7 @@ import '../../widget/custom_text.dart';
 import '../../bloc/profile/profile_bloc.dart';
 import '../../bloc/profile/profile_event.dart';
 import '../../hive/hive_service.dart';
-import '../../service/firebase_service.dart';
+import '../../services/firebase_service.dart';
 import '../../constants/route_constants.dart';
 import '../../network/api_client.dart';
 import '../../bloc/transaction/transaction_bloc.dart';

@@ -37,6 +37,19 @@ class RiderAuthBloc extends Bloc<RiderAuthEvent, RiderAuthState> {
           vehicleType: HiveService.vehicleType,
           vehicleNumber: HiveService.vehicleNumber,
         ));
+
+        // Sync FCM token to backend on session resume
+        try {
+          FirebaseMessaging.instance.getToken().then((token) {
+            if (token != null && token.isNotEmpty) {
+              RiderApiService.updateFcmToken(
+                userId: HiveService.userId,
+                phone: HiveService.userPhone,
+                fcmToken: token,
+              );
+            }
+          });
+        } catch (_) {}
       } else {
         emit(RiderAuthInitial());
       }
@@ -90,6 +103,18 @@ class RiderAuthBloc extends Bloc<RiderAuthEvent, RiderAuthState> {
           await HiveService.setVehicleType(vType);
           await HiveService.setVehicleNumber(vNum);
           await HiveService.setLoggedIn(true);
+
+          // Sync FCM token immediately on successful login
+          try {
+            final token = await FirebaseMessaging.instance.getToken();
+            if (token != null && token.isNotEmpty) {
+              await RiderApiService.updateFcmToken(
+                userId: userId,
+                phone: event.phone,
+                fcmToken: token,
+              );
+            }
+          } catch (_) {}
 
           DeliveryBloc.instance.add(LoadDeliveriesEvent());
 

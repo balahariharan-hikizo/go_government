@@ -26,6 +26,19 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           userId: HiveService.userId,
           phone: HiveService.userPhone,
         ));
+
+        // Ensure active FCM token is synced to backend on session resume
+        try {
+          FirebaseMessaging.instance.getToken().then((token) {
+            if (token != null && token.isNotEmpty) {
+              AuthApiService.updateFcmToken(
+                storeId: HiveService.storeId.isNotEmpty ? HiveService.storeId : HiveService.userId,
+                phone: HiveService.userPhone,
+                fcmToken: token,
+              );
+            }
+          });
+        } catch (_) {}
       } else {
         emit(AuthInitial());
       }
@@ -68,6 +81,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
         if (res['user'] != null && res['user']['userName'] != null) {
           await HiveService.setUserName(res['user']['userName'].toString());
+        }
+
+        // Sync FCM token immediately so pending/rejected/approved stores receive verification alerts
+        try {
+          final token = await FirebaseMessaging.instance.getToken();
+          if (token != null && token.isNotEmpty) {
+            await AuthApiService.updateFcmToken(
+              storeId: (res['storeId'] != null && res['storeId'].toString().isNotEmpty) ? res['storeId'].toString() : userId,
+              phone: event.phone,
+              fcmToken: token,
+            );
+          }
+        } catch (e) {
+          debugPrint('⚠️ [AuthBloc] Error updating FCM token after OTP: $e');
         }
 
         emit(AuthSuccessState(

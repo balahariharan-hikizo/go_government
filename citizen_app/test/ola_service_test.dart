@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:go_government/config/ola_config.dart';
 import 'package:go_government/network/ola_maps_service.dart';
-import 'package:go_government/service/location_service.dart';
+import 'package:go_government/services/location_service.dart';
 
 void main() {
   group('OlaConfig Tests', () {

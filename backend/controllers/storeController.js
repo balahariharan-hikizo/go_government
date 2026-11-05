@@ -1,6 +1,7 @@
 const Store = require('../models/Store');
 const { getNextSequence } = require('../utils/sequenceGenerator');
 const { sanitizePhone, generateOtp } = require('../utils/commonHelper');
+const fcmService = require('../services/fcmService');
 
 // In-memory cache for new store merchant registration OTPs: phone -> { otp, otpExpires }
 const pendingRegistrationOtps = new Map();
@@ -422,6 +423,48 @@ exports.reviewStore = async (req, res) => {
     console.log(
       `🏛️ [Admin Action] Store ${updatedStore.name} (${storeId}) status updated to: ${status.toUpperCase()}`
     );
+
+    // 1. Send Instant FCM Push Notification to Store Merchant
+    let targetFcmToken = updatedStore.fcmToken;
+    if (!targetFcmToken && updatedStore.phone) {
+      try {
+        const cleanPhone = updatedStore.phone.toString().trim().replace(/[^0-9]/g, '').slice(-10);
+        const ownerUser = await User.findOne({ phone: cleanPhone }).select('fcmToken');
+        if (ownerUser && ownerUser.fcmToken) {
+          targetFcmToken = ownerUser.fcmToken;
+          await Store.updateOne({ _id: updatedStore._id }, { $set: { fcmToken: targetFcmToken } });
+          console.log(`📱 [Store FCM] Recovered fcmToken from User account for store ${storeId}`);
+        }
+      } catch (err) {
+        console.warn('⚠️ [Store FCM] Error checking user fcmToken fallback:', err.message);
+      }
+    }
+
+    if (targetFcmToken) {
+      console.log(`📱 [Store FCM] Sending status update push to store ${storeId} (Status: ${status})`);
+      fcmService
+        .sendToStoreVerificationStatus(targetFcmToken, {
+          storeName: updatedStore.name,
+          status: updatedStore.status,
+          rejectionReason: updatedStore.rejectionReason,
+          storeId: updatedStore.storeId,
+        })
+        .catch((err) => console.warn(`⚠️ [Store FCM] Failed to send push: ${err.message}`));
+    } else {
+      console.warn(`⚠️ [Store FCM] Store ${storeId} (Phone: ${updatedStore.phone}) has no fcmToken registered in DB! Push skipped.`);
+    }
+
+    // 2. Emit Real-time Socket.io event to live Store App
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`store:${storeId}`).emit('store:status_updated', {
+        storeId,
+        status: updatedStore.status,
+        rejectionReason: updatedStore.rejectionReason,
+        verifiedAt: updatedStore.verifiedAt,
+      });
+      console.log(`📡 [Socket.io] Emitted store:status_updated to store:${storeId}`);
+    }
 
     res.status(200).json({
       success: true,

@@ -1,6 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:latlong2/latlong.dart';
-import '../../service/location_service.dart';
+import '../../services/location_service.dart';
 import '../../network/ola_maps_service.dart';
 import 'direction_event.dart';
 import 'direction_state.dart';

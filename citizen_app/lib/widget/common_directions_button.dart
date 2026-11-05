@@ -4,7 +4,7 @@ import '../utils/app_colors.dart';
 import '../utils/responsive_helper.dart';
 import '../widget/custom_text.dart';
 import '../constants/route_constants.dart';
-import '../service/location_service.dart';
+import '../services/location_service.dart';
 
 enum DirectionsButtonStyle { circle, wide, card }
 

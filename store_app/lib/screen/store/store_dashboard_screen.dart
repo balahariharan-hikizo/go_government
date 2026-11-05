@@ -47,9 +47,8 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
   void initState() {
     super.initState();
     _store = widget.store;
-    if (_store.storeId.isEmpty || _store.name.isEmpty) {
-      context.read<StoreBloc>().add(FetchMyStoreEvent(_store.storeId));
-    }
+    // Always fetch live store details (including latest online status) from DB
+    context.read<StoreBloc>().add(FetchMyStoreEvent(_store.storeId.isNotEmpty ? _store.storeId : _store.phone));
     context.read<ProductBloc>().add(LoadStoreProductsEvent(_store.storeId));
     _fetchFinancialMetrics();
     _initFCM();

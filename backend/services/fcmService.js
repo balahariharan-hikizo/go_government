@@ -239,7 +239,59 @@ async function sendChatMessageAlert(fcmToken, { title, body, orderId, senderRole
     },
   });
 }
-  
+
+/**
+ * Send notification to Store Owner when Municipal Admin approves or rejects the store.
+ */
+async function sendToStoreVerificationStatus(fcmToken, { storeName, status, rejectionReason, storeId }) {
+  const isApproved = status === 'approved';
+  const title = isApproved
+    ? '🎉 Store Application Approved!'
+    : '⚠️ Store Application Returned';
+  const body = isApproved
+    ? `Congratulations! ${storeName || 'Your store'} has been verified by Municipal Administration. You are now live!`
+    : `Your store application needs attention: ${rejectionReason || 'Please review and update required documents.'}`;
+
+  return sendToToken(fcmToken, {
+    title,
+    body,
+    channelId: 'store_order_alerts',
+    sound: 'default',
+    priority: 'high',
+    data: {
+      type: 'store_verification',
+      status: status || '',
+      storeId: storeId || '',
+      rejectionReason: rejectionReason || '',
+      click_action: 'FLUTTER_NOTIFICATION_CLICK',
+    },
+  });
+}
+
+/**
+ * Send notification to Citizen when their complaint status is updated by an Officer.
+ */
+async function sendToCitizenComplaintStatus(fcmToken, { complaintId, status, officerName, adminNotes }) {
+  const title = `🏛️ Grievance ${status} (${complaintId})`;
+  const body = adminNotes
+    ? `Update: ${adminNotes}`
+    : `Your complaint status has been updated to "${status}" by ${officerName || 'Municipal Administration'}.`;
+
+  return sendToToken(fcmToken, {
+    title,
+    body,
+    channelId: 'citizen_complaint_updates',
+    sound: 'default',
+    priority: 'high',
+    data: {
+      type: 'complaint_status_update',
+      complaintId: complaintId || '',
+      status: status || '',
+      click_action: 'FLUTTER_NOTIFICATION_CLICK',
+    },
+  });
+}
+
 module.exports = {
   isReady: () => fcmMessaging !== null,
   sendToToken,
@@ -249,4 +301,6 @@ module.exports = {
   sendToStoreOrderStatus,
   sendToCitizenOrderStatus,
   sendChatMessageAlert,
+  sendToStoreVerificationStatus,
+  sendToCitizenComplaintStatus,
 };

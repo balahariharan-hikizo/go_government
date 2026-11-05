@@ -8,7 +8,7 @@ import '../../utils/app_colors.dart';
 import '../../utils/responsive_helper.dart';
 import '../../widget/common_background.dart';
 import '../../widget/custom_text.dart';
-import '../../service/location_service.dart';
+import '../../services/location_service.dart';
 import '../../network/ola_maps_service.dart';
 import '../../hive/hive_service.dart';
 

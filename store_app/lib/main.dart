@@ -61,6 +61,29 @@ void main() async {
   try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+    // Enable foreground notification heads-up display
+    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    // Global foreground notification listener for store verification alerts
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      debugPrint('📩 [FCM Foreground Store Main]: ${message.data}');
+      final type = message.data['type']?.toString();
+      final title = message.notification?.title ?? message.data['title']?.toString() ?? 'Store Notification';
+      final body = message.notification?.body ?? message.data['body']?.toString() ?? '';
+
+      if (type == 'store_verification') {
+        NotificationService.showVerificationNotification(
+          title: title,
+          body: body,
+        );
+      }
+    });
+
     debugPrint('🔥 [Store App] Firebase initialized successfully');
   } catch (e) {
     debugPrint('❌ [Store App] Firebase init error: $e');

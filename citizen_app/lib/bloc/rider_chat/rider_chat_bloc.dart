@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../network/order_api_service.dart';
-import '../../service/socket_service.dart';
+import '../../services/socket_service.dart';
 import 'rider_chat_event.dart';
 import 'rider_chat_state.dart';
 

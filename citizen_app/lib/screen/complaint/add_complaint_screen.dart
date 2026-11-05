@@ -9,7 +9,7 @@ import '../../utils/responsive_helper.dart';
 import '../../widget/common_background.dart';
 import '../../widget/custom_text.dart';
 import '../../widget/common_map.dart';
-import '../../service/location_service.dart';
+import '../../services/location_service.dart';
 import '../../constants/route_constants.dart';
 import '../../bloc/complaint/complaint_bloc.dart';
 import '../../bloc/complaint/complaint_event.dart';

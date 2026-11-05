@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../hive/hive_service.dart';
-import '../service/socket_service.dart';
+import '../services/socket_service.dart';
 import 'api_client.dart';
 
 class ComplaintApiService {

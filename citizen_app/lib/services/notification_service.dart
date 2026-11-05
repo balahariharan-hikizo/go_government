@@ -36,13 +36,43 @@ class NotificationService {
         },
       );
 
-      // Request notification permission for Android 13+ (API level 33+)
+      // Request notification permission and register channels for Android 13+
       final androidPlugin = _notificationsPlugin
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       if (androidPlugin != null) {
         try {
           await androidPlugin.requestNotificationsPermission();
+
+          // 1. Order updates channel
+          const AndroidNotificationChannel orderChannel = AndroidNotificationChannel(
+            'citizen_order_updates',
+            'Order Status Updates',
+            description: 'Notifications for your delivery order updates',
+            importance: Importance.max,
+            playSound: true,
+          );
+          await androidPlugin.createNotificationChannel(orderChannel);
+
+          // 2. Complaint updates channel
+          const AndroidNotificationChannel complaintChannel = AndroidNotificationChannel(
+            'citizen_complaint_updates',
+            'Grievance & Complaint Updates',
+            description: 'Real-time updates on municipal grievances and civic complaints',
+            importance: Importance.max,
+            playSound: true,
+          );
+          await androidPlugin.createNotificationChannel(complaintChannel);
+
+          // 3. OTP channel
+          const AndroidNotificationChannel otpChannel = AndroidNotificationChannel(
+            'otp_channel',
+            'OTP Notifications',
+            description: 'Notifications for receiving OTP test codes',
+            importance: Importance.max,
+            playSound: true,
+          );
+          await androidPlugin.createNotificationChannel(otpChannel);
         } catch (e) {
           debugPrint('[NotificationService] Skipping runtime permission dialog in background isolate: $e');
         }
@@ -148,6 +178,54 @@ class NotificationService {
       );
     } catch (e) {
       debugPrint('[NotificationService] Error showing order status: $e');
+    }
+  }
+
+  /// Show complaint status notification
+  static Future<void> showComplaintStatusNotification({
+    required String title,
+    required String body,
+    String? complaintId,
+  }) async {
+    try {
+      if (!_isInitialized) {
+        await initialize();
+      }
+
+      const AndroidNotificationDetails androidDetails =
+          AndroidNotificationDetails(
+        'citizen_complaint_updates',
+        'Grievance & Complaint Updates',
+        channelDescription: 'Real-time updates on municipal grievances and civic complaints',
+        importance: Importance.max,
+        priority: Priority.max,
+        showWhen: true,
+        enableVibration: true,
+        playSound: true,
+      );
+
+      const NotificationDetails notificationDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      );
+
+      final int id = (complaintId != null && complaintId.isNotEmpty)
+          ? complaintId.hashCode.abs() % 100000
+          : DateTime.now().millisecondsSinceEpoch.remainder(100000);
+
+      await _notificationsPlugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: notificationDetails,
+        payload: complaintId,
+      );
+    } catch (e) {
+      debugPrint('[NotificationService] Error showing complaint status: $e');
     }
   }
 }

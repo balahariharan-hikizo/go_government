@@ -6,7 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import '../hive/hive_service.dart';
 import '../network/auth_api_service.dart';
-import '../services/notification_service.dart';
+import 'notification_service.dart';
 
 class FirebaseService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -166,13 +166,24 @@ class FirebaseService {
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         debugPrint('📩 [FCM Foreground Citizen]: ${message.data}');
-        final title = message.notification?.title ?? '📦 Order Update';
-        final body = message.notification?.body ?? 'Your order status has been updated.';
-        NotificationService.showOrderStatusNotification(
-          title: title,
-          body: body,
-          orderId: message.data['orderId']?.toString(),
-        );
+        final type = message.data['type']?.toString();
+        if (type == 'complaint_status_update') {
+          final title = message.notification?.title ?? '🏛️ Grievance Update';
+          final body = message.notification?.body ?? 'Your complaint status has been updated.';
+          NotificationService.showComplaintStatusNotification(
+            title: title,
+            body: body,
+            complaintId: message.data['complaintId']?.toString(),
+          );
+        } else {
+          final title = message.notification?.title ?? '📦 Order Update';
+          final body = message.notification?.body ?? 'Your order status has been updated.';
+          NotificationService.showOrderStatusNotification(
+            title: title,
+            body: body,
+            orderId: message.data['orderId']?.toString(),
+          );
+        }
       });
     } catch (e) {
       debugPrint('❌ [FCM Citizen] Init error: $e');

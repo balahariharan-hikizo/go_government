@@ -186,4 +186,48 @@ class NotificationService {
       debugPrint('[NotificationService] Error showing order notification: $e');
     }
   }
+
+  /// Show store verification status (Approve / Reject) notification with sound
+  static Future<void> showVerificationNotification({
+    required String title,
+    required String body,
+  }) async {
+    try {
+      if (!_isInitialized) {
+        await initialize();
+      }
+
+      const AndroidNotificationDetails androidDetails =
+          AndroidNotificationDetails(
+        'store_order_alerts',
+        'Store Order Alerts',
+        channelDescription: 'High-priority notifications for store verification and orders',
+        importance: Importance.max,
+        priority: Priority.max,
+        showWhen: true,
+        enableVibration: true,
+        playSound: true,
+      );
+
+      const NotificationDetails notificationDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      );
+
+      final int id = DateTime.now().millisecondsSinceEpoch.remainder(100000);
+
+      await _notificationsPlugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: notificationDetails,
+      );
+    } catch (e) {
+      debugPrint('[NotificationService] Error showing verification notification: $e');
+    }
+  }
 }

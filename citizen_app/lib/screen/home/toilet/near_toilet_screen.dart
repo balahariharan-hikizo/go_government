@@ -12,7 +12,7 @@ import '../../../bloc/toilet/toilet_state.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import '../../../service/location_service.dart';
+import '../../../services/location_service.dart';
 import '../../../network/ola_maps_service.dart';
 import '../../../constants/route_constants.dart';
 import '../../../hive/hive_service.dart';

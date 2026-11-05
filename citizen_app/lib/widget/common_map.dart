@@ -5,7 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import '../config/google_config.dart';
 import '../utils/app_colors.dart';
 import '../utils/responsive_helper.dart';
-import '../service/location_service.dart';
+import '../services/location_service.dart';
 
 enum MapState { list, directions, navigation }
 

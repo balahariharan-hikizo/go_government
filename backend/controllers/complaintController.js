@@ -1,6 +1,8 @@
 const Complaint = require('../models/Complaint');
+const User = require('../models/User');
 const { getNextSequence } = require('../utils/sequenceGenerator');
 const { createNotification } = require('./notificationController');
+const fcmService = require('../services/fcmService');
 
 const STATUS_COLORS = {
   'Under Review': 0xffff5252,
@@ -411,6 +413,23 @@ exports.updateStatus = async (req, res) => {
         referenceId: complaintId,
         metadata: { category: updated.category, status: normalizedStatus },
       }).catch((e) => console.warn('Notification error:', e.message));
+
+      // Send Real-time FCM Push Notification to Citizen Device
+      User.findOne({ $or: [{ userId: updated.userId }, { phone: updated.userId }] })
+        .select('fcmToken')
+        .then((userDoc) => {
+          if (userDoc && userDoc.fcmToken) {
+            fcmService
+              .sendToCitizenComplaintStatus(userDoc.fcmToken, {
+                complaintId,
+                status: normalizedStatus,
+                officerName: adminComment.userName,
+                adminNotes,
+              })
+              .catch((err) => console.warn(`⚠️ [Complaint FCM] Push error: ${err.message}`));
+          }
+        })
+        .catch((err) => console.warn(`⚠️ [Complaint User Lookup] Error: ${err.message}`));
     }
 
     console.log(`📋 [Complaint Status Updated] ${complaintId} -> ${status}`);

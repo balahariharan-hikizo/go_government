@@ -24,13 +24,13 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'services/notification_service.dart';
 import 'services/translation_service.dart';
-import 'service/socket_service.dart';
+import 'services/socket_service.dart';
 import 'hive/hive_service.dart';
 import 'constants/route_constants.dart';
 import 'routes/app_router.dart';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'service/firebase_service.dart';
+import 'services/firebase_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {

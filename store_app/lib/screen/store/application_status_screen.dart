@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../bloc/auth/auth_bloc.dart';
 import '../../bloc/auth/auth_event.dart';
 import '../../bloc/auth/auth_state.dart';
@@ -8,6 +10,8 @@ import '../../bloc/store/store_event.dart';
 import '../../bloc/store/store_state.dart';
 import '../../constants/route_constants.dart';
 import '../../model/store_model.dart';
+import '../../network/auth_api_service.dart';
+import '../../services/socket_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/responsive_helper.dart';
 import '../../widget/common_background.dart';
@@ -32,17 +36,65 @@ class ApplicationStatusScreen extends StatefulWidget {
 class _ApplicationStatusScreenState extends State<ApplicationStatusScreen> {
   late StoreModel _store;
   bool _isChecking = false;
+  StreamSubscription? _statusSubscription;
+  StreamSubscription? _fcmSubscription;
 
   @override
   void initState() {
     super.initState();
     _store = widget.store;
+
+    // Ensure FCM token is registered with backend so review notifications arrive
+    _syncFcmToken();
+
+    // Subscribe to real-time status updates via WebSocket
+    if (_store.storeId.isNotEmpty) {
+      StoreSocketService().subscribeToStore(_store.storeId);
+      _statusSubscription = StoreSocketService().onStatusUpdate.listen((data) {
+        debugPrint('📡 [ApplicationStatusScreen] Real-time store status update: $data');
+        if (mounted) {
+          _checkStatus();
+        }
+      });
+    }
+
+    // Foreground FCM listener to immediately refresh when verification arrives
+    _fcmSubscription = FirebaseMessaging.onMessage.listen((message) {
+      if (message.data['type'] == 'store_verification' && mounted) {
+        debugPrint('📩 [ApplicationStatusScreen] Foreground verification push received. Refreshing status...');
+        _checkStatus();
+      }
+    });
+
     // Auto-check live store approval status ONLY when app boots from cold start
     if (widget.isColdStart) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _checkStatus();
       });
     }
+  }
+
+  Future<void> _syncFcmToken() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null && token.isNotEmpty) {
+        await AuthApiService.updateFcmToken(
+          storeId: _store.storeId,
+          phone: _store.phone,
+          fcmToken: token,
+        );
+        debugPrint('📱 [ApplicationStatusScreen] FCM token synced: $token');
+      }
+    } catch (e) {
+      debugPrint('⚠️ [ApplicationStatusScreen] FCM token sync error: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _statusSubscription?.cancel();
+    _fcmSubscription?.cancel();
+    super.dispose();
   }
 
   void _checkStatus() {

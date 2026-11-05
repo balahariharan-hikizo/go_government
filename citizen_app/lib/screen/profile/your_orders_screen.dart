@@ -7,11 +7,11 @@ import '../../widget/common_background.dart';
 import '../../widget/custom_text.dart';
 import '../../constants/route_constants.dart';
 import '../../network/order_api_service.dart';
-import '../../service/socket_service.dart';
+import '../../services/socket_service.dart';
 import '../../bloc/transaction/transaction_bloc.dart';
 import '../../bloc/transaction/transaction_event.dart';
 import '../../bloc/transaction/transaction_state.dart';
-import '../../service/cart_manager.dart';
+import '../../services/cart_manager.dart';
 import '../../utils/call_launcher.dart';
 import '../../hive/hive_service.dart';
 

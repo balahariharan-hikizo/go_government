@@ -23,10 +23,13 @@ class StoreSocketService {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _returnRequestedController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _statusUpdateController =
+      StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onNewOrder => _newOrderController.stream;
   Stream<Map<String, dynamic>> get onOrderUpdate => _orderUpdateController.stream;
   Stream<Map<String, dynamic>> get onReturnRequested => _returnRequestedController.stream;
+  Stream<Map<String, dynamic>> get onStatusUpdate => _statusUpdateController.stream;
 
   void _dispatchNewOrder(Map<String, dynamic> map) {
     final orderId = map['orderId']?.toString() ?? '';
@@ -130,6 +133,14 @@ class StoreSocketService {
           if (_currentStoreId == null || sid == null || sid.toLowerCase() == _currentStoreId!.toLowerCase()) {
             _dispatchReturnRequested(map);
           }
+        }
+      });
+
+      // 4. Store status update listener (Approval / Rejection)
+      _socket?.on('store:status_updated', (data) {
+        debugPrint('🏛️ [StoreSocketService] store:status_updated received: $data');
+        if (data is Map) {
+          _statusUpdateController.add(Map<String, dynamic>.from(data));
         }
       });
 

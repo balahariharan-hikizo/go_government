@@ -10,7 +10,7 @@ import '../../widget/common_map.dart';
 import '../../hive/hive_service.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import '../../service/location_service.dart';
+import '../../services/location_service.dart';
 import 'address_book_screen.dart';
 
 class SelectDeliveryLocationScreen extends StatefulWidget {

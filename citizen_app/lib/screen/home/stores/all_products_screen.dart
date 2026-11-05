@@ -6,7 +6,7 @@ import '../../../widget/common_background.dart';
 import '../../../widget/custom_text.dart';
 import '../../../widget/common_cart_badge.dart';
 import '../../../constants/route_constants.dart';
-import '../../../service/cart_manager.dart';
+import '../../../services/cart_manager.dart';
 import '../../../widget/common_wishlist_button.dart';
 import '../../../network/api_client.dart';
 

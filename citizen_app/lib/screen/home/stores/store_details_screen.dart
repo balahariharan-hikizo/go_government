@@ -12,7 +12,7 @@ import 'package:go_government/bloc/direction/direction_bloc.dart';
 import 'package:go_government/bloc/direction/direction_event.dart';
 import '../../../network/store_api_service.dart';
 import '../../../constants/route_constants.dart';
-import '../../../service/cart_manager.dart';
+import '../../../services/cart_manager.dart';
 import '../../../widget/common_wishlist_button.dart';
 import '../../../widget/common_directions_button.dart';
 import '../../../services/translation_service.dart';

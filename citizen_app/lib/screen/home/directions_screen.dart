@@ -9,7 +9,7 @@ import 'package:go_government/bloc/direction/direction_state.dart';
 import '../../widget/common_background.dart';
 import '../../widget/custom_text.dart';
 import '../../widget/common_map.dart';
-import '../../service/location_service.dart';
+import '../../services/location_service.dart';
 import '../../network/ola_maps_service.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_map/flutter_map.dart';

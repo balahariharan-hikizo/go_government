@@ -10,7 +10,7 @@ import '../../bloc/report/report_state.dart';
 
 import 'package:latlong2/latlong.dart';
 import '../../hive/hive_service.dart';
-import '../../service/location_service.dart';
+import '../../services/location_service.dart';
 import '../../widget/motion/bouncing_button.dart';
 import '../../widget/motion/fade_slide_transition.dart';
 
