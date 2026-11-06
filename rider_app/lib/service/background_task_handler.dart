@@ -47,31 +47,32 @@ class RiderBackgroundTaskHandler extends TaskHandler {
     if (savedLng != null && savedLng != 0) _lastLng = savedLng;
 
     await _initNotifications();
+    debugPrint('🟢 [RiderBackgroundTaskHandler] Foreground service started for rider: $_riderId');
     _connectBackgroundSocket();
   }
 
   /// Called every 15 seconds by the Foreground Service.
   /// Keeps rider marked ONLINE on server with last-known coordinates while app is in background.
   @override
-  void onRepeatEvent(DateTime timestamp) {
-    FlutterForegroundTask.getData<double>(key: 'lastLat').then((lat) {
-      if (lat != null && lat != 0) _lastLat = lat;
-    });
-    FlutterForegroundTask.getData<double>(key: 'lastLng').then((lng) {
-      if (lng != null && lng != 0) _lastLng = lng;
-    });
-    FlutterForegroundTask.getData<String>(key: 'riderId').then((id) {
-      if (id != null && id.isNotEmpty && id != _riderId) {
-        _riderId = id;
-        _socket?.emit('join:rider', _riderId);
-      }
-    });
-    FlutterForegroundTask.getData<String>(key: 'serverUrl').then((url) {
-      if (url != null && url.isNotEmpty) _serverUrl = url;
-    });
+  void onRepeatEvent(DateTime timestamp) async {
+    final lat = await FlutterForegroundTask.getData<double>(key: 'lastLat');
+    if (lat != null && lat != 0) _lastLat = lat;
+
+    final lng = await FlutterForegroundTask.getData<double>(key: 'lastLng');
+    if (lng != null && lng != 0) _lastLng = lng;
+
+    final id = await FlutterForegroundTask.getData<String>(key: 'riderId');
+    if (id != null && id.isNotEmpty && id != _riderId) {
+      _riderId = id;
+      _socket?.emit('join:rider', _riderId);
+    }
+
+    final url = await FlutterForegroundTask.getData<String>(key: 'serverUrl');
+    if (url != null && url.isNotEmpty) _serverUrl = url;
 
     if (_socket != null && _socket!.connected) {
       // Send keepalive ping with real/last coordinates so nearest-rider calculations succeed
+      debugPrint('📡 [RiderBackgroundTaskHandler] Emitting background location ping for $_riderId ($_lastLat, $_lastLng)');
       _socket?.emit('rider:location_ping', {
         'riderId': _riderId,
         'lat': _lastLat,
@@ -80,6 +81,7 @@ class RiderBackgroundTaskHandler extends TaskHandler {
         'bgPing': true,
       });
     } else {
+      debugPrint('⚠️ [RiderBackgroundTaskHandler] Background socket disconnected, reconnecting...');
       // Socket dropped — reconnect
       _connectBackgroundSocket();
     }
@@ -87,6 +89,7 @@ class RiderBackgroundTaskHandler extends TaskHandler {
 
   @override
   Future<void> onDestroy(DateTime timestamp) async {
+    debugPrint('🛑 [RiderBackgroundTaskHandler] Foreground service destroying for rider: $_riderId');
     // Send final offline ping before service stops
     if (_socket != null && _socket!.connected) {
       _socket?.emit('rider:location_ping', {
@@ -145,6 +148,7 @@ class RiderBackgroundTaskHandler extends TaskHandler {
       );
 
       _socket?.onConnect((_) {
+        debugPrint('⚡ [RiderBackgroundTaskHandler] Background socket connected to $_serverUrl (Rider: $_riderId)');
         // Join riders room with the REAL rider ID
         _socket?.emit('join:rider', _riderId);
 

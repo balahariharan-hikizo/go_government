@@ -113,7 +113,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     if (userId.isEmpty) return;
     final profile = await RiderApiService.fetchRiderProfile(userId);
     if (profile != null && mounted) {
-      final name = profile['userName']?.toString();
+      final name = profile['userName']?.toString() ?? profile['name']?.toString();
       final phone = profile['phone']?.toString();
       final vType = profile['vehicleType']?.toString();
       final vNum = profile['vehicleNumber']?.toString();
@@ -121,6 +121,33 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
       if (phone != null && phone.isNotEmpty) await HiveService.setUserPhone(phone);
       if (vType != null && vType.isNotEmpty) await HiveService.setVehicleType(vType);
       if (vNum != null && vNum.isNotEmpty) await HiveService.setVehicleNumber(vNum);
+
+      // ─── Live MongoDB isOnline Status Sync ───
+      if (profile.containsKey('isOnline')) {
+        final dbIsOnline = profile['isOnline'] == true;
+        await HiveService.setIsOnline(dbIsOnline);
+
+        if (mounted) {
+          context.read<DeliveryBloc>().add(ToggleDutyEvent(dbIsOnline, syncOnly: true));
+        }
+
+        if (dbIsOnline) {
+          final hasGps = await _checkAndEnforceGpsRequirement(showNotification: false);
+          if (hasGps) {
+            _startGpsPings();
+            _startForegroundService(lat: _cachedLat, lng: _cachedLng);
+          } else {
+            await _forceGoOffline(
+              reason: 'Device GPS is OFF. You are OFFLINE.',
+              showBanner: false,
+            );
+          }
+        } else {
+          _gpsPingTimer?.cancel();
+          await _stopForegroundService();
+        }
+      }
+
       setState(() {});
     }
   }
@@ -461,6 +488,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
   }
 
   Future<void> _startForegroundService({double? lat, double? lng}) async {
+    debugPrint('🏁 [RiderDashboard] _startForegroundService called (lat: $lat, lng: $lng)');
     await FlutterForegroundTask.requestNotificationPermission();
 
     // 1. Request Ignore Battery Optimization so Android never puts socket to sleep (prompt once)
@@ -499,15 +527,19 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     }
 
     if (await FlutterForegroundTask.isRunningService) {
-      await FlutterForegroundTask.restartService();
+      debugPrint('🔄 [RiderDashboard] ForegroundService already running, restarting...');
+      final restartRes = await FlutterForegroundTask.restartService();
+      debugPrint('🔄 [RiderDashboard] ForegroundService restart result: $restartRes');
       return;
     }
-    await FlutterForegroundTask.startService(
+    debugPrint('🚀 [RiderDashboard] Starting ForegroundService (ID: 1001)...');
+    final result = await FlutterForegroundTask.startService(
       serviceId: 1001,
       notificationTitle: '🟢 GoGovernment — On Duty',
       notificationText: 'Listening for nearby delivery orders...',
       callback: startCallback,
     );
+    debugPrint('🚀 [RiderDashboard] ForegroundService start result: $result');
   }
 
   void _showAutoOpenPermissionDialog() {
@@ -691,7 +723,7 @@ class _RiderDashboardScreenState extends State<RiderDashboardScreen>
     _checkAndEnforceGpsRequirement(showNotification: false).then((hasGps) {
       if (hasGps && HiveService.isOnline) {
         _startGpsPings();
-        _startForegroundService();
+        _startForegroundService(lat: _cachedLat, lng: _cachedLng);
       } else {
         _forceGoOffline(
           reason: 'Device GPS is OFF. You are OFFLINE.',

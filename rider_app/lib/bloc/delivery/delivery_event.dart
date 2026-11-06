@@ -12,10 +12,11 @@ class LoadDeliveriesEvent extends DeliveryEvent {}
 
 class ToggleDutyEvent extends DeliveryEvent {
   final bool isOnline;
-  const ToggleDutyEvent(this.isOnline);
+  final bool syncOnly;
+  const ToggleDutyEvent(this.isOnline, {this.syncOnly = false});
 
   @override
-  List<Object?> get props => [isOnline];
+  List<Object?> get props => [isOnline, syncOnly];
 }
 
 class AcceptDeliveryOrderEvent extends DeliveryEvent {
