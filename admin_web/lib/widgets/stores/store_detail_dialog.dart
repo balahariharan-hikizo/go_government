@@ -4,11 +4,13 @@ import '../../services/admin_api_service.dart';
 class StoreDetailDialog extends StatefulWidget {
   final Map<String, dynamic> store;
   final VoidCallback onActionCompleted;
+  final VoidCallback? onViewOnMap;
 
   const StoreDetailDialog({
     super.key,
     required this.store,
     required this.onActionCompleted,
+    this.onViewOnMap,
   });
 
   @override
@@ -277,6 +279,19 @@ class _StoreDetailDialogState extends State<StoreDetailDialog> {
               spacing: 10,
               runSpacing: 8,
               children: [
+                if (widget.onViewOnMap != null)
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.pin_drop_rounded, color: Color(0xFF4F46E5), size: 18),
+                    label: const Text('View on City Map 📍', style: TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF4F46E5)),
+                      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 18, vertical: isMobile ? 10 : 14),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      widget.onViewOnMap!();
+                    },
+                  ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Close'),

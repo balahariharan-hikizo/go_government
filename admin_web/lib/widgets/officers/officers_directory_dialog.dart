@@ -44,9 +44,13 @@ class OfficersDirectoryDialog {
                 ),
             ],
           ),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 580, maxHeight: 480),
-            child: FutureBuilder<Map<String, dynamic>>(
+          content: SizedBox(
+            width: MediaQuery.of(context).size.width < 640
+                ? (MediaQuery.of(context).size.width - 48).clamp(280.0, 580.0)
+                : 580.0,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 480),
+              child: FutureBuilder<Map<String, dynamic>>(
               future: AdminApiService.listAdmins(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -233,7 +237,8 @@ class OfficersDirectoryDialog {
               },
             ),
           ),
-          actions: [
+        ),
+        actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
               child: const Text('Close'),

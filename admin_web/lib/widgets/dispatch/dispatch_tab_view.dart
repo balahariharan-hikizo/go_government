@@ -4,7 +4,8 @@ import '../../services/admin_api_service.dart';
 import '../../utils/responsive.dart';
 
 class DispatchTabView extends StatefulWidget {
-  const DispatchTabView({super.key});
+  final void Function(Map<String, dynamic> rider)? onTrackRiderOnMap;
+  const DispatchTabView({super.key, this.onTrackRiderOnMap});
 
   @override
   State<DispatchTabView> createState() => _DispatchTabViewState();
@@ -54,6 +55,22 @@ class _DispatchTabViewState extends State<DispatchTabView> {
       final rawRiders = List<Map<String, dynamic>>.from(
         riderRes['riders'] ?? riderRes['data']?['riders'] ?? [],
       );
+
+      // Sort: Online riders 1st, then with active GPS, then alphabetical
+      rawRiders.sort((a, b) {
+        final aOnline = a['isOnline'] == true ? 1 : 0;
+        final bOnline = b['isOnline'] == true ? 1 : 0;
+        if (aOnline != bOnline) return bOnline.compareTo(aOnline);
+
+        final aGps = a['isActiveGps'] == true ? 1 : 0;
+        final bGps = b['isActiveGps'] == true ? 1 : 0;
+        if (aGps != bGps) return bGps.compareTo(aGps);
+
+        final aName = (a['name'] ?? '').toString().toLowerCase();
+        final bName = (b['name'] ?? '').toString().toLowerCase();
+        return aName.compareTo(bName);
+      });
+
       setState(() {
         _riders = rawRiders;
         _activeRidersCount = rawRiders.where((r) => r['isOnline'] == true).length;
@@ -356,6 +373,7 @@ class _DispatchTabViewState extends State<DispatchTabView> {
                     DataColumn(label: Text('GPS Signal', style: TextStyle(fontWeight: FontWeight.bold))),
                     DataColumn(label: Text('Live Coordinates (Lat, Lng)', style: TextStyle(fontWeight: FontWeight.bold))),
                     DataColumn(label: Text('Last Ping', style: TextStyle(fontWeight: FontWeight.bold))),
+                    DataColumn(label: Text('Map View', style: TextStyle(fontWeight: FontWeight.bold))),
                   ],
                   rows: _riders.map((r) {
                     final isOnline = r['isOnline'] == true;
@@ -409,30 +427,89 @@ class _DispatchTabViewState extends State<DispatchTabView> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: isActiveGps ? Colors.blue.withValues(alpha: 0.1) : Colors.orange.withValues(alpha: 0.1),
+                            color: isOnline && isActiveGps
+                                ? Colors.blue.withValues(alpha: 0.1)
+                                : (!isOnline && (lat != 0 || lng != 0)
+                                    ? Colors.blueGrey.withValues(alpha: 0.12)
+                                    : (isOnline
+                                        ? Colors.amber.withValues(alpha: 0.15)
+                                        : Colors.orange.withValues(alpha: 0.1))),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            isActiveGps ? '📡 Active GPS' : '⚠️ No Signal / Stale',
+                            isOnline && isActiveGps
+                                ? '📡 Live GPS'
+                                : (!isOnline && (lat != 0 || lng != 0)
+                                    ? '🕒 Last Known'
+                                    : (isOnline ? '⚠️ Signal Stale' : '⚠️ No GPS / Pending')),
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: isActiveGps ? Colors.blue.shade700 : Colors.orange.shade800,
+                              color: isOnline && isActiveGps
+                                  ? Colors.blue.shade700
+                                  : (!isOnline && (lat != 0 || lng != 0)
+                                      ? const Color(0xFF475569)
+                                      : (isOnline ? Colors.amber.shade900 : Colors.orange.shade800)),
                             ),
                           ),
                         ),
                       ),
                       DataCell(
                         Text(
-                          lat != 0 || lng != 0 ? '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}' : 'Location Pending',
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                          lat != 0 || lng != 0
+                              ? '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}'
+                              : 'Location Pending',
+                          style: TextStyle(
+                            fontFamily: lat != 0 || lng != 0 ? 'monospace' : null,
+                            fontSize: 12,
+                            color: lat != 0 || lng != 0 ? const Color(0xFF0F172A) : Colors.grey.shade500,
+                            fontStyle: lat != 0 || lng != 0 ? FontStyle.normal : FontStyle.italic,
+                          ),
                         ),
                       ),
                       DataCell(
                         Text(
-                          lastSecs != null ? '$lastSecs secs ago' : 'Never',
-                          style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                          lastSecs != null
+                              ? (lastSecs < 60
+                                  ? '$lastSecs secs ago'
+                                  : (lastSecs < 3600
+                                      ? '${(lastSecs / 60).round()} mins ago'
+                                      : '${(lastSecs / 3600).round()} hrs ago'))
+                              : 'Never',
+                          style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
                         ),
+                      ),
+                      DataCell(
+                        widget.onTrackRiderOnMap != null && (lat != 0 || lng != 0)
+                            ? Tooltip(
+                                message: isOnline ? 'Track Live on City Map 📍' : 'View Last Known Location on City Map 📍',
+                                child: OutlinedButton.icon(
+                                  icon: Icon(
+                                    Icons.pin_drop_rounded,
+                                    size: 14,
+                                    color: isOnline ? const Color(0xFF0284C7) : const Color(0xFF64748B),
+                                  ),
+                                  label: Text(
+                                    isOnline ? 'Track Live' : 'Last Seen',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isOnline ? const Color(0xFF0284C7) : const Color(0xFF64748B),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    side: BorderSide(
+                                      color: isOnline ? const Color(0xFF0284C7) : const Color(0xFF94A3B8),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  ),
+                                  onPressed: () => widget.onTrackRiderOnMap!(r),
+                                ),
+                              )
+                            : const Text(
+                                'Pending',
+                                style: TextStyle(color: Colors.grey, fontSize: 11, fontStyle: FontStyle.italic),
+                              ),
                       ),
                     ]);
                   }).toList(),

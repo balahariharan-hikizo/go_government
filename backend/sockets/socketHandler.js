@@ -237,15 +237,33 @@ function initSockets(io, app) {
       // Explicit offline ping
       if (isOnline === false) {
         socket.leave('online_riders');
+        // Do NOT wipe coordinates to 0; retain last known coordinates
+        const lastLat = (lat !== undefined && lat !== 0 && lat !== null) ? Number(lat) : (existing.lat || 0);
+        const lastLng = (lng !== undefined && lng !== 0 && lng !== null) ? Number(lng) : (existing.lng || 0);
         riderRegistry.set(riderId, {
           ...existing,
-          lat: 0,
-          lng: 0,
+          lat: lastLat,
+          lng: lastLng,
           socketId: socket.id,
           isOnline: false,
           lastSeen: Date.now(),
         });
-        console.log(`🛑 [Socket.io] Rider ${riderId} pinged OFFLINE (cleared GPS)`);
+
+        // Persist offline status and last known location in MongoDB
+        try {
+          const updateData = { isOnline: false };
+          if (lastLat !== 0 && lastLng !== 0) {
+            updateData['currentLocation.lat'] = lastLat;
+            updateData['currentLocation.lng'] = lastLng;
+          }
+          await Rider.updateOne(
+            { $or: [{ riderId }, { phone: riderId }] },
+            { $set: updateData }
+          );
+        } catch (e) {
+          console.error('Failed to update rider offline in DB:', e.message);
+        }
+        console.log(`🛑 [Socket.io] Rider ${riderId} pinged OFFLINE (retained last GPS: ${lastLat}, ${lastLng})`);
         return;
       }
 
@@ -255,14 +273,37 @@ function initSockets(io, app) {
       const hasZeroCoords = (lat === 0 || lat === null || lat === undefined) &&
                             (lng === 0 || lng === null || lng === undefined);
 
+      const validLat = (hasZeroCoords && existing.lat) ? existing.lat : (lat ?? existing.lat ?? 0);
+      const validLng = (hasZeroCoords && existing.lng) ? existing.lng : (lng ?? existing.lng ?? 0);
+
       riderRegistry.set(riderId, {
         ...existing,
-        lat: (hasZeroCoords && existing.lat) ? existing.lat : (lat ?? existing.lat ?? 0),
-        lng: (hasZeroCoords && existing.lng) ? existing.lng : (lng ?? existing.lng ?? 0),
+        lat: validLat,
+        lng: validLng,
         socketId: socket.id,
         isOnline: true,
         lastSeen: Date.now(),
       });
+
+      // Persist live GPS and online status to MongoDB Rider model
+      try {
+        const updateData = { isOnline: true };
+        if (validLat !== 0 && validLng !== 0) {
+          updateData['currentLocation.lat'] = validLat;
+          updateData['currentLocation.lng'] = validLng;
+        }
+        await Rider.updateOne(
+          { $or: [{ riderId }, { phone: riderId }] },
+          { $set: updateData }
+        );
+      } catch (e) {
+        console.error('Failed to persist rider live GPS to DB:', e.message);
+      }
+
+      if (bgPing) {
+        console.log(`📡 [Socket.io] Rider ${riderId} BACKGROUND ping (${Number(validLat).toFixed(5)}, ${Number(validLng).toFixed(5)})`);
+      }
+
       // Ensure rider role is updated in DB
       try {
         await User.updateOne(
@@ -272,17 +313,15 @@ function initSockets(io, app) {
       } catch (_) {}
     });
 
-    // Rider explicit logout event – also clear DB flag
+    // Rider explicit logout event – retain last coordinates and mark offline
     socket.on('rider:logout', async (data) => {
       const { riderId } = data || {};
       if (riderId && riderRegistry.has(riderId)) {
         const existing = riderRegistry.get(riderId);
         if (existing.disconnectTimer) clearTimeout(existing.disconnectTimer);
-        // Update in-memory registry
+        // Update in-memory registry while retaining last known lat/lng
         riderRegistry.set(riderId, {
           ...existing,
-          lat: 0,
-          lng: 0,
           isOnline: false,
           lastSeen: Date.now(),
         });
@@ -295,7 +334,7 @@ function initSockets(io, app) {
         } catch (e) {
           console.error('Failed to set rider offline in DB on logout:', e.message);
         }
-        console.log(`🚪 [Socket.io] Rider ${riderId} logged out & marked OFFLINE in registry & DB`);
+        console.log(`🚪 [Socket.io] Rider ${riderId} logged out & marked OFFLINE in registry & DB (last GPS preserved)`);
       }
     });
 

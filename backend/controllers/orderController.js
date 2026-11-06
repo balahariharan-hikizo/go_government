@@ -181,12 +181,18 @@ exports.getLiveRiderLocations = async (req, res) => {
       const hasPos = info.lat !== undefined && info.lat !== 0 && info.lng !== undefined && info.lng !== 0;
       const isActiveGps = Boolean(info.isOnline && hasPos && (lastSeenSecs === null || lastSeenSecs < 120));
 
-      entry.latitude = info.lat || entry.latitude || 0;
-      entry.longitude = info.lng || entry.longitude || 0;
-      entry.isOnline = Boolean(info.isOnline);
+      // Never overwrite valid database coordinates with 0 from in-memory info
+      entry.latitude = (info.lat !== undefined && info.lat !== 0) ? info.lat : (entry.latitude || 0);
+      entry.longitude = (info.lng !== undefined && info.lng !== 0) ? info.lng : (entry.longitude || 0);
+      entry.isOnline = info.isOnline !== undefined ? Boolean(info.isOnline) : Boolean(entry.isOnline);
       entry.socketId = info.socketId || null;
       entry.lastSeenSecondsAgo = lastSeenSecs;
       entry.isActiveGps = isActiveGps;
+    }
+
+    // Set hasValidLocation flag on every rider entry
+    for (const entry of ridersMap.values()) {
+      entry.hasValidLocation = Boolean(entry.latitude !== 0 && entry.longitude !== 0);
     }
 
     const ridersList = Array.from(ridersMap.values());

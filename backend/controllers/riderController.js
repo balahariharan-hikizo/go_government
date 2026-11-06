@@ -185,15 +185,21 @@ exports.updateProfile = async (req, res) => {
 // 5. TOGGLE ONLINE / OFFLINE STATUS
 exports.toggleOnline = async (req, res) => {
   try {
-    const { riderId, isOnline } = req.body;
+    const { riderId, isOnline, lat, lng } = req.body;
 
     if (!riderId || isOnline === undefined) {
       return res.status(400).json({ success: false, error: 'riderId and isOnline (boolean) are required' });
     }
 
+    const updateFields = { isOnline: Boolean(isOnline) };
+    if (lat !== undefined && lng !== undefined && Number(lat) !== 0 && Number(lng) !== 0) {
+      updateFields['currentLocation.lat'] = Number(lat);
+      updateFields['currentLocation.lng'] = Number(lng);
+    }
+
     const rider = await Rider.findOneAndUpdate(
       { riderId },
-      { $set: { isOnline: Boolean(isOnline) } },
+      { $set: updateFields },
       { returnDocument: 'after', runValidators: true }
     );
 
@@ -207,6 +213,10 @@ exports.toggleOnline = async (req, res) => {
       const existing = riderRegistry.get(riderId) || {};
       riderRegistry.set(riderId, {
         ...existing,
+        ...(updateFields['currentLocation.lat'] && {
+          lat: updateFields['currentLocation.lat'],
+          lng: updateFields['currentLocation.lng'],
+        }),
         isOnline: Boolean(isOnline),
         lastSeen: Date.now(),
       });

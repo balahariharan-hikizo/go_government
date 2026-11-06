@@ -33,6 +33,8 @@ class DashboardHeader extends StatelessWidget {
         return 'Citizen Feedback';
       case 'monitoring':
         return 'Live Dispatch & Logistics';
+      case 'city_map':
+        return 'Smart City GIS Map';
       case 'complaints':
       default:
         return 'Citizen Grievances';
@@ -359,6 +361,13 @@ class DashboardHeader extends StatelessWidget {
                       sectionKey: 'monitoring',
                       count: 0,
                     ),
+                    const SizedBox(width: 4),
+                    _buildSectionButton(
+                      title: 'City Map',
+                      icon: Icons.map_rounded,
+                      sectionKey: 'city_map',
+                      count: 0,
+                    ),
                   ],
                 ),
               ),
@@ -475,6 +484,7 @@ class DashboardHeader extends StatelessWidget {
             buildDrawerTile('Store Approvals', Icons.storefront_rounded, 'stores', storePendingCount),
             buildDrawerTile('Citizen Feedback', Icons.rate_review_rounded, 'feedback', feedbackCount),
             buildDrawerTile('Live Dispatch & Riders', Icons.radar_rounded, 'monitoring', 0),
+            buildDrawerTile('Smart City GIS Map', Icons.map_rounded, 'city_map', 0),
             const Divider(color: Color(0xFF1E293B), height: 24),
             ListTile(
               leading: const Icon(Icons.people_alt_rounded, color: Color(0xFF38BDF8), size: 22),

@@ -6,10 +6,12 @@ import 'store_detail_dialog.dart';
 
 class StoresTabView extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>>? onStatsUpdated;
+  final void Function(Map<String, dynamic> store)? onViewOnMap;
 
   const StoresTabView({
     super.key,
     this.onStatsUpdated,
+    this.onViewOnMap,
   });
 
   @override
@@ -96,6 +98,7 @@ class StoresTabViewState extends State<StoresTabView> {
       builder: (_) => StoreDetailDialog(
         store: store,
         onActionCompleted: reload,
+        onViewOnMap: widget.onViewOnMap != null ? () => widget.onViewOnMap!(store) : null,
       ),
     );
   }
@@ -264,15 +267,15 @@ class StoresTabViewState extends State<StoresTabView> {
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 950),
+            constraints: const BoxConstraints(minWidth: 1040),
             child: Table(
               columnWidths: const {
-                0: FlexColumnWidth(2.5),
+                0: FlexColumnWidth(2.4),
                 1: FlexColumnWidth(1.8),
                 2: FlexColumnWidth(2.0),
-                3: FlexColumnWidth(2.5),
-                4: FlexColumnWidth(1.5),
-                5: FlexColumnWidth(2.2),
+                3: FlexColumnWidth(2.4),
+                4: FlexColumnWidth(1.4),
+                5: FlexColumnWidth(2.4),
               },
               defaultVerticalAlignment: TableCellVerticalAlignment.middle,
               children: [
@@ -369,6 +372,18 @@ class StoresTabViewState extends State<StoresTabView> {
                               onPressed: () => _openDetail(store),
                               child: const Text('Review', style: TextStyle(fontSize: 12, color: Color(0xFF0D47A1))),
                             ),
+                            if (widget.onViewOnMap != null)
+                              IconButton(
+                                icon: const Icon(Icons.pin_drop_rounded, size: 18, color: Color(0xFF4F46E5)),
+                                tooltip: 'View on City Map 📍',
+                                constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                                padding: EdgeInsets.zero,
+                                style: IconButton.styleFrom(
+                                  backgroundColor: const Color(0xFF4F46E5).withValues(alpha: 0.1),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                onPressed: () => widget.onViewOnMap!(store),
+                              ),
                             if (store['status'] == 'pending') ...[
                               ElevatedButton(
                                 style: ElevatedButton.styleFrom(

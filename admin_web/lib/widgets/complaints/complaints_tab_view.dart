@@ -6,10 +6,12 @@ import 'complaint_detail_dialog.dart';
 
 class ComplaintsTabView extends StatefulWidget {
   final ValueChanged<Map<String, dynamic>>? onStatsUpdated;
+  final void Function(Map<String, dynamic> complaint)? onViewOnMap;
 
   const ComplaintsTabView({
     super.key,
     this.onStatsUpdated,
+    this.onViewOnMap,
   });
 
   @override
@@ -145,6 +147,7 @@ class ComplaintsTabViewState extends State<ComplaintsTabView> {
       builder: (_) => ComplaintDetailDialog(
         complaint: complaint,
         onActionCompleted: reload,
+        onViewOnMap: widget.onViewOnMap != null ? () => widget.onViewOnMap!(complaint) : null,
       ),
     );
   }
@@ -293,15 +296,15 @@ class ComplaintsTabViewState extends State<ComplaintsTabView> {
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 950),
+            constraints: const BoxConstraints(minWidth: 1060),
             child: Table(
               columnWidths: const {
-                0: FlexColumnWidth(1.8),
-                1: FlexColumnWidth(1.8),
+                0: FlexColumnWidth(1.6),
+                1: FlexColumnWidth(1.6),
                 2: FlexColumnWidth(2.0),
-                3: FlexColumnWidth(1.4),
-                4: FlexColumnWidth(2.4),
-                5: FlexColumnWidth(1.6),
+                3: FlexColumnWidth(1.3),
+                4: FlexColumnWidth(2.2),
+                5: FlexColumnWidth(2.3),
               },
               defaultVerticalAlignment: TableCellVerticalAlignment.middle,
               children: [
@@ -522,18 +525,37 @@ class ComplaintsTabViewState extends State<ComplaintsTabView> {
 
                       // Col 5: Action Button
                       Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                          label: const Text('Review', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0F172A),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          onPressed: () => _openDetail(c),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                              label: const Text('Review', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF0F172A),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: () => _openDetail(c),
+                            ),
+                            if (widget.onViewOnMap != null)
+                              IconButton(
+                                icon: const Icon(Icons.pin_drop_rounded, size: 18, color: Color(0xFF0284C7)),
+                                tooltip: 'View on City Map 📍',
+                                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                padding: EdgeInsets.zero,
+                                style: IconButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                onPressed: () => widget.onViewOnMap!(c),
+                              ),
+                          ],
                         ),
                       ),
                     ],

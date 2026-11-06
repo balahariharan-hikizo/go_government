@@ -51,10 +51,13 @@ class FeedbackTabViewState extends State<FeedbackTabView> {
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    if (fbRes['success'] == true && fbRes['feedbacks'] != null) {
-      setState(() {
-        _feedbacks = List<Map<String, dynamic>>.from(fbRes['feedbacks']);
-      });
+    if (fbRes['success'] == true) {
+      final list = fbRes['feedbacks'] ?? fbRes['data']?['feedbacks'];
+      if (list != null) {
+        setState(() {
+          _feedbacks = List<Map<String, dynamic>>.from(list);
+        });
+      }
     }
     if (statsRes['success'] == true && statsRes['stats'] != null) {
       setState(() {

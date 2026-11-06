@@ -6,6 +6,7 @@ import '../widgets/complaints/complaints_tab_view.dart';
 import '../widgets/stores/stores_tab_view.dart';
 import '../widgets/feedback/feedback_tab_view.dart';
 import '../widgets/dispatch/dispatch_tab_view.dart';
+import '../widgets/map/city_map_tab_view.dart';
 import 'admin_login_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -16,18 +17,29 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  // Navigation: 'complaints', 'stores', 'feedback', 'monitoring'
+  // Navigation: 'complaints', 'stores', 'feedback', 'monitoring', 'city_map'
   String _activeSection = 'complaints';
 
   // Global Keys to trigger reloads from top navbar
   final GlobalKey<ComplaintsTabViewState> _complaintsKey = GlobalKey<ComplaintsTabViewState>();
   final GlobalKey<StoresTabViewState> _storesKey = GlobalKey<StoresTabViewState>();
   final GlobalKey<FeedbackTabViewState> _feedbackKey = GlobalKey<FeedbackTabViewState>();
+  final GlobalKey<CityMapTabViewState> _cityMapKey = GlobalKey<CityMapTabViewState>();
 
   // Live badge counts
   int _complaintCount = 0;
   int _storePendingCount = 0;
   int _feedbackCount = 0;
+
+  // Pending Map Focus for Cross-tab redirection
+  Map<String, dynamic>? _pendingMapFocus;
+
+  void _navigateToMapWithEntity(String type, Map<String, dynamic> data) {
+    setState(() {
+      _pendingMapFocus = {'type': type, 'data': data};
+      _activeSection = 'city_map';
+    });
+  }
 
   @override
   void initState() {
@@ -72,6 +84,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       _storesKey.currentState?.reload();
     } else if (_activeSection == 'feedback') {
       _feedbackKey.currentState?.reload();
+    } else if (_activeSection == 'city_map') {
+      _cityMapKey.currentState?.reload();
     }
   }
 
@@ -119,6 +133,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       case 'stores':
         return StoresTabView(
           key: _storesKey,
+          onViewOnMap: (s) => _navigateToMapWithEntity('store', s),
           onStatsUpdated: (stats) {
             if (mounted) setState(() => _storePendingCount = stats['pending'] ?? 0);
           },
@@ -134,6 +149,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       default:
         return ComplaintsTabView(
           key: _complaintsKey,
+          onViewOnMap: (c) => _navigateToMapWithEntity('complaint', c),
           onStatsUpdated: (stats) {
             if (mounted) setState(() => _complaintCount = stats['total'] ?? 0);
           },
@@ -172,14 +188,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           // 2. Main Workspace
           Expanded(
             child: _activeSection == 'monitoring'
-                ? const DispatchTabView()
-                : SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isMobile ? 14 : (context.isTablet ? 20 : 36),
-                      vertical: isMobile ? 16 : 24,
-                    ),
-                    child: _buildActiveTabContent(),
-                  ),
+                ? DispatchTabView(
+                    onTrackRiderOnMap: (r) => _navigateToMapWithEntity('rider', r),
+                  )
+                : _activeSection == 'city_map'
+                    ? CityMapTabView(
+                        key: _cityMapKey,
+                        initialFocusEntity: _pendingMapFocus,
+                      )
+                    : SingleChildScrollView(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 14 : (context.isTablet ? 20 : 36),
+                          vertical: isMobile ? 16 : 24,
+                        ),
+                        child: _buildActiveTabContent(),
+                      ),
           ),
         ],
       ),

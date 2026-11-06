@@ -386,7 +386,13 @@ class AdminApiService {
       final res = await http.get(Uri.parse('$_baseUrl/feedback/all$query'), headers: headers);
       _checkUnauthorized(res.statusCode);
       if (res.statusCode == 200) {
-        return {'success': true, 'data': jsonDecode(res.body)};
+        final body = jsonDecode(res.body);
+        return {
+          'success': true,
+          'feedbacks': List<Map<String, dynamic>>.from(body['feedbacks'] ?? []),
+          'count': body['count'] ?? 0,
+          'data': body,
+        };
       }
       return {'success': false, 'error': 'Server error: ${res.statusCode}'};
     } catch (e) {
