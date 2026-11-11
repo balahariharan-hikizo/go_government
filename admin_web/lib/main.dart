@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_web_plugins/flutter_web_plugins.dart';
+import 'package:geolocator_web/geolocator_web.dart';
 import 'services/admin_api_service.dart';
 import 'screens/admin_dashboard_screen.dart';
 import 'screens/admin_login_screen.dart';
@@ -7,6 +10,11 @@ final GlobalKey<NavigatorState> adminNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kIsWeb) {
+    try {
+      GeolocatorPlugin.registerWith(webPluginRegistrar);
+    } catch (_) {}
+  }
   await AdminApiService.init();
 
   // Setup global auto-logout listener on session expiry

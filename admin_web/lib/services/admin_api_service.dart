@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminApiService {
-  static String _baseUrl = 'http://192.168.1.11:5000';
+  static String _baseUrl = 'http://192.168.1.29:5000';
   static String? _token;
   static Map<String, dynamic>? _currentAdmin;
 

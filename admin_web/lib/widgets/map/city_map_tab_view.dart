@@ -195,9 +195,11 @@ class CityMapTabViewState extends State<CityMapTabView> {
         permission = await Geolocator.requestPermission();
       }
 
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always ||
+          permission == LocationPermission.unableToDetermine) {
         final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(timeLimit: Duration(seconds: 6)),
+          locationSettings: const LocationSettings(timeLimit: Duration(seconds: 12)),
         );
         final userLoc = LatLng(pos.latitude, pos.longitude);
         setState(() => _myLocation = userLoc);
@@ -689,7 +691,14 @@ class CityMapTabViewState extends State<CityMapTabView> {
             child: _buildSelectedInspectionCard(),
           ),
 
-        // ─── 5. Loading Indicator Overlay ─────────────────────────
+        // ─── 5. Map Attribution Badge (Powered by Google / OSM) ────
+        Positioned(
+          left: isDesktop && _showSidebar ? 392 : 16,
+          bottom: _selectedEntity != null ? (isDesktop ? 165 : 195) : 12,
+          child: _buildMapAttributionBadge(),
+        ),
+
+        // ─── 6. Loading Indicator Overlay ─────────────────────────
         if (_isLoading)
           Positioned.fill(
             child: Container(
@@ -723,10 +732,71 @@ class CityMapTabViewState extends State<CityMapTabView> {
     );
   }
 
+  // ─── Widget: Map Attribution Badge (Powered by Google / OSM) ─
+  Widget _buildMapAttributionBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A).withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF334155).withValues(alpha: 0.8)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: _useOsmFallback
+          ? const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.public_rounded, size: 12, color: Color(0xFF94A3B8)),
+                SizedBox(width: 5),
+                Text(
+                  'Map data © OpenStreetMap contributors',
+                  style: TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            )
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Powered by ',
+                  style: TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                RichText(
+                  text: const TextSpan(
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: -0.2),
+                    children: [
+                      TextSpan(text: 'G', style: TextStyle(color: Color(0xFF4285F4))),
+                      TextSpan(text: 'o', style: TextStyle(color: Color(0xFFEA4335))),
+                      TextSpan(text: 'o', style: TextStyle(color: Color(0xFFFBBC05))),
+                      TextSpan(text: 'g', style: TextStyle(color: Color(0xFF4285F4))),
+                      TextSpan(text: 'l', style: TextStyle(color: Color(0xFF34A853))),
+                      TextSpan(text: 'e', style: TextStyle(color: Color(0xFFEA4335))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
   // ─── Widget: Layer Control Panel (Top-Right) ─────────────────────
   Widget _buildLayerControlPanel() {
     return Container(
-      width: 290,
+      width: 300,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF0F172A).withValues(alpha: 0.94),
@@ -756,11 +826,14 @@ class CityMapTabViewState extends State<CityMapTabView> {
                 child: const Icon(Icons.layers_rounded, color: Color(0xFF38BDF8), size: 18),
               ),
               const SizedBox(width: 10),
-              const Text(
-                'Command Layers',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+              const Expanded(
+                child: Text(
+                  'Command Layers',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -778,7 +851,7 @@ class CityMapTabViewState extends State<CityMapTabView> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      _useOsmFallback ? 'OSM Fallback' : 'Google Maps',
+                      _useOsmFallback ? 'OSM' : 'Google',
                       style: TextStyle(
                         color: _useOsmFallback ? const Color(0xFF38BDF8) : const Color(0xFF22C55E),
                         fontSize: 10,

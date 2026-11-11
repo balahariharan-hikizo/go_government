@@ -1223,7 +1223,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
 
                           // 3. Driver card or Awaiting rider card (step 2+)
                           if (isDriverCardVisible) ...[
-                            _buildDriverDetailCard(),
+                            _buildDriverDetailCard(currentStep),
                             SizedBox(height: Responsive.h(20)),
                           ] else if (isAwaitingRiderVisible) ...[
                             _buildAwaitingRiderCard(),
@@ -1588,7 +1588,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     );
   }
 
-  Widget _buildDriverDetailCard() {
+  Widget _buildDriverDetailCard(int currentStep) {
     final agent = _serverOrderData?['deliveryAgent'] as Map<String, dynamic>?;
     final driverName =
         (agent != null &&
@@ -1599,6 +1599,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
     final driverPhone = agent?['phone']?.toString().trim() ?? '';
     final vehicleNumber = agent?['vehicleNumber']?.toString().trim() ?? '';
     final rating = agent?['rating']?.toString().trim() ?? '5.0';
+
+    final rawStatus = (_serverOrderData?['status'] ?? widget.transaction?['status'] ?? '').toString().toLowerCase();
+    final bool isDelivered = rawStatus == 'delivered';
+    final bool canContactRider = currentStep < 4 && !isDelivered;
 
     return Container(
       decoration: BoxDecoration(
@@ -1646,11 +1650,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
               ),
             ],
           ),
-          SizedBox(height: Responsive.h(12)),
+          if (canContactRider) ...[
+            SizedBox(height: Responsive.h(12)),
 
-          // Dual Action Buttons: Message Rider + Call Rider
-          Row(
-            children: [
+            // Dual Action Buttons: Message Rider + Call Rider
+            Row(
+              children: [
               // Message Button
               Expanded(
                 child: GestureDetector(
@@ -1808,9 +1813,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen>
             ],
           ),
         ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
+}
 
   Widget _buildDeliveryDetailsCard() {
     return Container(

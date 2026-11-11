@@ -40,6 +40,7 @@ dependencies:
   flutter_map_cancellable_tile_provider: ^3.0.0
   latlong2: ^0.9.1
   geolocator: ^13.0.2
+  geolocator_web: ^4.1.4
 
 dev_dependencies:
   flutter_test:

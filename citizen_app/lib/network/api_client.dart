@@ -5,7 +5,7 @@ class ApiClient {
   static String? _resolvedBaseUrl;
 
   // Active Wi-Fi IP is 192.168.1.24
-  static String get defaultBaseUrl => 'http://192.168.1.11:5000';
+  static String get defaultBaseUrl => 'http://192.168.1.29:5000';
 
   static String get baseUrl => _resolvedBaseUrl ?? defaultBaseUrl;
 
@@ -20,7 +20,8 @@ class ApiClient {
 
   /// Auto-candidate hosts for seamless switching between PG, Office, Emulator & Localhost
   static List<String> get candidateHosts => [
-        'http://192.168.1.11:5000',  // current Wi-Fi IP
+        'http://192.168.1.29:5000',  // current Wi-Fi IP
+        'http://192.168.1.11:5000',  // previous Wi-Fi IP
     'http://192.168.1.24:5000',  // previous Wi-Fi IP
     'http://192.168.1.12:5000',  // Previous Wi-Fi IP
 
